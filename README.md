@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The initial solution scaffold and contracts are in place. No diagnostics provider or optional language layer has been implemented.
+The native WinUI application displays verified machine identity and lightweight live CPU and physical-memory telemetry.
 
 ## Product direction
 
@@ -16,4 +16,4 @@ Machine is a local-first Windows intelligence layer that observes, explains, and
 
 ## Next slice
 
-Implement the first read-only machine identity provider.
+Add read-only top-process inspection.

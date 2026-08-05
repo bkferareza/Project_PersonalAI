@@ -1,3 +1,5 @@
+using Machine.Core;
+using Machine.Windows;
 using Microsoft.UI.Xaml;
 
 namespace Machine.App;
@@ -13,7 +15,14 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _window = new MainWindow();
+        IMachineIdentityProvider identityProvider =
+            new WindowsMachineIdentityProvider();
+        IMachineResourceProvider resourceProvider =
+            new WindowsMachineResourceProvider();
+
+        _window = new MainWindow(
+            identityProvider,
+            resourceProvider);
         _window.Activate();
     }
 }

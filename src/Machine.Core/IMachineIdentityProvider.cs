@@ -1,6 +1,4 @@
-using Machine.Core;
-
-namespace Machine.Windows;
+namespace Machine.Core;
 
 public interface IMachineIdentityProvider
 {

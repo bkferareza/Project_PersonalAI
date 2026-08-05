@@ -6,17 +6,74 @@
     Title="Machine">
     <Grid>
         <StackPanel
+            x:Name="MainContent"
             HorizontalAlignment="Center"
+            Loaded="OnMainContentLoaded"
+            Margin="32"
+            MinWidth="360"
             VerticalAlignment="Center"
             Spacing="8">
             <TextBlock
-                HorizontalAlignment="Center"
                 FontSize="28"
                 FontWeight="SemiBold"
                 Text="Machine" />
             <TextBlock
-                HorizontalAlignment="Center"
+                Margin="0,0,0,16"
                 Text="Windows intelligence layer" />
+            <TextBlock
+                FontWeight="SemiBold"
+                Text="Device name" />
+            <TextBlock
+                x:Name="DeviceNameText"
+                AutomationProperties.AutomationId="DeviceNameText"
+                Margin="0,0,0,8"
+                Text="Loading..."
+                TextWrapping="Wrap" />
+            <TextBlock
+                FontWeight="SemiBold"
+                Text="Operating system" />
+            <TextBlock
+                x:Name="OperatingSystemText"
+                AutomationProperties.AutomationId="OperatingSystemText"
+                Margin="0,0,0,8"
+                Text="Loading..."
+                TextWrapping="Wrap" />
+            <TextBlock
+                FontWeight="SemiBold"
+                Text="Architecture" />
+            <TextBlock
+                x:Name="ArchitectureText"
+                AutomationProperties.AutomationId="ArchitectureText"
+                Text="Loading..."
+                TextWrapping="Wrap" />
+            <TextBlock
+                x:Name="LoadStatusText"
+                AutomationProperties.AutomationId="LoadStatusText"
+                Margin="0,8,0,0"
+                TextWrapping="Wrap" />
+            <TextBlock
+                FontWeight="SemiBold"
+                Margin="0,16,0,0"
+                Text="CPU usage" />
+            <TextBlock
+                x:Name="CpuUsageText"
+                AutomationProperties.AutomationId="CpuUsageText"
+                Margin="0,0,0,8"
+                Text="Loading..."
+                TextWrapping="Wrap" />
+            <TextBlock
+                FontWeight="SemiBold"
+                Text="Memory usage" />
+            <TextBlock
+                x:Name="MemoryUsageText"
+                AutomationProperties.AutomationId="MemoryUsageText"
+                Text="Loading..."
+                TextWrapping="Wrap" />
+            <TextBlock
+                x:Name="TelemetryStatusText"
+                AutomationProperties.AutomationId="TelemetryStatusText"
+                Margin="0,8,0,0"
+                TextWrapping="Wrap" />
         </StackPanel>
     </Grid>
 </Window>
