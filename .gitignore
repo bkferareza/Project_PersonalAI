@@ -1,0 +1,20 @@
+# .NET and build outputs
+**/bin/
+**/obj/
+artifacts/
+TestResults/
+
+# WinUI and MSIX outputs
+AppPackages/
+BundleArtifacts/
+Generated Files/
+*.appx
+*.appxbundle
+*.msix
+*.msixbundle
+
+# IDE state
+.vs/
+.vscode/
+*.user
+*.suo
