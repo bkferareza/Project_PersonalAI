@@ -34,26 +34,37 @@ public sealed partial class MainWindow : Window
     private readonly IMachineResourceProvider _resourceProvider;
     private readonly IMachineProcessProvider _processProvider;
     private readonly IOllamaStatusProvider _ollamaStatusProvider;
+    private readonly IMachineStateExplainer _machineStateExplainer;
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
+    private MachineIdentity? _latestIdentity;
+    private MachineResourceSnapshot? _latestResourceSnapshot;
+    private IReadOnlyList<MachineProcessSnapshot>
+        _latestProcessSnapshots =
+            Array.Empty<MachineProcessSnapshot>();
     private bool _contentLoadStarted;
     private bool _detailsExpanded;
+    private bool _isOllamaServiceAvailable;
+    private bool _isExplanationRequestRunning;
 
     public MainWindow(
         IMachineIdentityProvider identityProvider,
         IMachineResourceProvider resourceProvider,
         IMachineProcessProvider processProvider,
-        IOllamaStatusProvider ollamaStatusProvider)
+        IOllamaStatusProvider ollamaStatusProvider,
+        IMachineStateExplainer machineStateExplainer)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
         ArgumentNullException.ThrowIfNull(resourceProvider);
         ArgumentNullException.ThrowIfNull(processProvider);
         ArgumentNullException.ThrowIfNull(ollamaStatusProvider);
+        ArgumentNullException.ThrowIfNull(machineStateExplainer);
 
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
         _processProvider = processProvider;
         _ollamaStatusProvider = ollamaStatusProvider;
+        _machineStateExplainer = machineStateExplainer;
 
         InitializeComponent();
         Activated += OnWindowActivated;
@@ -121,10 +132,13 @@ public sealed partial class MainWindow : Window
         {
             var identity = await _identityProvider.GetAsync();
 
+            _latestIdentity = identity;
+
             DeviceNameText.Text = identity.DeviceName;
             OperatingSystemText.Text = identity.OperatingSystem;
             ArchitectureText.Text = identity.Architecture;
             LoadStatusText.Text = string.Empty;
+            UpdateExplainMachineStateButtonState();
         }
         catch (Exception exception)
         {
@@ -166,6 +180,8 @@ public sealed partial class MainWindow : Window
 
             cancellationToken.ThrowIfCancellationRequested();
 
+            _latestResourceSnapshot = snapshot;
+
             CpuUsageText.Text =
                 $"{snapshot.CpuUsagePercent:F1}%";
 
@@ -192,6 +208,7 @@ public sealed partial class MainWindow : Window
             UpdatePresenceState(
                 snapshot.CpuUsagePercent,
                 memoryUsagePercent);
+            UpdateExplainMachineStateButtonState();
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -270,7 +287,10 @@ public sealed partial class MainWindow : Window
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            TopProcessesList.ItemsSource = snapshots
+            var verifiedSnapshots = snapshots.ToArray();
+            _latestProcessSnapshots = verifiedSnapshots;
+
+            TopProcessesList.ItemsSource = verifiedSnapshots
                 .Select(snapshot => new ProcessDisplayItem(
                     snapshot.Name,
                     $"PID {snapshot.ProcessId} · " +
@@ -278,6 +298,7 @@ public sealed partial class MainWindow : Window
                     FormatBytes(snapshot.WorkingSetBytes)))
                 .ToArray();
             ProcessStatusText.Text = string.Empty;
+            UpdateExplainMachineStateButtonState();
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -345,6 +366,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        _isOllamaServiceAvailable = true;
         OllamaServiceStatusText.Text = "Online";
         OllamaVersionText.Text = string.IsNullOrWhiteSpace(
             snapshot.Version)
@@ -357,6 +379,7 @@ public sealed partial class MainWindow : Window
                 "Ollama online · Model status unavailable";
             ClearOllamaModels(
                 "Loaded-model status is unavailable.");
+            UpdateExplainMachineStateButtonState();
             return;
         }
 
@@ -372,6 +395,7 @@ public sealed partial class MainWindow : Window
                 "Ollama online · No model loaded";
             OllamaLoadedModelsStatusText.Text =
                 "No models currently loaded.";
+            UpdateExplainMachineStateButtonState();
             return;
         }
 
@@ -379,15 +403,18 @@ public sealed partial class MainWindow : Window
             ? $"Ollama online · {displayItems[0].Name} loaded"
             : $"Ollama online · {displayItems.Length} models loaded";
         OllamaLoadedModelsStatusText.Text = string.Empty;
+        UpdateExplainMachineStateButtonState();
     }
 
     private void ShowOllamaOffline()
     {
+        _isOllamaServiceAvailable = false;
         OllamaPresenceStatusText.Text = "Ollama offline";
         OllamaServiceStatusText.Text = "Offline";
         OllamaVersionText.Text = UnavailableValue;
         ClearOllamaModels(
             "Loaded-model status is unavailable.");
+        UpdateExplainMachineStateButtonState();
     }
 
     private void ClearOllamaModels(string status)
@@ -415,6 +442,82 @@ public sealed partial class MainWindow : Window
             $"{parameterSize} · {quantizationLevel}",
             $"{FormatBytes(model.SizeVramBytes)} VRAM · " +
             $"{model.ContextLength.ToString("N0", CultureInfo.InvariantCulture)} context");
+    }
+
+    private async void OnExplainMachineStateClicked(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_isExplanationRequestRunning)
+        {
+            return;
+        }
+
+        var identity = _latestIdentity;
+        var resources = _latestResourceSnapshot;
+        var processSnapshots = _latestProcessSnapshots.ToArray();
+
+        if (identity is null ||
+            resources is null ||
+            processSnapshots.Length == 0 ||
+            !_isOllamaServiceAvailable)
+        {
+            UpdateExplainMachineStateButtonState();
+            return;
+        }
+
+        _isExplanationRequestRunning = true;
+        UpdateExplainMachineStateButtonState();
+        MachineExplanationStatusText.Text = "Thinking...";
+
+        var cancellationToken =
+            _windowCancellationTokenSource.Token;
+
+        try
+        {
+            var request = new MachineStateExplanationRequest(
+                identity,
+                resources,
+                processSnapshots);
+            var explanation =
+                await _machineStateExplainer.ExplainAsync(
+                    request,
+                    cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            MachineExplanationText.Text = explanation.Text;
+            MachineExplanationStatusText.Text = string.Empty;
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            MachineExplanationStatusText.Text =
+                "Machine explanation is temporarily unavailable.";
+        }
+        finally
+        {
+            _isExplanationRequestRunning = false;
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                UpdateExplainMachineStateButtonState();
+            }
+        }
+    }
+
+    private void UpdateExplainMachineStateButtonState()
+    {
+        ExplainMachineStateButton.IsEnabled =
+            _latestIdentity is not null &&
+            _latestResourceSnapshot is not null &&
+            _latestProcessSnapshots.Count > 0 &&
+            _isOllamaServiceAvailable &&
+            !_isExplanationRequestRunning &&
+            !_windowCancellationTokenSource.IsCancellationRequested;
     }
 
     private static string FormatBytes(long bytes)

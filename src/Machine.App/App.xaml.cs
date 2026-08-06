@@ -9,6 +9,7 @@ public partial class App : Application
 {
     private Window? _window;
     private HttpClient? _ollamaHttpClient;
+    private HttpClient? _ollamaInferenceHttpClient;
 
     public App()
     {
@@ -33,12 +34,25 @@ public partial class App : Application
         _ollamaHttpClient = ollamaHttpClient;
         IOllamaStatusProvider ollamaStatusProvider =
             new OllamaStatusProvider(ollamaHttpClient);
+        var inferenceHttpClient = new HttpClient
+        {
+            BaseAddress = new Uri(
+                "http://127.0.0.1:11434/",
+                UriKind.Absolute),
+            Timeout = TimeSpan.FromMinutes(2),
+        };
+        _ollamaInferenceHttpClient = inferenceHttpClient;
+        IMachineStateExplainer machineStateExplainer =
+            new OllamaMachineStateExplainer(
+                inferenceHttpClient,
+                "qwen3.5:4b");
 
         _window = new MainWindow(
             identityProvider,
             resourceProvider,
             processProvider,
-            ollamaStatusProvider);
+            ollamaStatusProvider,
+            machineStateExplainer);
         _window.Closed += OnWindowClosed;
         _window.Activate();
     }
@@ -55,5 +69,7 @@ public partial class App : Application
 
         _ollamaHttpClient?.Dispose();
         _ollamaHttpClient = null;
+        _ollamaInferenceHttpClient?.Dispose();
+        _ollamaInferenceHttpClient = null;
     }
 }

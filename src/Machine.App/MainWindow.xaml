@@ -196,6 +196,26 @@
                     Margin="0,8,0,0"
                     Text="Loading..."
                     TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Margin="0,16,0,0"
+                    Text="Machine explanation" />
+                <Button
+                    x:Name="ExplainMachineStateButton"
+                    AutomationProperties.AutomationId="ExplainMachineStateButton"
+                    Click="OnExplainMachineStateClicked"
+                    Content="Explain current state"
+                    HorizontalAlignment="Left"
+                    IsEnabled="False" />
+                <TextBlock
+                    x:Name="MachineExplanationText"
+                    AutomationProperties.AutomationId="MachineExplanationText"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    x:Name="MachineExplanationStatusText"
+                    AutomationProperties.AutomationId="MachineExplanationStatusText"
+                    Text="No explanation requested yet."
+                    TextWrapping="Wrap" />
             </StackPanel>
         </ScrollViewer>
     </Grid>

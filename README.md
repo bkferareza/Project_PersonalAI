@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The ambient WinUI presence now shows read-only local Ollama service, version, and currently loaded-model status alongside the existing machine diagnostics.
+The ambient Windows presence can now generate one user-requested, locally powered explanation of the latest verified machine state through qwen3.5:4b.
 
 ## Product direction
 
@@ -16,4 +16,4 @@ Machine is a local-first Windows intelligence layer that observes, explains, and
 
 ## Next slice
 
-Add the first Ollama-powered machine-state explanation.
+Refine the machine personality and explanation presentation.
