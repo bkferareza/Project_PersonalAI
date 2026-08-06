@@ -9,7 +9,10 @@ namespace Machine.Tests;
 public sealed class OllamaMachineStateExplainerTests
 {
     private const string ModelName = "qwen3.5:4b";
-    private const string StableOpening = "Stable ako ngayon.";
+    private const string StableInsight =
+        "Kalma ang takbo ko ngayon. Kumpleto ang current capacity data.";
+    private const string StableFallback =
+        "Wala akong nakikitang deterministic issue sa current snapshot.";
     private static readonly Uri LoopbackBaseAddress =
         new("http://127.0.0.1:11434/");
 
@@ -18,7 +21,7 @@ public sealed class OllamaMachineStateExplainerTests
     {
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(
-                $"  {StableOpening} Kumpleto ang current capacity data.  ",
+                $"  {StableInsight}  ",
                 "qwen3.5:4b-runtime"));
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
@@ -56,7 +59,7 @@ public sealed class OllamaMachineStateExplainerTests
             96,
             options.GetProperty("num_predict").GetInt32());
         Assert.Equal(
-            $"{StableOpening} Kumpleto ang current capacity data.",
+            StableInsight,
             explanation.Text);
         Assert.Equal("qwen3.5:4b-runtime", explanation.Model);
         Assert.Equal(
@@ -67,10 +70,10 @@ public sealed class OllamaMachineStateExplainerTests
     [Fact]
     public async Task ExplainAsyncPayloadExcludesAllProcessData()
     {
-        const string requiredOpening =
-            "Medyo busy ako ngayon—72.4% ang CPU usage.";
+        const string insight =
+            "Mataas ang CPU usage sa current snapshot.";
         using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse(requiredOpening, ModelName));
+            ChatResponse(insight, ModelName));
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
@@ -103,9 +106,9 @@ public sealed class OllamaMachineStateExplainerTests
         await explainer.ExplainAsync(request);
 
         var payload = GetUserPayload(handler.RequestJson);
-        Assert.Equal(
-            requiredOpening,
-            payload.GetProperty("required_opening").GetString());
+        Assert.False(payload.TryGetProperty(
+            "required_opening",
+            out _));
         Assert.Equal(
             72.4d,
             payload.GetProperty("cpu_usage_percent").GetDouble());
@@ -141,10 +144,10 @@ public sealed class OllamaMachineStateExplainerTests
     [Fact]
     public async Task ExplainAsyncSendsOnlyBoundedAllowedContext()
     {
-        const string opening =
-            "May critical storage condition akong nakikita ngayon.";
+        const string insight =
+            "Critical ang verified storage condition sa current snapshot.";
         using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse(opening, ModelName));
+            ChatResponse(insight, ModelName));
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
@@ -255,10 +258,10 @@ public sealed class OllamaMachineStateExplainerTests
     [Fact]
     public async Task ExplainAsyncSendsBoundedDeterministicFindings()
     {
-        const string opening =
-            "May critical condition akong nakikita ngayon.";
+        const string insight =
+            "Critical ang verified condition sa current snapshot.";
         using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse(opening, ModelName));
+            ChatResponse(insight, ModelName));
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
@@ -312,7 +315,7 @@ public sealed class OllamaMachineStateExplainerTests
     public async Task ExplainAsyncRepresentsUnavailableContextAsNull()
     {
         using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse(StableOpening, ModelName));
+            ChatResponse(StableInsight, ModelName));
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
@@ -336,7 +339,7 @@ public sealed class OllamaMachineStateExplainerTests
     public async Task ExplainAsyncSendsRequiredSystemGuardrails()
     {
         using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse(StableOpening, ModelName));
+            ChatResponse(StableInsight, ModelName));
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
@@ -347,12 +350,16 @@ public sealed class OllamaMachineStateExplainerTests
         var systemMessage = GetMessageContent(
             handler.RequestJson,
             "system");
-        Assert.Contains(
+        Assert.DoesNotContain(
             "required_opening",
             systemMessage,
             StringComparison.Ordinal);
         Assert.Contains(
-            "at most one short supporting observation",
+            "renders the deterministic overall state separately",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "one or two short sentences",
             systemMessage,
             StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
@@ -360,9 +367,21 @@ public sealed class OllamaMachineStateExplainerTests
             systemMessage,
             StringComparison.Ordinal);
         Assert.Contains(
-            "no more than 45 words",
+            "no more than 55 words",
             systemMessage,
             StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Do not recite every supplied metric",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Keep RAM memory and drive storage separate",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "no folder-scan result is available",
+            systemMessage,
+            StringComparison.Ordinal);
         Assert.Contains(
             "declarative sentences only",
             systemMessage,
@@ -386,10 +405,18 @@ public sealed class OllamaMachineStateExplainerTests
     }
 
     [Theory]
-    [InlineData("Ibang opening ito.")]
+    [InlineData("Under pressure ako ngayon.")]
     [InlineData("Stable ako ngayon. Code ang sanhi nito.")]
     [InlineData("Stable ako ngayon. Sabihin mo lang at aayusin ko.")]
     [InlineData("Stable ako ngayon. Okay ba talaga?")]
+    [InlineData("Okay ba talaga ang current state.")]
+    [InlineData("AI ang gumawa ng insight na ito.")]
+    [InlineData("Kasi mataas ang load, alerto ako.")]
+    [InlineData("Malubha ang kondisyon ng machine.")]
+    [InlineData("Ang memory ay may sapat na available space sa C drive.")]
+    [InlineData("Walang nakita ang scan na malaking folder.")]
+    [InlineData("CPU ay nasa 25% habang ang memory ay gumagamit ng 30%.")]
+    [InlineData("CPU ay nasa 99 percent.")]
     public async Task ExplainAsyncRejectsUnsafeOutputWithoutRetry(
         string modelOutput)
     {
@@ -409,7 +436,7 @@ public sealed class OllamaMachineStateExplainerTests
 
         var explanation = await explainer.ExplainAsync(request);
 
-        Assert.Equal(StableOpening, explanation.Text);
+        Assert.Equal(StableFallback, explanation.Text);
         Assert.Equal(
             MachineExplanationSource.DeterministicFallback,
             explanation.Source);
@@ -442,7 +469,7 @@ public sealed class OllamaMachineStateExplainerTests
         var explanation = await explainer.ExplainAsync(request);
 
         Assert.Equal(
-            "Stable ako ngayon. Partial pa ang storage inspection, " +
+            "Partial pa ang storage inspection, " +
                 "kaya lower bounds lang ang measured folder sizes.",
             explanation.Text);
         Assert.Equal(ModelName, explanation.Model);
@@ -465,7 +492,7 @@ public sealed class OllamaMachineStateExplainerTests
         var explanation = await explainer.ExplainAsync(
             CreateExplanationRequest());
 
-        Assert.Equal(StableOpening, explanation.Text);
+        Assert.Equal(StableFallback, explanation.Text);
         Assert.Equal(
             MachineExplanationSource.DeterministicFallback,
             explanation.Source);
@@ -491,7 +518,7 @@ public sealed class OllamaMachineStateExplainerTests
         var explanation = await explainer.ExplainAsync(
             CreateExplanationRequest());
 
-        Assert.Equal(StableOpening, explanation.Text);
+        Assert.Equal(StableFallback, explanation.Text);
         Assert.Equal(
             MachineExplanationSource.DeterministicFallback,
             explanation.Source);
@@ -620,7 +647,7 @@ public sealed class OllamaMachineStateExplainerTests
             message = new
             {
                 role = "assistant",
-                content = StableOpening,
+                content = StableInsight,
                 tool_calls = new[]
                 {
                     new

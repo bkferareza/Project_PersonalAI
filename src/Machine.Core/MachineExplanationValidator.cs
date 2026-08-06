@@ -1,8 +1,12 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+
 namespace Machine.Core;
 
 public static class MachineExplanationValidator
 {
-    public const int MaximumWordCount = 45;
+    public const int MaximumWordCount = 55;
+    public const int MaximumSentenceCount = 2;
 
     private static readonly string[] ProhibitedLanguage =
     [
@@ -29,6 +33,12 @@ public static class MachineExplanationValidator
         "puwede kong",
         "maaari kong",
         "kaya kong",
+        "pwede mong",
+        "puwede mong",
+        "you can",
+        "you should",
+        "consider ",
+        "try ",
         "i can fix",
         "i can stop",
         "i can optimize",
@@ -96,31 +106,141 @@ public static class MachineExplanationValidator
         "nagpapataas",
         "nagpapabagal",
         "taking up",
+        " para hindi",
+        "para maiwasan",
         " kaya "
     ];
 
+    private static readonly string[] StableStateClaims =
+    [
+        "stable",
+        "all good",
+        "walang issue",
+        "no issue",
+        "okay ang",
+        "ok ang",
+        "normal ang",
+        "maayos ang takbo",
+        "kalma ang takbo"
+    ];
+
+    private static readonly string[] AttentionStateClaims =
+    [
+        "attention",
+        "medyo busy",
+        "busy ako",
+        "busy ang",
+        "alerto",
+        "needs attention",
+        "kailangan ng pansin"
+    ];
+
+    private static readonly string[] WarningStateClaims =
+    [
+        "warning",
+        "under pressure",
+        "babala"
+    ];
+
+    private static readonly string[] CriticalStateClaims =
+    [
+        "critical",
+        "kritikal",
+        "malubha",
+        "severe",
+        "seryoso"
+    ];
+
+    private static readonly string[] CpuPressureClaims =
+    [
+        "high cpu",
+        "cpu is high",
+        "cpu usage is high",
+        "mataas ang cpu",
+        "cpu pressure"
+    ];
+
+    private static readonly string[] MemoryPressureClaims =
+    [
+        "high memory",
+        "memory is high",
+        "memory usage is high",
+        "mataas ang memory",
+        "memory pressure"
+    ];
+
+    private static readonly string[] StoragePressureClaims =
+    [
+        "low storage",
+        "storage is low",
+        "mababa ang storage",
+        "low free space",
+        "kulang ang storage",
+        "limited storage"
+    ];
+
+    private static readonly Regex CpuThenPercentage = new(
+        @"\bcpu\b[^.!?%]{0,60}?(?<value>\d{1,3}(?:\.\d+)?)\s*(?:%|percent|porsyento)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex PercentageThenCpu = new(
+        @"(?<value>\d{1,3}(?:\.\d+)?)\s*(?:%|percent|porsyento)[^.!?%]{0,30}?\bcpu\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex MemoryThenPercentage = new(
+        @"\b(?:memory|ram)\b[^.!?%]{0,60}?(?<value>\d{1,3}(?:\.\d+)?)\s*(?:%|percent|porsyento)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex PercentageThenMemory = new(
+        @"(?<value>\d{1,3}(?:\.\d+)?)\s*(?:%|percent|porsyento)[^.!?%]{0,30}?\b(?:memory|ram)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex AiReference = new(
+        @"\bai\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex QuestionLanguage = new(
+        @"\b(?:ba|kumusta)\b|(?:^|[.!]\s*)(?:ano|alin|bakit|paano|kailan|saan|sino|who|what|when|where|why|how|would|could|can|should|is|are|do|does|did)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex CausalParticle = new(
+        @"\b(?:kasi|kaya|therefore|thus)\b|\bpara\s+(?:hindi|maiwasan)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
     public static bool IsValid(
         string? text,
-        string requiredOpening,
         IReadOnlyList<string> currentProcessNames,
-        MachineFindingsSnapshot? findings)
+        MachineFindingsSnapshot? findings,
+        MachineStorageExplanationContext? storage = null,
+        MachineResourceSnapshot? resources = null)
     {
         ArgumentNullException.ThrowIfNull(currentProcessNames);
 
         if (string.IsNullOrWhiteSpace(text) ||
-            string.IsNullOrWhiteSpace(requiredOpening) ||
             text.Any(char.IsControl) ||
-            !text.StartsWith(requiredOpening, StringComparison.Ordinal) ||
-            !HasOpeningBoundary(text, requiredOpening) ||
             CountWords(text) > MaximumWordCount ||
+            CountSentences(text) > MaximumSentenceCount ||
             text.Contains('?') ||
+            QuestionLanguage.IsMatch(text) ||
             ContainsAny(text, ProhibitedLanguage) ||
-            ContainsProcessName(text, currentProcessNames))
+            AiReference.IsMatch(text) ||
+            ContainsProcessName(text, currentProcessNames) ||
+            ContradictsVerifiedContext(text, findings) ||
+            ConflatesMemoryAndStorage(text) ||
+            InventsFolderScanResult(text, storage) ||
+            ContainsIncorrectResourcePercentage(text, resources))
         {
             return false;
         }
 
-        if (!ContainsAny(text, CausalLanguage))
+        if (!ContainsCausalLanguage(text))
         {
             return true;
         }
@@ -139,21 +259,328 @@ public static class MachineExplanationValidator
             }
         }
 
-        return !ContainsAny(
-            textWithoutVerifiedDetails,
-            CausalLanguage);
+        return !ContainsCausalLanguage(textWithoutVerifiedDetails);
     }
 
-    private static bool HasOpeningBoundary(
+    private static bool ContradictsVerifiedContext(
         string text,
-        string requiredOpening) =>
-        text.Length == requiredOpening.Length ||
-        char.IsWhiteSpace(text[requiredOpening.Length]);
+        MachineFindingsSnapshot? findings)
+    {
+        var state = findings?.OverallState ??
+            MachineOverallState.Unknown;
+
+        var contradictsState = state switch
+        {
+            MachineOverallState.Stable =>
+                ContainsAny(text, AttentionStateClaims) ||
+                ContainsAny(text, WarningStateClaims) ||
+                ContainsAny(text, CriticalStateClaims),
+            MachineOverallState.Attention =>
+                ContainsAny(text, StableStateClaims) ||
+                ContainsAny(text, WarningStateClaims) ||
+                ContainsAny(text, CriticalStateClaims),
+            MachineOverallState.Warning =>
+                ContainsAny(text, StableStateClaims) ||
+                ContainsAny(text, AttentionStateClaims) ||
+                ContainsAny(text, CriticalStateClaims),
+            MachineOverallState.Critical =>
+                ContainsAny(text, StableStateClaims) ||
+                ContainsAny(text, AttentionStateClaims) ||
+                ContainsAny(text, WarningStateClaims),
+            _ =>
+                ContainsAny(text, StableStateClaims) ||
+                ContainsAny(text, AttentionStateClaims) ||
+                ContainsAny(text, WarningStateClaims) ||
+                ContainsAny(text, CriticalStateClaims)
+        };
+
+        if (contradictsState)
+        {
+            return true;
+        }
+
+        var findingCodes = (findings?.Findings ?? [])
+            .Select(finding => finding.Code)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (ContradictsPartialFindings(text, findingCodes))
+        {
+            return true;
+        }
+
+        return (!findingCodes.Contains("cpu.usage.high") &&
+                ContainsAny(text, CpuPressureClaims)) ||
+            (!findingCodes.Contains("memory.usage.high") &&
+                ContainsAny(text, MemoryPressureClaims)) ||
+            (!findingCodes.Contains(
+                    "storage.system-volume.low-free-space") &&
+                ContainsAny(text, StoragePressureClaims));
+    }
+
+    private static bool ContradictsPartialFindings(
+        string text,
+        IReadOnlySet<string> findingCodes)
+    {
+        var hasFolderPartial = findingCodes.Contains(
+            "data.folder-scan.partial");
+        var hasClassicSoftwarePartial = findingCodes.Contains(
+            "data.software.classic.partial");
+        var hasPackagedSoftwarePartial = findingCodes.Contains(
+            "data.software.packaged.partial");
+        var hasStartupPartial = findingCodes.Contains(
+            "data.startup.partial");
+
+        if (!hasFolderPartial &&
+            !hasClassicSoftwarePartial &&
+            !hasPackagedSoftwarePartial &&
+            !hasStartupPartial)
+        {
+            return false;
+        }
+
+        if (ClaimsCompleteData(
+            text,
+            [
+                "current inventory",
+                "latest inventory",
+                "inventory data",
+                "all inventory"
+            ]))
+        {
+            return true;
+        }
+
+        return (hasFolderPartial && ClaimsCompleteData(
+                text,
+                ["folder", "scan", "storage inspection"])) ||
+            (hasClassicSoftwarePartial && ClaimsCompleteData(
+                text,
+                ["classic software", "classic inventory"])) ||
+            (hasPackagedSoftwarePartial && ClaimsCompleteData(
+                text,
+                ["packaged", "package inventory"])) ||
+            ((hasClassicSoftwarePartial ||
+              hasPackagedSoftwarePartial) && ClaimsCompleteData(
+                text,
+                ["software inventory"])) ||
+            (hasStartupPartial && ClaimsCompleteData(
+                text,
+                ["startup"]));
+    }
+
+    private static bool ClaimsCompleteData(
+        string text,
+        IReadOnlyList<string> subjects)
+    {
+        var sentences = text.Split(
+            ['.', '!', '?'],
+            StringSplitOptions.RemoveEmptyEntries);
+
+        return sentences.Any(sentence =>
+            ContainsAny(sentence, subjects) &&
+            ContainsAny(
+                sentence,
+                ["complete", "kumpleto", "fully scanned", "buo ang"]) &&
+            !ContainsAny(
+                sentence,
+                [
+                    "incomplete",
+                    "not complete",
+                    "not yet complete",
+                    "hindi kumpleto",
+                    "hindi pa kumpleto",
+                    "di kumpleto",
+                    "hindi buo"
+                ]));
+    }
+
+    private static bool ConflatesMemoryAndStorage(string text)
+    {
+        var sentences = text.Split(
+            ['.', '!', '?'],
+            StringSplitOptions.RemoveEmptyEntries);
+
+        return sentences.Any(sentence =>
+            (sentence.Contains(
+                "memory",
+                StringComparison.OrdinalIgnoreCase) ||
+             sentence.Contains(
+                "ram",
+                StringComparison.OrdinalIgnoreCase)) &&
+            (sentence.Contains(
+                "drive",
+                StringComparison.OrdinalIgnoreCase) ||
+             sentence.Contains(
+                "disk",
+                StringComparison.OrdinalIgnoreCase) ||
+             sentence.Contains(
+                "storage",
+                StringComparison.OrdinalIgnoreCase) ||
+             sentence.Contains(
+                "free space",
+                StringComparison.OrdinalIgnoreCase) ||
+             sentence.Contains(
+                "available space",
+                StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool InventsFolderScanResult(
+        string text,
+        MachineStorageExplanationContext? storage)
+    {
+        if (storage?.LargeFolderScan is not null)
+        {
+            return false;
+        }
+
+        var mentionsFolderScan = text.Contains(
+            "scan",
+            StringComparison.OrdinalIgnoreCase) ||
+            text.Contains(
+                "folder",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (!mentionsFolderScan)
+        {
+            return false;
+        }
+
+        return ContainsAny(
+            text,
+            [
+                "scan found",
+                "scan did not find",
+                "no folders found",
+                "no large folder",
+                "walang nakita",
+                "walang malaking folder"
+            ]);
+    }
+
+    private static bool ContainsIncorrectResourcePercentage(
+        string text,
+        MachineResourceSnapshot? resources)
+    {
+        var cpuClaims = GetPercentageClaims(
+            text,
+            CpuThenPercentage,
+            PercentageThenCpu);
+        var memoryClaims = GetPercentageClaims(
+            text,
+            MemoryThenPercentage,
+            PercentageThenMemory);
+
+        if (cpuClaims.Count == 0 && memoryClaims.Count == 0)
+        {
+            return false;
+        }
+
+        if (resources is null ||
+            !double.IsFinite(resources.CpuUsagePercent) ||
+            resources.TotalMemoryBytes == 0 ||
+            resources.UsedMemoryBytes > resources.TotalMemoryBytes)
+        {
+            return true;
+        }
+
+        if (cpuClaims.Any(claim =>
+            !ApproximatelyEquals(
+                claim.Value,
+                resources.CpuUsagePercent)))
+        {
+            return true;
+        }
+
+        var usedMemoryPercent = resources.UsedMemoryBytes /
+            (double)resources.TotalMemoryBytes * 100d;
+        var availableMemoryPercent = 100d - usedMemoryPercent;
+
+        return memoryClaims.Any(claim =>
+        {
+            var describesUsedMemory = ContainsAny(
+                claim.Text,
+                ["used", "using", "usage", "gumagamit", "gamit"]);
+            var describesAvailableMemory = ContainsAny(
+                claim.Text,
+                ["available", "free", "bakante"]);
+
+            if (describesUsedMemory)
+            {
+                return !ApproximatelyEquals(
+                    claim.Value,
+                    usedMemoryPercent);
+            }
+
+            if (describesAvailableMemory)
+            {
+                return !ApproximatelyEquals(
+                    claim.Value,
+                    availableMemoryPercent);
+            }
+
+            return !ApproximatelyEquals(
+                    claim.Value,
+                    usedMemoryPercent) &&
+                !ApproximatelyEquals(
+                    claim.Value,
+                    availableMemoryPercent);
+        });
+    }
+
+    private static IReadOnlyList<PercentageClaim>
+        GetPercentageClaims(
+            string text,
+            Regex metricThenPercentage,
+            Regex percentageThenMetric) =>
+        metricThenPercentage.Matches(text)
+            .Concat(percentageThenMetric.Matches(text))
+            .Select(match => new PercentageClaim(
+                double.Parse(
+                    match.Groups["value"].Value,
+                    CultureInfo.InvariantCulture),
+                match.Value))
+            .ToArray();
+
+    private static bool ApproximatelyEquals(
+        double actual,
+        double expected) =>
+        Math.Abs(actual - expected) <= 1d;
 
     private static int CountWords(string text) =>
         text.Split(
             (char[]?)null,
             StringSplitOptions.RemoveEmptyEntries).Length;
+
+    private static int CountSentences(string text)
+    {
+        var count = 0;
+
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (text[index] == '!')
+            {
+                count++;
+                continue;
+            }
+
+            if (text[index] != '.')
+            {
+                continue;
+            }
+
+            var isDecimalPoint = index > 0 &&
+                index < text.Length - 1 &&
+                char.IsDigit(text[index - 1]) &&
+                char.IsDigit(text[index + 1]);
+
+            if (!isDecimalPoint)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
 
     private static bool ContainsAny(
         string text,
@@ -161,6 +588,10 @@ public static class MachineExplanationValidator
         values.Any(value => text.Contains(
             value,
             StringComparison.OrdinalIgnoreCase));
+
+    private static bool ContainsCausalLanguage(string text) =>
+        ContainsAny(text, CausalLanguage) ||
+        CausalParticle.IsMatch(text);
 
     private static bool ContainsProcessName(
         string text,
@@ -171,4 +602,6 @@ public static class MachineExplanationValidator
             .Any(name => text.Contains(
                 name,
                 StringComparison.OrdinalIgnoreCase));
+
+    private sealed record PercentageClaim(double Value, string Text);
 }

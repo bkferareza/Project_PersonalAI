@@ -16,14 +16,16 @@ public sealed partial class OllamaMachineStateExplainer
         You are this Windows PC speaking directly to your owner.
 
         Use only the verified machine facts supplied by the application.
-        required_opening is composed by the application. Begin with that exact text, including its punctuation, without changing or preceding it.
-        After required_opening, add at most one short supporting observation.
-        Use that observation only for supplied findings, CPU or memory values, the system-volume summary, bounded software or startup counts, or partial or unavailable data state.
+        The application renders the deterministic overall state separately. Generate only the short natural insight body; do not add a heading or state label.
+        Use one or two short sentences based only on supplied findings, CPU or memory values, the system-volume summary, bounded software or startup counts, or partial or unavailable data state.
         Never mention a process name or infer anything from process activity.
         Never invent causes, diagnoses, temperatures, hardware details, emotions, processes, or actions.
         Do not claim that you changed, fixed, deleted, stopped, or optimized anything.
         In optional context, null means unavailable and is_complete false means partial; distinguish those states honestly when relevant.
+        Keep RAM memory and drive storage separate; never describe memory as drive space or storage capacity.
+        If you cite a CPU or memory percentage, copy or calculate it accurately from the supplied values. used_memory_bytes divided by total_memory_bytes is used memory, not available memory.
         Never treat a partial folder measurement as a final folder total.
+        When large_folder_scan_is_complete is null, no folder-scan result is available; never claim what a scan found or did not find.
         An incomplete folder scan means only that its results are partial; never infer why it is incomplete or how much unmeasured data exists.
         Never claim software is unused, harmful, outdated, or removable.
         Never claim startup entries are enabled, expensive, or safe to disable.
@@ -38,7 +40,9 @@ public sealed partial class OllamaMachineStateExplainer
         Respond in natural conversational Filipino Taglish.
         Sound like a technically aware Filipino friend, not a translated English report.
         Keep every assessment literal and idiomatic; never coin awkward Filipino verbs.
-        Use one short paragraph with no more than 45 words.
+        Use one short paragraph with no more than 55 words.
+        Do not recite every supplied metric.
+        Prefer concise numeric notation such as 48% instead of spelling out porsyento.
         Use declarative sentences only and never include a question mark or rhetorical question.
         Never discuss permission, rights, or inability to act.
         Never offer to fix, stop, optimize, clean, delete, uninstall, disable, or perform any action.
@@ -81,14 +85,7 @@ public sealed partial class OllamaMachineStateExplainer
         ArgumentNullException.ThrowIfNull(request.TopProcesses);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var requiredOpening =
-            MachineExplanationOpeningComposer.Compose(
-                request.Findings,
-                request.Resources,
-                request.Storage);
-        var userMessage = CreateUserMessage(
-            request,
-            requiredOpening);
+        var userMessage = CreateUserMessage(request);
         var chatRequest = new ChatRequest(
             Model: _modelName,
             Stream: false,
@@ -127,9 +124,7 @@ public sealed partial class OllamaMachineStateExplainer
         }
         catch (JsonException)
         {
-            return CreateFallbackExplanation(
-                requiredOpening,
-                request.Findings);
+            return CreateFallbackExplanation(request.Findings);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -144,13 +139,12 @@ public sealed partial class OllamaMachineStateExplainer
             string.IsNullOrWhiteSpace(chatResponse.Model) ||
             !MachineExplanationValidator.IsValid(
                 text,
-                requiredOpening,
                 processNames,
-                request.Findings))
+                request.Findings,
+                request.Storage,
+                request.Resources))
         {
-            return CreateFallbackExplanation(
-                requiredOpening,
-                request.Findings);
+            return CreateFallbackExplanation(request.Findings);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -163,12 +157,9 @@ public sealed partial class OllamaMachineStateExplainer
     }
 
     private MachineStateExplanation CreateFallbackExplanation(
-        string requiredOpening,
         MachineFindingsSnapshot? findings) =>
         new(
-            Text: MachineExplanationFallbackComposer.Compose(
-                requiredOpening,
-                findings),
+            Text: MachineExplanationFallbackComposer.Compose(findings),
             Model: _modelName,
             GeneratedAt: DateTimeOffset.UtcNow,
             Source: MachineExplanationSource.DeterministicFallback);
@@ -182,11 +173,9 @@ public sealed partial class OllamaMachineStateExplainer
         };
 
     private static string CreateUserMessage(
-        MachineStateExplanationRequest request,
-        string requiredOpening)
+        MachineStateExplanationRequest request)
     {
         var payload = new MachineSnapshotPayload(
-            RequiredOpening: requiredOpening,
             CpuUsagePercent: request.Resources.CpuUsagePercent,
             UsedMemoryBytes: request.Resources.UsedMemoryBytes,
             TotalMemoryBytes: request.Resources.TotalMemoryBytes,
@@ -327,8 +316,6 @@ public sealed partial class OllamaMachineStateExplainer
         JsonElement ToolCalls);
 
     private sealed record MachineSnapshotPayload(
-        [property: JsonPropertyName("required_opening")]
-        string RequiredOpening,
         [property: JsonPropertyName("cpu_usage_percent")]
         double CpuUsagePercent,
         [property: JsonPropertyName("used_memory_bytes")]
