@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The ambient Windows presence now includes searchable, read-only inventories of classic desktop software and startup applications. Startup applications are reported only from current-user and machine Run keys and the current-user and common Startup folders; enabled state and startup impact are not inferred.
+The ambient Windows presence now includes searchable, read-only inventories of classic desktop software, current-user MSIX/AppX packages, and startup applications. Framework and resource packages are excluded from the packaged-application list, and installation source, update status, enabled state, and startup impact are not inferred.
 
 ## Product direction
 
@@ -16,4 +16,4 @@ Machine is a local-first Windows intelligence layer that observes, explains, and
 
 ## Next slice
 
-Not yet selected.
+Add verified storage, software, and startup context to machine explanations.

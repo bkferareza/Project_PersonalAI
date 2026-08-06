@@ -46,6 +46,8 @@ public sealed partial class MainWindow : Window
         _folderInspectionProvider;
     private readonly IMachineSoftwareInventoryProvider
         _softwareInventoryProvider;
+    private readonly IMachinePackagedSoftwareInventoryProvider
+        _packagedSoftwareInventoryProvider;
     private readonly IMachineStartupInventoryProvider
         _startupInventoryProvider;
     private readonly CancellationTokenSource
@@ -60,6 +62,8 @@ public sealed partial class MainWindow : Window
     private MachineStorageSnapshot? _latestStorageSnapshot;
     private MachineSoftwareInventorySnapshot?
         _latestSoftwareInventorySnapshot;
+    private MachinePackagedSoftwareInventorySnapshot?
+        _latestPackagedSoftwareInventorySnapshot;
     private MachineStartupInventorySnapshot?
         _latestStartupInventorySnapshot;
     private bool _contentLoadStarted;
@@ -70,6 +74,7 @@ public sealed partial class MainWindow : Window
     private bool _isFolderScanRunning;
     private bool _isStorageRequestRunning;
     private bool _isSoftwareInventoryRequestRunning;
+    private bool _isPackagedSoftwareInventoryRequestRunning;
     private bool _isStartupInventoryRequestRunning;
 
     public MainWindow(
@@ -81,6 +86,8 @@ public sealed partial class MainWindow : Window
         IMachineStorageProvider storageProvider,
         IMachineFolderInspectionProvider folderInspectionProvider,
         IMachineSoftwareInventoryProvider softwareInventoryProvider,
+        IMachinePackagedSoftwareInventoryProvider
+            packagedSoftwareInventoryProvider,
         IMachineStartupInventoryProvider startupInventoryProvider)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
@@ -91,6 +98,8 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(storageProvider);
         ArgumentNullException.ThrowIfNull(folderInspectionProvider);
         ArgumentNullException.ThrowIfNull(softwareInventoryProvider);
+        ArgumentNullException.ThrowIfNull(
+            packagedSoftwareInventoryProvider);
         ArgumentNullException.ThrowIfNull(startupInventoryProvider);
 
         _identityProvider = identityProvider;
@@ -101,6 +110,8 @@ public sealed partial class MainWindow : Window
         _storageProvider = storageProvider;
         _folderInspectionProvider = folderInspectionProvider;
         _softwareInventoryProvider = softwareInventoryProvider;
+        _packagedSoftwareInventoryProvider =
+            packagedSoftwareInventoryProvider;
         _startupInventoryProvider = startupInventoryProvider;
 
         InitializeComponent();
@@ -160,6 +171,9 @@ public sealed partial class MainWindow : Window
                     isManualRefresh: false,
                     cancellationToken: cancellationToken),
                 LoadSoftwareInventoryAsync(
+                    isManualRefresh: false,
+                    cancellationToken: cancellationToken),
+                LoadPackagedSoftwareInventoryAsync(
                     isManualRefresh: false,
                     cancellationToken: cancellationToken),
                 LoadStartupInventoryAsync(
@@ -1070,6 +1084,217 @@ public sealed partial class MainWindow : Window
             !_windowCancellationTokenSource.IsCancellationRequested;
     }
 
+    private async void OnRefreshPackagedSoftwareClicked(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await LoadPackagedSoftwareInventoryAsync(
+            isManualRefresh: true,
+            cancellationToken:
+                _windowCancellationTokenSource.Token);
+    }
+
+    private async Task LoadPackagedSoftwareInventoryAsync(
+        bool isManualRefresh,
+        CancellationToken cancellationToken)
+    {
+        if (_isPackagedSoftwareInventoryRequestRunning)
+        {
+            return;
+        }
+
+        _isPackagedSoftwareInventoryRequestRunning = true;
+        if (isManualRefresh)
+        {
+            RefreshPackagedSoftwareButton.Content =
+                "Refreshing...";
+        }
+
+        UpdateRefreshPackagedSoftwareButtonState();
+
+        if (isManualRefresh)
+        {
+            await Task.Yield();
+        }
+
+        try
+        {
+            var snapshot = await _packagedSoftwareInventoryProvider
+                .GetAsync(cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            UpdatePackagedSoftwareInventory(snapshot);
+            _latestPackagedSoftwareInventorySnapshot = snapshot;
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+
+            if (_latestPackagedSoftwareInventorySnapshot is null)
+            {
+                PackagedSoftwareList.ItemsSource =
+                    Array.Empty<PackagedSoftwareDisplayItem>();
+                PackagedSoftwareInventorySummaryText.Text =
+                    "0 packages found\nShowing 0";
+            }
+
+            PackagedSoftwareInventoryStatusText.Text =
+                "Packaged-software inventory is temporarily unavailable.";
+        }
+        finally
+        {
+            _isPackagedSoftwareInventoryRequestRunning = false;
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                RefreshPackagedSoftwareButton.Content =
+                    "Refresh packaged applications";
+                UpdateRefreshPackagedSoftwareButtonState();
+            }
+        }
+    }
+
+    private void UpdatePackagedSoftwareInventory(
+        MachinePackagedSoftwareInventorySnapshot snapshot)
+    {
+        ApplyPackagedSoftwareInventoryFilter(snapshot);
+
+        if (!snapshot.IsComplete)
+        {
+            var partialResultDetails = new List<string>(
+                capacity: 2);
+
+            if (snapshot.SkippedEntryCount > 0)
+            {
+                partialResultDetails.Add(
+                    $"{snapshot.SkippedEntryCount} " +
+                    (snapshot.SkippedEntryCount == 1
+                        ? "package skipped"
+                        : "packages skipped"));
+            }
+
+            if (snapshot.OptionalPropertyFailureCount > 0)
+            {
+                partialResultDetails.Add(
+                    $"{snapshot.OptionalPropertyFailureCount} " +
+                    (snapshot.OptionalPropertyFailureCount == 1
+                        ? "optional property unavailable"
+                        : "optional properties unavailable"));
+            }
+
+            PackagedSoftwareInventoryStatusText.Text =
+                partialResultDetails.Count == 0
+                    ? "Inventory is partial."
+                    : $"Inventory is partial · " +
+                        string.Join(" · ", partialResultDetails);
+            return;
+        }
+
+        PackagedSoftwareInventoryStatusText.Text =
+            snapshot.Items.Count == 0
+                ? "No user-facing MSIX/AppX packages found."
+                : string.Empty;
+    }
+
+    private void OnPackagedSoftwareSearchTextChanged(
+        object sender,
+        TextChangedEventArgs e)
+    {
+        if (_latestPackagedSoftwareInventorySnapshot is not null)
+        {
+            ApplyPackagedSoftwareInventoryFilter(
+                _latestPackagedSoftwareInventorySnapshot);
+        }
+    }
+
+    private void ApplyPackagedSoftwareInventoryFilter(
+        MachinePackagedSoftwareInventorySnapshot snapshot)
+    {
+        var searchText = PackagedSoftwareSearchBox.Text.Trim();
+        var filteredItems = snapshot.Items
+            .Where(item =>
+                searchText.Length == 0 ||
+                item.DisplayName.Contains(
+                    searchText,
+                    StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrWhiteSpace(
+                    item.PublisherDisplayName) &&
+                    item.PublisherDisplayName.Contains(
+                        searchText,
+                        StringComparison.OrdinalIgnoreCase)) ||
+                item.PackageFamilyName.Contains(
+                    searchText,
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(CreatePackagedSoftwareDisplayItem)
+            .ToArray();
+
+        PackagedSoftwareList.ItemsSource = filteredItems;
+        PackagedSoftwareInventorySummaryText.Text =
+            $"{snapshot.Items.Count} packages found\n" +
+            $"Showing {filteredItems.Length}";
+    }
+
+    private static PackagedSoftwareDisplayItem
+        CreatePackagedSoftwareDisplayItem(
+            MachinePackagedSoftwareSnapshot software)
+    {
+        var publisher = string.IsNullOrWhiteSpace(
+            software.PublisherDisplayName)
+            ? "Publisher unavailable"
+            : software.PublisherDisplayName.Trim();
+        var flags = new List<string>(capacity: 2);
+
+        if (software.IsDevelopmentMode == true)
+        {
+            flags.Add("Development package");
+        }
+
+        if (software.IsStub == true)
+        {
+            flags.Add("Stub package");
+        }
+
+        var installedLocation = string.IsNullOrWhiteSpace(
+            software.InstalledLocation)
+            ? string.Empty
+            : $"Installed at {software.InstalledLocation.Trim()}";
+
+        return new PackagedSoftwareDisplayItem(
+            software.DisplayName,
+            $"{publisher} · Version {software.Version} · " +
+                FormatPackagedSoftwareArchitecture(
+                    software.Architecture),
+            $"Package family: {software.PackageFamilyName}",
+            string.Join(" · ", flags),
+            installedLocation);
+    }
+
+    private static string FormatPackagedSoftwareArchitecture(
+        MachinePackagedSoftwareArchitecture architecture) =>
+        architecture switch
+        {
+            MachinePackagedSoftwareArchitecture.Neutral => "Neutral",
+            MachinePackagedSoftwareArchitecture.X86 => "x86",
+            MachinePackagedSoftwareArchitecture.X64 => "x64",
+            MachinePackagedSoftwareArchitecture.Arm => "ARM",
+            MachinePackagedSoftwareArchitecture.Arm64 => "ARM64",
+            MachinePackagedSoftwareArchitecture.X86OnArm64 =>
+                "x86 on ARM64",
+            _ => "Architecture unavailable",
+        };
+
+    private void UpdateRefreshPackagedSoftwareButtonState()
+    {
+        RefreshPackagedSoftwareButton.IsEnabled =
+            !_isPackagedSoftwareInventoryRequestRunning &&
+            !_windowCancellationTokenSource.IsCancellationRequested;
+    }
+
     private async void OnRefreshStartupClicked(
         object sender,
         RoutedEventArgs e)
@@ -1409,6 +1634,13 @@ public sealed record InstalledSoftwareDisplayItem(
     string PublisherAndVersion,
     string RegistrationDetails,
     string InstallLocationDetails);
+
+public sealed record PackagedSoftwareDisplayItem(
+    string DisplayName,
+    string PublisherVersionArchitecture,
+    string PackageFamilyDetails,
+    string PackageFlagsDetails,
+    string InstalledLocationDetails);
 
 public sealed record StartupApplicationDisplayItem(
     string Name,

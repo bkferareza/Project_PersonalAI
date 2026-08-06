@@ -362,7 +362,7 @@
                     Text="Classic desktop registrations from Windows."
                     TextWrapping="Wrap" />
                 <TextBlock
-                    Text="Microsoft Store apps are not included yet."
+                    Text="MSIX/AppX packages are listed separately below."
                     TextWrapping="Wrap" />
                 <TextBox
                     x:Name="SoftwareSearchBox"
@@ -410,6 +410,69 @@
                 <TextBlock
                     x:Name="SoftwareInventoryStatusText"
                     AutomationProperties.AutomationId="SoftwareInventoryStatusText"
+                    Margin="0,8,0,0"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Margin="0,16,0,0"
+                    Text="Packaged applications"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Text="MSIX/AppX packages registered for the current user."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Text="Installation source and update status are not inferred."
+                    TextWrapping="Wrap" />
+                <TextBox
+                    x:Name="PackagedSoftwareSearchBox"
+                    AutomationProperties.AutomationId="PackagedSoftwareSearchBox"
+                    PlaceholderText="Search by name, publisher, or package family"
+                    TextChanged="OnPackagedSoftwareSearchTextChanged" />
+                <TextBlock
+                    x:Name="PackagedSoftwareInventorySummaryText"
+                    AutomationProperties.AutomationId="PackagedSoftwareInventorySummaryText"
+                    Text="0 packages found&#x0a;Showing 0"
+                    TextWrapping="Wrap" />
+                <Button
+                    x:Name="RefreshPackagedSoftwareButton"
+                    AutomationProperties.AutomationId="RefreshPackagedSoftwareButton"
+                    Click="OnRefreshPackagedSoftwareClicked"
+                    Content="Refresh packaged applications"
+                    HorizontalAlignment="Left"
+                    IsEnabled="False" />
+                <ListView
+                    x:Name="PackagedSoftwareList"
+                    AutomationProperties.AutomationId="PackagedSoftwareList"
+                    MaxHeight="360"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    SelectionMode="None">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="local:PackagedSoftwareDisplayItem">
+                            <StackPanel Margin="0,4,0,4" Spacing="2">
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind DisplayName}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind PublisherVersionArchitecture}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind PackageFamilyDetails}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind PackageFlagsDetails}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind InstalledLocationDetails}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <TextBlock
+                    x:Name="PackagedSoftwareInventoryStatusText"
+                    AutomationProperties.AutomationId="PackagedSoftwareInventoryStatusText"
                     Margin="0,8,0,0"
                     Text="Loading..."
                     TextWrapping="Wrap" />

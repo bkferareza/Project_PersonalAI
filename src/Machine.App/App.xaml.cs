@@ -30,6 +30,9 @@ public partial class App : Application
             new WindowsMachineFolderInspectionProvider();
         IMachineSoftwareInventoryProvider softwareInventoryProvider =
             new WindowsMachineSoftwareInventoryProvider();
+        IMachinePackagedSoftwareInventoryProvider
+            packagedSoftwareInventoryProvider =
+                new WindowsMachinePackagedSoftwareInventoryProvider();
         IMachineStartupInventoryProvider startupInventoryProvider =
             new WindowsMachineStartupInventoryProvider();
         var ollamaHttpClient = new HttpClient
@@ -64,6 +67,7 @@ public partial class App : Application
             storageProvider,
             folderInspectionProvider,
             softwareInventoryProvider,
+            packagedSoftwareInventoryProvider,
             startupInventoryProvider);
         _window.Closed += OnWindowClosed;
         _window.Activate();
