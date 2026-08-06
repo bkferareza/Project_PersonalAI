@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
     private const int LargeFolderResultCount = 10;
     private const int ExplanationLargeFolderCount = 3;
     private const int ExplanationStartupNameCount = 5;
+    private const int FindingsDisplayCount = 8;
     private const string UnavailableValue = "Unavailable";
     private const double BytesPerMebibyte =
         1024d * 1024d;
@@ -70,6 +71,8 @@ public sealed partial class MainWindow : Window
         _latestPackagedSoftwareInventorySnapshot;
     private MachineStartupInventorySnapshot?
         _latestStartupInventorySnapshot;
+    private MachineFindingsSnapshot _latestFindingsSnapshot =
+        MachineFindingsEvaluator.Evaluate(new());
     private bool _contentLoadStarted;
     private bool _detailsExpanded;
     private bool _hasSuccessfulExplanation;
@@ -261,17 +264,7 @@ public sealed partial class MainWindow : Window
             PresenceTelemetryText.Text =
                 $"CPU {snapshot.CpuUsagePercent:F1}% · " +
                 $"Memory {usedMemory:F1} / {totalMemory:F1} GB";
-
-            var memoryUsagePercent =
-                snapshot.TotalMemoryBytes == 0
-                    ? 100d
-                    : snapshot.UsedMemoryBytes /
-                        (double)snapshot.TotalMemoryBytes *
-                        100d;
-
-            UpdatePresenceState(
-                snapshot.CpuUsagePercent,
-                memoryUsagePercent);
+            ReevaluateFindings();
             UpdateExplainMachineStateButtonState();
         }
         catch (OperationCanceledException)
@@ -283,42 +276,90 @@ public sealed partial class MainWindow : Window
         {
             Debug.WriteLine(exception);
 
-            CpuUsageText.Text = UnavailableValue;
-            MemoryUsageText.Text = UnavailableValue;
+            if (_latestResourceSnapshot is null)
+            {
+                CpuUsageText.Text = UnavailableValue;
+                MemoryUsageText.Text = UnavailableValue;
+                PresenceTelemetryText.Text =
+                    "CPU unavailable · Memory unavailable";
+            }
+
             TelemetryStatusText.Text =
                 "Resource telemetry could not be loaded.";
-            PresenceStateText.Text = "Status unavailable";
-            PresenceTelemetryText.Text =
-                "CPU unavailable · Memory unavailable";
-            PresenceIndicator.Fill =
-                new SolidColorBrush(Colors.Gray);
         }
     }
 
     private void UpdatePresenceState(
-        double cpuUsagePercent,
-        double memoryUsagePercent)
+        MachineOverallState overallState)
     {
-        if (cpuUsagePercent >= 90d ||
-            memoryUsagePercent >= 90d)
+        switch (overallState)
         {
-            PresenceStateText.Text = "Under pressure";
-            PresenceIndicator.Fill =
-                new SolidColorBrush(Colors.Red);
+            case MachineOverallState.Stable:
+                PresenceStateText.Text = "Stable";
+                PresenceIndicator.Fill =
+                    new SolidColorBrush(Colors.Green);
+                break;
+            case MachineOverallState.Attention:
+                PresenceStateText.Text = "Busy";
+                PresenceIndicator.Fill =
+                    new SolidColorBrush(Colors.Orange);
+                break;
+            case MachineOverallState.Warning:
+            case MachineOverallState.Critical:
+                PresenceStateText.Text = "Under pressure";
+                PresenceIndicator.Fill =
+                    new SolidColorBrush(Colors.Red);
+                break;
+            default:
+                PresenceStateText.Text = "Status unavailable";
+                PresenceIndicator.Fill =
+                    new SolidColorBrush(Colors.Gray);
+                break;
         }
-        else if (cpuUsagePercent >= 70d ||
-                 memoryUsagePercent >= 80d)
-        {
-            PresenceStateText.Text = "Busy";
-            PresenceIndicator.Fill =
-                new SolidColorBrush(Colors.Orange);
-        }
-        else
-        {
-            PresenceStateText.Text = "Stable";
-            PresenceIndicator.Fill =
-                new SolidColorBrush(Colors.Green);
-        }
+    }
+
+    private void ReevaluateFindings()
+    {
+        var snapshot = MachineFindingsEvaluator.Evaluate(
+            new MachineFindingsInput(
+                Resources: _latestResourceSnapshot,
+                Storage: _latestStorageSnapshot,
+                FolderInspection: _latestFolderInspectionSnapshot,
+                ClassicSoftware: _latestSoftwareInventorySnapshot,
+                PackagedSoftware:
+                    _latestPackagedSoftwareInventorySnapshot,
+                Startup: _latestStartupInventorySnapshot));
+
+        _latestFindingsSnapshot = snapshot;
+        UpdatePresenceState(snapshot.OverallState);
+        UpdateCurrentFindings(snapshot);
+    }
+
+    private void UpdateCurrentFindings(
+        MachineFindingsSnapshot snapshot)
+    {
+        FindingsOverallStateText.Text =
+            snapshot.OverallState.ToString();
+
+        var displayItems = snapshot.Findings
+            .Take(FindingsDisplayCount)
+            .Select(finding => new MachineFindingDisplayItem(
+                Header: $"{finding.Severity} · {finding.Title}",
+                Detail: finding.Detail))
+            .ToArray();
+
+        CurrentFindingsList.ItemsSource = displayItems;
+        FindingsSummaryText.Text = snapshot.OverallState ==
+            MachineOverallState.Unknown
+                ? "Resource telemetry and readable " +
+                    "system-volume data are unavailable."
+                : displayItems.Length == 0
+                    ? "No deterministic issues currently detected."
+                    : string.Empty;
+        FindingsSummaryText.Visibility =
+            FindingsSummaryText.Text.Length == 0
+                ? Visibility.Collapsed
+                : Visibility.Visible;
     }
 
     private async Task RunProcessLoopAsync(
@@ -529,6 +570,7 @@ public sealed partial class MainWindow : Window
             _latestPackagedSoftwareInventorySnapshot;
         var startupInventorySnapshot =
             _latestStartupInventorySnapshot;
+        var findingsSnapshot = _latestFindingsSnapshot;
 
         if (identity is null ||
             resources is null ||
@@ -565,7 +607,8 @@ public sealed partial class MainWindow : Window
                     softwareInventorySnapshot,
                     packagedSoftwareInventorySnapshot),
                 Startup: CreateStartupExplanationContext(
-                    startupInventorySnapshot));
+                    startupInventorySnapshot),
+                Findings: findingsSnapshot);
             var explanation =
                 await _machineStateExplainer.ExplainAsync(
                     request,
@@ -818,6 +861,7 @@ public sealed partial class MainWindow : Window
 
             UpdateStorageOverview(snapshot);
             _latestStorageSnapshot = snapshot;
+            ReevaluateFindings();
             UpdateLargeFolderScanButtonState();
         }
         catch (OperationCanceledException)
@@ -960,6 +1004,7 @@ public sealed partial class MainWindow : Window
             UpdateLargeFolderResults(
                 snapshot,
                 stopwatch.Elapsed >= LargeFolderScanTimeBudget);
+            ReevaluateFindings();
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1126,6 +1171,7 @@ public sealed partial class MainWindow : Window
 
             UpdateSoftwareInventory(snapshot);
             _latestSoftwareInventorySnapshot = snapshot;
+            ReevaluateFindings();
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1295,6 +1341,7 @@ public sealed partial class MainWindow : Window
 
             UpdatePackagedSoftwareInventory(snapshot);
             _latestPackagedSoftwareInventorySnapshot = snapshot;
+            ReevaluateFindings();
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1505,6 +1552,7 @@ public sealed partial class MainWindow : Window
 
             UpdateStartupInventory(snapshot);
             _latestStartupInventorySnapshot = snapshot;
+            ReevaluateFindings();
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1783,6 +1831,10 @@ public sealed partial class MainWindow : Window
 public sealed record ProcessDisplayItem(
     string Name,
     string Details);
+
+public sealed record MachineFindingDisplayItem(
+    string Header,
+    string Detail);
 
 public sealed record OllamaModelDisplayItem(
     string Name,

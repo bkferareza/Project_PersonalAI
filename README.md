@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The ambient Windows presence includes searchable, read-only inventories of classic desktop software, current-user MSIX/AppX packages, and startup applications. User-triggered local explanations receive bounded verified storage, software-count, and startup-summary context from the latest successful snapshots; unavailable and partial state remains explicit, and raw software inventories and startup commands or paths are not sent to the model.
+The ambient Windows presence includes searchable, read-only inventories of classic desktop software, current-user MSIX/AppX packages, and startup applications. A platform-neutral deterministic findings layer evaluates verified CPU, memory, system-volume free space, and partial-data state; it drives the compact presence state, a bounded expanded findings section, and authoritative context for user-triggered local explanations. Raw software inventories and startup commands or paths are not sent to the model.
 
 ## Product direction
 
@@ -28,4 +28,4 @@ If a debug session is interrupted before cleanup runs, use **Terminal > Run Task
 
 ## Next slice
 
-Add deterministic machine findings and severity rules.
+Harden natural Taglish explanations using deterministic findings.

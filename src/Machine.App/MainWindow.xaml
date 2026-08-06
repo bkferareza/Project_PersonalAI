@@ -122,6 +122,49 @@
                 <TextBlock
                     FontWeight="SemiBold"
                     Margin="0,16,0,0"
+                    Text="Current findings" />
+                <Border
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            x:Name="FindingsOverallStateText"
+                            AutomationProperties.AutomationId="FindingsOverallStateText"
+                            FontWeight="SemiBold"
+                            Text="Unknown"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            x:Name="FindingsSummaryText"
+                            AutomationProperties.AutomationId="FindingsSummaryText"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Resource telemetry and readable system-volume data are unavailable."
+                            TextWrapping="Wrap" />
+                        <ItemsControl
+                            x:Name="CurrentFindingsList"
+                            AutomationProperties.AutomationId="CurrentFindingsList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="local:MachineFindingDisplayItem">
+                                    <StackPanel Margin="0,4,0,4" Spacing="2">
+                                        <TextBlock
+                                            FontWeight="SemiBold"
+                                            Text="{x:Bind Header}"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{x:Bind Detail}"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Margin="0,16,0,0"
                     Text="Top processes" />
                 <ItemsControl
                     x:Name="TopProcessesList"

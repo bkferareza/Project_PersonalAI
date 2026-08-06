@@ -251,6 +251,75 @@ public sealed class OllamaMachineStateExplainerTests
     }
 
     [Fact]
+    public async Task ExplainAsyncSendsBoundedDeterministicFindings()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            ChatResponse("Deterministic findings received.", ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+        var request = CreateExplanationRequest() with
+        {
+            Findings = new MachineFindingsSnapshot(
+                OverallState: MachineOverallState.Critical,
+                Findings:
+                [
+                    CreateFinding("info-z", MachineFindingSeverity.Info),
+                    CreateFinding("attention-b", MachineFindingSeverity.Attention),
+                    CreateFinding("warning-b", MachineFindingSeverity.Warning),
+                    CreateFinding("info-d", MachineFindingSeverity.Info),
+                    CreateFinding("critical-z", MachineFindingSeverity.Critical),
+                    CreateFinding("warning-a", MachineFindingSeverity.Warning),
+                    CreateFinding("info-c", MachineFindingSeverity.Info),
+                    CreateFinding("attention-a", MachineFindingSeverity.Attention),
+                    CreateFinding("info-b", MachineFindingSeverity.Info),
+                    CreateFinding("info-a", MachineFindingSeverity.Info)
+                ])
+        };
+
+        await explainer.ExplainAsync(request);
+
+        var findingsSnapshot = GetUserPayload(handler.RequestJson)
+            .GetProperty("findings");
+        Assert.Equal(
+            "Critical",
+            findingsSnapshot.GetProperty("overall_state").GetString());
+        var findings = findingsSnapshot.GetProperty("findings")
+            .EnumerateArray()
+            .ToArray();
+        Assert.Equal(8, findings.Length);
+        Assert.Equal(
+            [
+                "critical-z",
+                "warning-a",
+                "warning-b",
+                "attention-a",
+                "attention-b",
+                "info-a",
+                "info-b",
+                "info-c"
+            ],
+            findings.Select(finding =>
+                finding.GetProperty("code").GetString()));
+        Assert.Equal(
+            "Critical",
+            findings[0].GetProperty("severity").GetString());
+        Assert.Equal(
+            "Title for critical-z",
+            findings[0].GetProperty("title").GetString());
+        Assert.Equal(
+            "Detail for critical-z.",
+            findings[0].GetProperty("detail").GetString());
+        Assert.All(
+            findings,
+            finding => Assert.Equal(
+                ["code", "severity", "title", "detail"],
+                finding.EnumerateObject().Select(property =>
+                    property.Name)));
+    }
+
+    [Fact]
     public async Task ExplainAsyncRepresentsUnavailableContextAsNull()
     {
         using var handler = new CapturingHttpMessageHandler(() =>
@@ -272,6 +341,9 @@ public sealed class OllamaMachineStateExplainerTests
         Assert.Equal(
             JsonValueKind.Null,
             payload.GetProperty("startup").ValueKind);
+        Assert.Equal(
+            JsonValueKind.Null,
+            payload.GetProperty("findings").ValueKind);
     }
 
     [Fact]
@@ -378,6 +450,7 @@ public sealed class OllamaMachineStateExplainerTests
             "command",
             "command_or_path",
             "startup_path",
+            "recommendation",
             "\"path\""
         })
         {
@@ -468,6 +541,34 @@ public sealed class OllamaMachineStateExplainerTests
             "without inventory-style recitation",
             systemMessage,
             StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Treat supplied deterministic findings as authoritative.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Never upgrade or downgrade a supplied finding severity.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Never invent additional findings or reinterpret partial data as complete.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Use only supplied deterministic findings and overall_state for severity or pressure language.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Never judge severity or pressure from raw metric values.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Refer to process names exactly as supplied; never rename them or identify applications from them.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "instead of repeating every finding mechanically",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -546,6 +647,15 @@ public sealed class OllamaMachineStateExplainerTests
                         CpuUsagePercent: 5,
                         WorkingSetBytes: 250_000_000)
                 ]);
+
+    private static MachineFinding CreateFinding(
+        string code,
+        MachineFindingSeverity severity) =>
+        new(
+            Code: code,
+            Severity: severity,
+            Title: $"Title for {code}",
+            Detail: $"Detail for {code}.");
 
     private static HttpClient CreateHttpClient(
         HttpMessageHandler handler) =>

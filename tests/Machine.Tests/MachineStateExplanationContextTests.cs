@@ -104,6 +104,16 @@ public sealed class MachineStateExplanationContextTests
             CurrentUserCount: 0,
             IsComplete: true,
             Names: Array.Empty<string>());
+        var findings = new MachineFindingsSnapshot(
+            OverallState: MachineOverallState.Attention,
+            Findings:
+            [
+                new MachineFinding(
+                    Code: "cpu.usage.high",
+                    Severity: MachineFindingSeverity.Attention,
+                    Title: "CPU usage is high",
+                    Detail: "Current CPU usage is 70.0%.")
+            ]);
         var request = new MachineStateExplanationRequest(
             Identity: new MachineIdentity(
                 "MACHINE",
@@ -117,10 +127,12 @@ public sealed class MachineStateExplanationContextTests
             TopProcesses: Array.Empty<MachineProcessSnapshot>(),
             Storage: storage,
             Software: software,
-            Startup: startup);
+            Startup: startup,
+            Findings: findings);
 
         Assert.Same(storage, request.Storage);
         Assert.Same(software, request.Software);
         Assert.Same(startup, request.Startup);
+        Assert.Same(findings, request.Findings);
     }
 }

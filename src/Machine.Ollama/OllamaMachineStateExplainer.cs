@@ -11,6 +11,7 @@ public sealed partial class OllamaMachineStateExplainer
     private const string ChatEndpoint = "api/chat";
     private const int LargeFolderContextLimit = 3;
     private const int StartupNameContextLimit = 5;
+    private const int FindingsContextLimit = 8;
     private const string UserMessagePrefix =
         "Explain this verified machine snapshot:";
     private const string SystemMessage = """
@@ -25,6 +26,11 @@ public sealed partial class OllamaMachineStateExplainer
         Never claim software is unused, harmful, outdated, or removable.
         Never claim startup entries are enabled, expensive, or safe to disable.
         Never recommend deletion, uninstalling, disabling, cleanup, or optimization.
+        Treat supplied deterministic findings as authoritative.
+        Never upgrade or downgrade a supplied finding severity.
+        Never invent additional findings or reinterpret partial data as complete.
+        Use only supplied deterministic findings and overall_state for severity or pressure language.
+        Never judge severity or pressure from raw metric values.
         Do not mention being an AI, language model, or Ollama.
 
         Respond in natural conversational Filipino Taglish.
@@ -33,8 +39,10 @@ public sealed partial class OllamaMachineStateExplainer
         Support it with only one or two useful observations.
         Mention process names only when they are relevant to the assessment.
         Summarize the supplied context without inventory-style recitation.
+        Mention only the most useful findings instead of repeating every finding mechanically.
         Do not recite every supplied value.
-        Keep every assessment literal and idiomatic: judge pressure only from the supplied CPU and memory values, never infer why a process is running or what the owner is doing, never coin awkward Filipino words, and never end with an offer, invitation, recommendation, or next step.
+        Refer to process names exactly as supplied; never rename them or identify applications from them.
+        Keep every assessment literal and idiomatic: never infer why a process is running or what the owner is doing, never coin awkward Filipino words, and never end with an offer, invitation, recommendation, or next step.
         Use at most one dry or mildly sarcastic remark.
         Use one short paragraph with no more than 60 words.
         Use plain text only.
@@ -170,7 +178,8 @@ public sealed partial class OllamaMachineStateExplainer
                 .ToArray(),
             Storage: CreateStoragePayload(request.Storage),
             Software: CreateSoftwarePayload(request.Software),
-            Startup: CreateStartupPayload(request.Startup));
+            Startup: CreateStartupPayload(request.Startup),
+            Findings: CreateFindingsPayload(request.Findings));
 
         var payloadJson = JsonSerializer.Serialize(
             payload,
@@ -277,6 +286,32 @@ public sealed partial class OllamaMachineStateExplainer
             Names: names);
     }
 
+    private static FindingsSnapshotPayload? CreateFindingsPayload(
+        MachineFindingsSnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return null;
+        }
+
+        ArgumentNullException.ThrowIfNull(snapshot.Findings);
+
+        var findings = snapshot.Findings
+            .OrderByDescending(finding => finding.Severity)
+            .ThenBy(finding => finding.Code, StringComparer.Ordinal)
+            .Take(FindingsContextLimit)
+            .Select(finding => new FindingPayload(
+                Code: finding.Code,
+                Severity: finding.Severity.ToString(),
+                Title: finding.Title,
+                Detail: finding.Detail))
+            .ToArray();
+
+        return new FindingsSnapshotPayload(
+            OverallState: snapshot.OverallState.ToString(),
+            Findings: findings);
+    }
+
     private sealed record ChatRequest(
         [property: JsonPropertyName("model")]
         string Model,
@@ -339,7 +374,9 @@ public sealed partial class OllamaMachineStateExplainer
         [property: JsonPropertyName("software")]
         SoftwareSnapshotPayload? Software,
         [property: JsonPropertyName("startup")]
-        StartupSnapshotPayload? Startup);
+        StartupSnapshotPayload? Startup,
+        [property: JsonPropertyName("findings")]
+        FindingsSnapshotPayload? Findings);
 
     private sealed record ProcessSnapshotPayload(
         [property: JsonPropertyName("name")]
@@ -404,6 +441,22 @@ public sealed partial class OllamaMachineStateExplainer
         bool IsComplete,
         [property: JsonPropertyName("names")]
         string[] Names);
+
+    private sealed record FindingsSnapshotPayload(
+        [property: JsonPropertyName("overall_state")]
+        string OverallState,
+        [property: JsonPropertyName("findings")]
+        FindingPayload[] Findings);
+
+    private sealed record FindingPayload(
+        [property: JsonPropertyName("code")]
+        string Code,
+        [property: JsonPropertyName("severity")]
+        string Severity,
+        [property: JsonPropertyName("title")]
+        string Title,
+        [property: JsonPropertyName("detail")]
+        string Detail);
 
     [JsonSerializable(typeof(ChatRequest))]
     [JsonSerializable(typeof(ChatResponse))]

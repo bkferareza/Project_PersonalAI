@@ -6,4 +6,5 @@ public sealed record MachineStateExplanationRequest(
     IReadOnlyList<MachineProcessSnapshot> TopProcesses,
     MachineStorageExplanationContext? Storage = null,
     MachineSoftwareExplanationContext? Software = null,
-    MachineStartupExplanationContext? Startup = null);
+    MachineStartupExplanationContext? Startup = null,
+    MachineFindingsSnapshot? Findings = null);
