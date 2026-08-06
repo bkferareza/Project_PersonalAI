@@ -46,6 +46,8 @@ public sealed partial class MainWindow : Window
         _folderInspectionProvider;
     private readonly IMachineSoftwareInventoryProvider
         _softwareInventoryProvider;
+    private readonly IMachineStartupInventoryProvider
+        _startupInventoryProvider;
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
     private CancellationTokenSource?
@@ -58,6 +60,8 @@ public sealed partial class MainWindow : Window
     private MachineStorageSnapshot? _latestStorageSnapshot;
     private MachineSoftwareInventorySnapshot?
         _latestSoftwareInventorySnapshot;
+    private MachineStartupInventorySnapshot?
+        _latestStartupInventorySnapshot;
     private bool _contentLoadStarted;
     private bool _detailsExpanded;
     private bool _hasSuccessfulExplanation;
@@ -66,6 +70,7 @@ public sealed partial class MainWindow : Window
     private bool _isFolderScanRunning;
     private bool _isStorageRequestRunning;
     private bool _isSoftwareInventoryRequestRunning;
+    private bool _isStartupInventoryRequestRunning;
 
     public MainWindow(
         IMachineIdentityProvider identityProvider,
@@ -75,7 +80,8 @@ public sealed partial class MainWindow : Window
         IMachineStateExplainer machineStateExplainer,
         IMachineStorageProvider storageProvider,
         IMachineFolderInspectionProvider folderInspectionProvider,
-        IMachineSoftwareInventoryProvider softwareInventoryProvider)
+        IMachineSoftwareInventoryProvider softwareInventoryProvider,
+        IMachineStartupInventoryProvider startupInventoryProvider)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
         ArgumentNullException.ThrowIfNull(resourceProvider);
@@ -85,6 +91,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(storageProvider);
         ArgumentNullException.ThrowIfNull(folderInspectionProvider);
         ArgumentNullException.ThrowIfNull(softwareInventoryProvider);
+        ArgumentNullException.ThrowIfNull(startupInventoryProvider);
 
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
@@ -94,6 +101,7 @@ public sealed partial class MainWindow : Window
         _storageProvider = storageProvider;
         _folderInspectionProvider = folderInspectionProvider;
         _softwareInventoryProvider = softwareInventoryProvider;
+        _startupInventoryProvider = startupInventoryProvider;
 
         InitializeComponent();
         Activated += OnWindowActivated;
@@ -152,6 +160,9 @@ public sealed partial class MainWindow : Window
                     isManualRefresh: false,
                     cancellationToken: cancellationToken),
                 LoadSoftwareInventoryAsync(
+                    isManualRefresh: false,
+                    cancellationToken: cancellationToken),
+                LoadStartupInventoryAsync(
                     isManualRefresh: false,
                     cancellationToken: cancellationToken));
         }
@@ -1059,6 +1070,177 @@ public sealed partial class MainWindow : Window
             !_windowCancellationTokenSource.IsCancellationRequested;
     }
 
+    private async void OnRefreshStartupClicked(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await LoadStartupInventoryAsync(
+            isManualRefresh: true,
+            cancellationToken:
+                _windowCancellationTokenSource.Token);
+    }
+
+    private async Task LoadStartupInventoryAsync(
+        bool isManualRefresh,
+        CancellationToken cancellationToken)
+    {
+        if (_isStartupInventoryRequestRunning)
+        {
+            return;
+        }
+
+        _isStartupInventoryRequestRunning = true;
+        if (isManualRefresh)
+        {
+            RefreshStartupButton.Content = "Refreshing...";
+        }
+
+        UpdateRefreshStartupButtonState();
+
+        if (isManualRefresh)
+        {
+            await Task.Yield();
+        }
+
+        try
+        {
+            var snapshot = await _startupInventoryProvider
+                .GetAsync(cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            UpdateStartupInventory(snapshot);
+            _latestStartupInventorySnapshot = snapshot;
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+
+            if (_latestStartupInventorySnapshot is null)
+            {
+                StartupApplicationsList.ItemsSource =
+                    Array.Empty<StartupApplicationDisplayItem>();
+                StartupInventorySummaryText.Text =
+                    "0 entries found\nShowing 0";
+            }
+
+            StartupInventoryStatusText.Text =
+                "Startup inventory is temporarily unavailable.";
+        }
+        finally
+        {
+            _isStartupInventoryRequestRunning = false;
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                RefreshStartupButton.Content =
+                    "Refresh startup applications";
+                UpdateRefreshStartupButtonState();
+            }
+        }
+    }
+
+    private void UpdateStartupInventory(
+        MachineStartupInventorySnapshot snapshot)
+    {
+        ApplyStartupInventoryFilter(snapshot);
+
+        StartupInventoryStatusText.Text = !snapshot.IsComplete
+            ? $"Inventory is partial · " +
+                $"{snapshot.ReadFailureCount} " +
+                (snapshot.ReadFailureCount == 1
+                    ? "read failure"
+                    : "read failures")
+            : snapshot.Items.Count == 0
+                ? "No startup applications found in Run keys or Startup folders."
+                : string.Empty;
+    }
+
+    private void OnStartupSearchTextChanged(
+        object sender,
+        TextChangedEventArgs e)
+    {
+        if (_latestStartupInventorySnapshot is not null)
+        {
+            ApplyStartupInventoryFilter(
+                _latestStartupInventorySnapshot);
+        }
+    }
+
+    private void ApplyStartupInventoryFilter(
+        MachineStartupInventorySnapshot snapshot)
+    {
+        var searchText = StartupSearchBox.Text.Trim();
+        var filteredItems = snapshot.Items
+            .Where(item =>
+                searchText.Length == 0 ||
+                item.Name.Contains(
+                    searchText,
+                    StringComparison.OrdinalIgnoreCase) ||
+                item.CommandOrPath.Contains(
+                    searchText,
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(CreateStartupApplicationDisplayItem)
+            .ToArray();
+
+        StartupApplicationsList.ItemsSource = filteredItems;
+        StartupInventorySummaryText.Text =
+            $"{snapshot.Items.Count} entries found\n" +
+            $"Showing {filteredItems.Length}";
+    }
+
+    private static StartupApplicationDisplayItem
+        CreateStartupApplicationDisplayItem(
+            MachineStartupApplicationSnapshot startupApplication)
+    {
+        var scope = startupApplication.Scope switch
+        {
+            MachineStartupScope.CurrentUser => "Current user",
+            MachineStartupScope.AllUsers => "All users",
+            _ => UnavailableValue,
+        };
+
+        return startupApplication.Source switch
+        {
+            MachineStartupSource.RegistryRunKey =>
+                new StartupApplicationDisplayItem(
+                    startupApplication.Name,
+                    $"Command: {startupApplication.CommandOrPath}",
+                    $"{scope} · " +
+                    $"{FormatStartupRegistryView(startupApplication.RegistryView)} Run key"),
+            MachineStartupSource.StartupFolder =>
+                new StartupApplicationDisplayItem(
+                    startupApplication.Name,
+                    $"Path: {startupApplication.CommandOrPath}",
+                    $"{scope} · Startup folder"),
+            _ => new StartupApplicationDisplayItem(
+                startupApplication.Name,
+                startupApplication.CommandOrPath,
+                $"{scope} · Source unavailable"),
+        };
+    }
+
+    private static string FormatStartupRegistryView(
+        MachineStartupRegistryView? registryView) =>
+        registryView switch
+        {
+            MachineStartupRegistryView.Registry32 => "32-bit",
+            MachineStartupRegistryView.Registry64 => "64-bit",
+            MachineStartupRegistryView.Shared => "Shared",
+            _ => "Unknown-view",
+        };
+
+    private void UpdateRefreshStartupButtonState()
+    {
+        RefreshStartupButton.IsEnabled =
+            !_isStartupInventoryRequestRunning &&
+            !_windowCancellationTokenSource.IsCancellationRequested;
+    }
+
     private static string FormatBytes(long bytes)
     {
         if (bytes >= BytesPerTebibyte)
@@ -1227,3 +1409,8 @@ public sealed record InstalledSoftwareDisplayItem(
     string PublisherAndVersion,
     string RegistrationDetails,
     string InstallLocationDetails);
+
+public sealed record StartupApplicationDisplayItem(
+    string Name,
+    string CommandOrPathDetails,
+    string SourceDetails);

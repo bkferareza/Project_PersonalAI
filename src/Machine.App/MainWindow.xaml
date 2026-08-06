@@ -413,6 +413,63 @@
                     Margin="0,8,0,0"
                     Text="Loading..."
                     TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Margin="0,16,0,0"
+                    Text="Startup applications"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Text="Read-only entries from Run registry keys and Startup folders."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Text="Enabled state and startup impact are not reported."
+                    TextWrapping="Wrap" />
+                <TextBox
+                    x:Name="StartupSearchBox"
+                    AutomationProperties.AutomationId="StartupSearchBox"
+                    PlaceholderText="Search by name, command, or path"
+                    TextChanged="OnStartupSearchTextChanged" />
+                <TextBlock
+                    x:Name="StartupInventorySummaryText"
+                    AutomationProperties.AutomationId="StartupInventorySummaryText"
+                    Text="0 entries found&#x0a;Showing 0"
+                    TextWrapping="Wrap" />
+                <Button
+                    x:Name="RefreshStartupButton"
+                    AutomationProperties.AutomationId="RefreshStartupButton"
+                    Click="OnRefreshStartupClicked"
+                    Content="Refresh startup applications"
+                    HorizontalAlignment="Left"
+                    IsEnabled="False" />
+                <ListView
+                    x:Name="StartupApplicationsList"
+                    AutomationProperties.AutomationId="StartupApplicationsList"
+                    MaxHeight="360"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    SelectionMode="None">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="local:StartupApplicationDisplayItem">
+                            <StackPanel Margin="0,4,0,4" Spacing="2">
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind Name}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind CommandOrPathDetails}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind SourceDetails}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <TextBlock
+                    x:Name="StartupInventoryStatusText"
+                    AutomationProperties.AutomationId="StartupInventoryStatusText"
+                    Margin="0,8,0,0"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
             </StackPanel>
         </ScrollViewer>
     </Grid>
