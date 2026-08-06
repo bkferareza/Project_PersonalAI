@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The WinUI application now provides a compact always-on-top machine presence that expands into the existing read-only diagnostics view.
+The ambient WinUI presence now shows read-only local Ollama service, version, and currently loaded-model status alongside the existing machine diagnostics.
 
 ## Product direction
 
@@ -16,4 +16,4 @@ Machine is a local-first Windows intelligence layer that observes, explains, and
 
 ## Next slice
 
-Add read-only Ollama service and loaded-model status.
+Add the first Ollama-powered machine-state explanation.

@@ -36,6 +36,11 @@
                 AutomationProperties.AutomationId="PresenceTelemetryText"
                 Text="CPU unavailable · Memory unavailable"
                 TextWrapping="Wrap" />
+            <TextBlock
+                x:Name="OllamaPresenceStatusText"
+                AutomationProperties.AutomationId="OllamaPresenceStatusText"
+                Text="Ollama status loading..."
+                TextWrapping="Wrap" />
             <Button
                 x:Name="DetailsToggleButton"
                 AutomationProperties.AutomationId="DetailsToggleButton"
@@ -139,6 +144,57 @@
                     x:Name="ProcessStatusText"
                     AutomationProperties.AutomationId="ProcessStatusText"
                     Margin="0,8,0,0"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Margin="0,16,0,0"
+                    Text="Ollama" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="Service" />
+                <TextBlock
+                    x:Name="OllamaServiceStatusText"
+                    AutomationProperties.AutomationId="OllamaServiceStatusText"
+                    Margin="0,0,0,8"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="Version" />
+                <TextBlock
+                    x:Name="OllamaVersionText"
+                    AutomationProperties.AutomationId="OllamaVersionText"
+                    Margin="0,0,0,8"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="Loaded models" />
+                <ItemsControl
+                    x:Name="OllamaRunningModelsList"
+                    AutomationProperties.AutomationId="OllamaRunningModelsList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="local:OllamaModelDisplayItem">
+                            <StackPanel Margin="0,4,0,4" Spacing="2">
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind Name}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind ModelDetails}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind RuntimeDetails}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock
+                    x:Name="OllamaLoadedModelsStatusText"
+                    AutomationProperties.AutomationId="OllamaLoadedModelsStatusText"
+                    Margin="0,8,0,0"
+                    Text="Loading..."
                     TextWrapping="Wrap" />
             </StackPanel>
         </ScrollViewer>

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Machine.Core;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
@@ -11,7 +12,7 @@ namespace Machine.App;
 public sealed partial class MainWindow : Window
 {
     private const int CompactWindowWidth = 400;
-    private const int CompactWindowHeight = 170;
+    private const int CompactWindowHeight = 200;
     private const int ExpandedWindowWidth = 520;
     private const int ExpandedWindowHeight = 760;
     private const int WorkAreaMargin = 16;
@@ -26,10 +27,13 @@ public sealed partial class MainWindow : Window
         TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProcessRefreshInterval =
         TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan OllamaRefreshInterval =
+        TimeSpan.FromSeconds(10);
 
     private readonly IMachineIdentityProvider _identityProvider;
     private readonly IMachineResourceProvider _resourceProvider;
     private readonly IMachineProcessProvider _processProvider;
+    private readonly IOllamaStatusProvider _ollamaStatusProvider;
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
     private bool _contentLoadStarted;
@@ -38,15 +42,18 @@ public sealed partial class MainWindow : Window
     public MainWindow(
         IMachineIdentityProvider identityProvider,
         IMachineResourceProvider resourceProvider,
-        IMachineProcessProvider processProvider)
+        IMachineProcessProvider processProvider,
+        IOllamaStatusProvider ollamaStatusProvider)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
         ArgumentNullException.ThrowIfNull(resourceProvider);
         ArgumentNullException.ThrowIfNull(processProvider);
+        ArgumentNullException.ThrowIfNull(ollamaStatusProvider);
 
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
         _processProvider = processProvider;
+        _ollamaStatusProvider = ollamaStatusProvider;
 
         InitializeComponent();
         Activated += OnWindowActivated;
@@ -99,7 +106,8 @@ public sealed partial class MainWindow : Window
 
             await Task.WhenAll(
                 RunTelemetryLoopAsync(cancellationToken),
-                RunProcessLoopAsync(cancellationToken));
+                RunProcessLoopAsync(cancellationToken),
+                RunOllamaStatusLoopAsync(cancellationToken));
         }
         finally
         {
@@ -285,6 +293,130 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task RunOllamaStatusLoopAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true)
+            {
+                await RefreshOllamaStatusAsync(cancellationToken);
+                await Task.Delay(
+                    OllamaRefreshInterval,
+                    cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task RefreshOllamaStatusAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var snapshot = await _ollamaStatusProvider.GetStatusAsync(
+                cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            UpdateOllamaStatus(snapshot);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            ShowOllamaOffline();
+        }
+    }
+
+    private void UpdateOllamaStatus(
+        OllamaStatusSnapshot snapshot)
+    {
+        if (!snapshot.IsServiceAvailable)
+        {
+            ShowOllamaOffline();
+            return;
+        }
+
+        OllamaServiceStatusText.Text = "Online";
+        OllamaVersionText.Text = string.IsNullOrWhiteSpace(
+            snapshot.Version)
+            ? UnavailableValue
+            : snapshot.Version;
+
+        if (!snapshot.IsRunningModelStatusAvailable)
+        {
+            OllamaPresenceStatusText.Text =
+                "Ollama online · Model status unavailable";
+            ClearOllamaModels(
+                "Loaded-model status is unavailable.");
+            return;
+        }
+
+        var displayItems = snapshot.RunningModels
+            .Select(CreateOllamaModelDisplayItem)
+            .ToArray();
+
+        OllamaRunningModelsList.ItemsSource = displayItems;
+
+        if (displayItems.Length == 0)
+        {
+            OllamaPresenceStatusText.Text =
+                "Ollama online · No model loaded";
+            OllamaLoadedModelsStatusText.Text =
+                "No models currently loaded.";
+            return;
+        }
+
+        OllamaPresenceStatusText.Text = displayItems.Length == 1
+            ? $"Ollama online · {displayItems[0].Name} loaded"
+            : $"Ollama online · {displayItems.Length} models loaded";
+        OllamaLoadedModelsStatusText.Text = string.Empty;
+    }
+
+    private void ShowOllamaOffline()
+    {
+        OllamaPresenceStatusText.Text = "Ollama offline";
+        OllamaServiceStatusText.Text = "Offline";
+        OllamaVersionText.Text = UnavailableValue;
+        ClearOllamaModels(
+            "Loaded-model status is unavailable.");
+    }
+
+    private void ClearOllamaModels(string status)
+    {
+        OllamaRunningModelsList.ItemsSource =
+            Array.Empty<OllamaModelDisplayItem>();
+        OllamaLoadedModelsStatusText.Text = status;
+    }
+
+    private static OllamaModelDisplayItem
+        CreateOllamaModelDisplayItem(
+            OllamaRunningModel model)
+    {
+        var parameterSize = string.IsNullOrWhiteSpace(
+            model.ParameterSize)
+            ? UnavailableValue
+            : model.ParameterSize;
+        var quantizationLevel = string.IsNullOrWhiteSpace(
+            model.QuantizationLevel)
+            ? UnavailableValue
+            : model.QuantizationLevel;
+
+        return new OllamaModelDisplayItem(
+            model.Name,
+            $"{parameterSize} · {quantizationLevel}",
+            $"{FormatBytes(model.SizeVramBytes)} VRAM · " +
+            $"{model.ContextLength.ToString("N0", CultureInfo.InvariantCulture)} context");
+    }
+
     private static string FormatBytes(long bytes)
     {
         if (bytes >= BytesPerGibibyte)
@@ -427,3 +559,8 @@ public sealed partial class MainWindow : Window
 public sealed record ProcessDisplayItem(
     string Name,
     string Details);
+
+public sealed record OllamaModelDisplayItem(
+    string Name,
+    string ModelDetails,
+    string RuntimeDetails);

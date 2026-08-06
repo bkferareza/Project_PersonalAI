@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Machine.Core\Machine.Core.csproj" />
+    <ProjectReference Include="..\..\src\Machine.Ollama\Machine.Ollama.csproj" />
     <ProjectReference Include="..\..\src\Machine.Windows\Machine.Windows.csproj" />
   </ItemGroup>
 
