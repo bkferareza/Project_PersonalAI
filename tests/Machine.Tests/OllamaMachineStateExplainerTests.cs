@@ -9,15 +9,16 @@ namespace Machine.Tests;
 public sealed class OllamaMachineStateExplainerTests
 {
     private const string ModelName = "qwen3.5:4b";
+    private const string StableOpening = "Stable ako ngayon.";
     private static readonly Uri LoopbackBaseAddress =
         new("http://127.0.0.1:11434/");
 
     [Fact]
-    public async Task ExplainAsyncSendsRequiredChatRequestAndParsesResponse()
+    public async Task ExplainAsyncSendsHardenedRequestAndReturnsLocalModel()
     {
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(
-                "  Kalma lang, verified load lang ito.  ",
+                $"  {StableOpening} Kumpleto ang current capacity data.  ",
                 "qwen3.5:4b-runtime"));
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
@@ -27,11 +28,12 @@ public sealed class OllamaMachineStateExplainerTests
         var explanation = await explainer.ExplainAsync(
             CreateExplanationRequest());
 
+        Assert.Equal(1, handler.CallCount);
         Assert.Equal(HttpMethod.Post, handler.Method);
         Assert.Equal("/api/chat", handler.RequestUri?.AbsolutePath);
-        Assert.Equal(ModelName, handler.RequestJson
-            .GetProperty("model")
-            .GetString());
+        Assert.Equal(
+            ModelName,
+            handler.RequestJson.GetProperty("model").GetString());
         Assert.False(handler.RequestJson
             .GetProperty("stream")
             .GetBoolean());
@@ -45,98 +47,124 @@ public sealed class OllamaMachineStateExplainerTests
                 .GetString());
         var options = handler.RequestJson.GetProperty("options");
         Assert.Equal(
-            0.3d,
+            0.1d,
             options.GetProperty("temperature").GetDouble());
         Assert.Equal(
             4096,
             options.GetProperty("num_ctx").GetInt32());
         Assert.Equal(
-            160,
+            96,
             options.GetProperty("num_predict").GetInt32());
         Assert.Equal(
-            "Kalma lang, verified load lang ito.",
+            $"{StableOpening} Kumpleto ang current capacity data.",
             explanation.Text);
         Assert.Equal("qwen3.5:4b-runtime", explanation.Model);
+        Assert.Equal(
+            MachineExplanationSource.LocalModel,
+            explanation.Source);
     }
 
     [Fact]
-    public async Task ExplainAsyncSendsVerifiedMachineSnapshot()
+    public async Task ExplainAsyncPayloadExcludesAllProcessData()
     {
+        const string requiredOpening =
+            "Medyo busy ako ngayon—72.4% ang CPU usage.";
         using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse("Verified snapshot received.", ModelName));
-        using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
-            httpClient,
-            ModelName);
-        var request = new MachineStateExplanationRequest(
-            new MachineIdentity(
-                "DESKTOP-VERIFIED",
-                "Windows 11 Pro",
-                "X64"),
-            new MachineResourceSnapshot(
-                CpuUsagePercent: 42.5,
-                TotalMemoryBytes: 34_359_738_368,
-                UsedMemoryBytes: 12_884_901_888,
-                CapturedAt: new DateTimeOffset(
-                    2026,
-                    8,
-                    6,
-                    10,
-                    15,
-                    0,
-                    TimeSpan.Zero)),
-            [
-                new MachineProcessSnapshot(
-                    ProcessId: 4242,
-                    Name: "render-worker",
-                    CpuUsagePercent: 17.25,
-                    WorkingSetBytes: 536_870_912)
-            ]);
-
-        await explainer.ExplainAsync(request);
-
-        var userMessage = GetMessageContent(
-            handler.RequestJson,
-            "user");
-        const string payloadPrefix =
-            "Explain this verified machine snapshot:";
-        Assert.StartsWith(payloadPrefix, userMessage);
-
-        using var payloadDocument = JsonDocument.Parse(
-            userMessage[payloadPrefix.Length..].Trim());
-        var payloadJson = payloadDocument.RootElement.GetRawText();
-
-        Assert.Contains("DESKTOP-VERIFIED", payloadJson);
-        Assert.Contains("42.5", payloadJson);
-        Assert.Contains("12884901888", payloadJson);
-        Assert.Contains("34359738368", payloadJson);
-        Assert.Contains("render-worker", payloadJson);
-        Assert.Contains("4242", payloadJson);
-    }
-
-    [Fact]
-    public async Task ExplainAsyncSendsBoundedVerifiedContext()
-    {
-        using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse("Verified context received.", ModelName));
+            ChatResponse(requiredOpening, ModelName));
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
             ModelName);
         var request = CreateExplanationRequest() with
         {
+            Resources = new MachineResourceSnapshot(
+                CpuUsagePercent: 72.4d,
+                TotalMemoryBytes: 34_359_738_368,
+                UsedMemoryBytes: 12_884_901_888,
+                CapturedAt: DateTimeOffset.UnixEpoch),
+            TopProcesses =
+            [
+                new MachineProcessSnapshot(
+                    ProcessId: 4242,
+                    Name: "render-worker-unique",
+                    CpuUsagePercent: 17.25d,
+                    WorkingSetBytes: 536_870_913)
+            ],
+            Findings = new MachineFindingsSnapshot(
+                OverallState: MachineOverallState.Attention,
+                Findings:
+                [
+                    CreateFinding(
+                        "cpu.usage.high",
+                        MachineFindingSeverity.Attention)
+                ])
+        };
+
+        await explainer.ExplainAsync(request);
+
+        var payload = GetUserPayload(handler.RequestJson);
+        Assert.Equal(
+            requiredOpening,
+            payload.GetProperty("required_opening").GetString());
+        Assert.Equal(
+            72.4d,
+            payload.GetProperty("cpu_usage_percent").GetDouble());
+        Assert.Equal(
+            12_884_901_888UL,
+            payload.GetProperty("used_memory_bytes").GetUInt64());
+        Assert.Equal(
+            34_359_738_368UL,
+            payload.GetProperty("total_memory_bytes").GetUInt64());
+
+        var payloadJson = payload.GetRawText();
+        Assert.DoesNotContain(
+            "top_processes",
+            payloadJson,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "render-worker-unique",
+            payloadJson,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("4242", payloadJson);
+        Assert.DoesNotContain("17.25", payloadJson);
+        Assert.DoesNotContain("536870913", payloadJson);
+        Assert.DoesNotContain(
+            "working_set",
+            payloadJson,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "pid",
+            payloadJson,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExplainAsyncSendsOnlyBoundedAllowedContext()
+    {
+        const string opening =
+            "May critical storage condition akong nakikita ngayon.";
+        using var handler = new CapturingHttpMessageHandler(() =>
+            ChatResponse(opening, ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+        var request = CreateExplanationRequest() with
+        {
+            Identity = new MachineIdentity(
+                "DESKTOP-PRIVATE",
+                "Windows 11 Pro",
+                "X64"),
             Storage = new MachineStorageExplanationContext(
                 SystemVolumeRoot: "C:\\",
                 TotalSizeBytes: 1_000_000_000_000,
-                AvailableSizeBytes: 250_000_000_000,
+                AvailableSizeBytes: 9_000_000_000,
                 LargeFolderScan:
                     new MachineFolderScanExplanationContext(
                         Folders:
                         [
-                            new("Fourth", 100, true),
-                            new("Users", 400, false),
-                            new("Windows", 300, true),
-                            new("ProgramData", 200, true)
+                            new("Users-private", 400, false),
+                            new("Windows-private", 300, true)
                         ],
                         IsComplete: false)),
             Software = new MachineSoftwareExplanationContext(
@@ -157,15 +185,14 @@ public sealed class OllamaMachineStateExplainerTests
                 MachineCount: 7,
                 CurrentUserCount: 11,
                 IsComplete: false,
-                Names:
+                Names: ["Private Startup Name"]),
+            Findings = new MachineFindingsSnapshot(
+                OverallState: MachineOverallState.Critical,
+                Findings:
                 [
-                    "Zulu",
-                    "alpha",
-                    "Echo",
-                    "bravo",
-                    "Delta",
-                    "charlie",
-                    "Foxtrot"
+                    CreateFinding(
+                        "storage.system-volume.low-free-space",
+                        MachineFindingSeverity.Critical)
                 ])
         };
 
@@ -180,51 +207,23 @@ public sealed class OllamaMachineStateExplainerTests
             1_000_000_000_000,
             storage.GetProperty("total_bytes").GetInt64());
         Assert.Equal(
-            250_000_000_000,
+            9_000_000_000,
             storage.GetProperty("available_bytes").GetInt64());
-        var folderScan = storage.GetProperty("large_folder_scan");
-        Assert.False(
-            folderScan.GetProperty("is_complete").GetBoolean());
-        var folders = folderScan.GetProperty("folders")
-            .EnumerateArray()
-            .ToArray();
-        Assert.Equal(3, folders.Length);
-        Assert.Equal(
-            ["Users", "Windows", "ProgramData"],
-            folders.Select(folder =>
-                folder.GetProperty("name").GetString()));
-        Assert.Equal(
-            [400L, 300L, 200L],
-            folders.Select(folder =>
-                folder.GetProperty("measured_bytes").GetInt64()));
-        Assert.False(
-            folders[0].GetProperty("is_complete").GetBoolean());
-        Assert.DoesNotContain(
-            folders,
-            folder => folder.GetProperty("name").GetString() ==
-                "Fourth");
+        Assert.False(storage
+            .GetProperty("large_folder_scan_is_complete")
+            .GetBoolean());
 
         var software = payload.GetProperty("software");
-        var classic = software.GetProperty("classic_desktop");
         Assert.Equal(
             143,
-            classic.GetProperty("registration_count").GetInt32());
-        Assert.True(
-            classic.GetProperty("is_complete").GetBoolean());
-        Assert.Equal(
-            0,
-            classic.GetProperty("skipped_entry_count").GetInt32());
-        var packaged =
-            software.GetProperty("packaged_applications");
+            software.GetProperty("classic_desktop")
+                .GetProperty("registration_count")
+                .GetInt32());
         Assert.Equal(
             128,
-            packaged.GetProperty("registration_count").GetInt32());
-        Assert.False(
-            packaged.GetProperty("is_complete").GetBoolean());
-        Assert.Equal(
-            2,
-            packaged.GetProperty("skipped_entry_count").GetInt32());
-
+            software.GetProperty("packaged_applications")
+                .GetProperty("registration_count")
+                .GetInt32());
         var startup = payload.GetProperty("startup");
         Assert.Equal(
             18,
@@ -235,26 +234,31 @@ public sealed class OllamaMachineStateExplainerTests
         Assert.Equal(
             4,
             startup.GetProperty("startup_folder_count").GetInt32());
-        Assert.Equal(
-            7,
-            startup.GetProperty("machine_count").GetInt32());
-        Assert.Equal(
-            11,
-            startup.GetProperty("current_user_count").GetInt32());
-        Assert.False(
-            startup.GetProperty("is_complete").GetBoolean());
-        Assert.Equal(
-            ["alpha", "bravo", "charlie", "Delta", "Echo"],
-            startup.GetProperty("names")
-                .EnumerateArray()
-                .Select(name => name.GetString()));
+        Assert.False(startup.GetProperty("is_complete").GetBoolean());
+
+        var payloadJson = payload.GetRawText();
+        Assert.DoesNotContain("DESKTOP-PRIVATE", payloadJson);
+        Assert.DoesNotContain("Windows 11 Pro", payloadJson);
+        Assert.DoesNotContain("Users-private", payloadJson);
+        Assert.DoesNotContain("Windows-private", payloadJson);
+        Assert.DoesNotContain("Private Startup Name", payloadJson);
+        Assert.DoesNotContain(
+            "folders",
+            payloadJson,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "names",
+            payloadJson,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public async Task ExplainAsyncSendsBoundedDeterministicFindings()
     {
+        const string opening =
+            "May critical condition akong nakikita ngayon.";
         using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse("Deterministic findings received.", ModelName));
+            ChatResponse(opening, ModelName));
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
@@ -302,28 +306,13 @@ public sealed class OllamaMachineStateExplainerTests
             ],
             findings.Select(finding =>
                 finding.GetProperty("code").GetString()));
-        Assert.Equal(
-            "Critical",
-            findings[0].GetProperty("severity").GetString());
-        Assert.Equal(
-            "Title for critical-z",
-            findings[0].GetProperty("title").GetString());
-        Assert.Equal(
-            "Detail for critical-z.",
-            findings[0].GetProperty("detail").GetString());
-        Assert.All(
-            findings,
-            finding => Assert.Equal(
-                ["code", "severity", "title", "detail"],
-                finding.EnumerateObject().Select(property =>
-                    property.Name)));
     }
 
     [Fact]
     public async Task ExplainAsyncRepresentsUnavailableContextAsNull()
     {
         using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse("Unavailable context noted.", ModelName));
+            ChatResponse(StableOpening, ModelName));
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
@@ -341,131 +330,13 @@ public sealed class OllamaMachineStateExplainerTests
         Assert.Equal(
             JsonValueKind.Null,
             payload.GetProperty("startup").ValueKind);
-        Assert.Equal(
-            JsonValueKind.Null,
-            payload.GetProperty("findings").ValueKind);
-    }
-
-    [Fact]
-    public async Task ExplainAsyncPreservesPartialAndNestedUnavailableState()
-    {
-        using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse("Partial context noted.", ModelName));
-        using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
-            httpClient,
-            ModelName);
-        var request = CreateExplanationRequest() with
-        {
-            Storage = new MachineStorageExplanationContext(
-                SystemVolumeRoot: "C:\\",
-                TotalSizeBytes: 100,
-                AvailableSizeBytes: 25,
-                LargeFolderScan: null),
-            Software = new MachineSoftwareExplanationContext(
-                ClassicDesktop:
-                    new MachineSoftwareInventoryExplanationSummary(
-                        RegistrationCount: 10,
-                        IsComplete: false,
-                        SkippedEntryCount: 3),
-                PackagedApplications: null),
-            Startup = new MachineStartupExplanationContext(
-                RegistrationCount: 0,
-                RegistryRunCount: 0,
-                StartupFolderCount: 0,
-                MachineCount: 0,
-                CurrentUserCount: 0,
-                IsComplete: false,
-                Names: Array.Empty<string>())
-        };
-
-        await explainer.ExplainAsync(request);
-
-        var payload = GetUserPayload(handler.RequestJson);
-        Assert.Equal(
-            JsonValueKind.Null,
-            payload.GetProperty("storage")
-                .GetProperty("large_folder_scan")
-                .ValueKind);
-        var software = payload.GetProperty("software");
-        var classic = software.GetProperty("classic_desktop");
-        Assert.False(
-            classic.GetProperty("is_complete").GetBoolean());
-        Assert.Equal(
-            3,
-            classic.GetProperty("skipped_entry_count").GetInt32());
-        Assert.Equal(
-            JsonValueKind.Null,
-            software.GetProperty("packaged_applications").ValueKind);
-        Assert.False(
-            payload.GetProperty("startup")
-                .GetProperty("is_complete")
-                .GetBoolean());
-    }
-
-    [Fact]
-    public async Task ExplainAsyncDoesNotSendRawInventoryDetails()
-    {
-        using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse("Bounded context received.", ModelName));
-        using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
-            httpClient,
-            ModelName);
-        var request = CreateExplanationRequest() with
-        {
-            Software = new MachineSoftwareExplanationContext(
-                ClassicDesktop:
-                    new MachineSoftwareInventoryExplanationSummary(
-                        1,
-                        true,
-                        0),
-                PackagedApplications:
-                    new MachineSoftwareInventoryExplanationSummary(
-                        1,
-                        true,
-                        0)),
-            Startup = new MachineStartupExplanationContext(
-                RegistrationCount: 1,
-                RegistryRunCount: 1,
-                StartupFolderCount: 0,
-                MachineCount: 0,
-                CurrentUserCount: 1,
-                IsComplete: true,
-                Names: ["Machine Agent"])
-        };
-
-        await explainer.ExplainAsync(request);
-
-        var payloadJson = GetUserPayload(handler.RequestJson)
-            .GetRawText();
-        foreach (var forbiddenText in new[]
-        {
-            "\"items\"",
-            "publisher",
-            "version",
-            "install_location",
-            "package_family",
-            "package_full_name",
-            "command",
-            "command_or_path",
-            "startup_path",
-            "recommendation",
-            "\"path\""
-        })
-        {
-            Assert.DoesNotContain(
-                forbiddenText,
-                payloadJson,
-                StringComparison.OrdinalIgnoreCase);
-        }
     }
 
     [Fact]
     public async Task ExplainAsyncSendsRequiredSystemGuardrails()
     {
         using var handler = new CapturingHttpMessageHandler(() =>
-            ChatResponse("Verified facts only.", ModelName));
+            ChatResponse(StableOpening, ModelName));
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
@@ -476,103 +347,77 @@ public sealed class OllamaMachineStateExplainerTests
         var systemMessage = GetMessageContent(
             handler.RequestJson,
             "system");
+        Assert.Contains(
+            "required_opening",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "at most one short supporting observation",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Never mention a process name",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "no more than 45 words",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "declarative sentences only",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Never discuss permission",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Never attribute a cause unless an exact deterministic finding",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "process kasi",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Do not mention being an AI, language model, or Ollama.",
+            systemMessage,
+            StringComparison.Ordinal);
+    }
 
-        Assert.Contains(
-            "natural conversational Filipino Taglish",
-            systemMessage,
-            StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(
-            "Start with one concise overall assessment.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Do not recite every supplied value.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Use at most one dry or mildly sarcastic remark.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "no more than 60 words",
-            systemMessage,
-            StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(
-            "Never invent causes, diagnoses, temperatures, hardware details, processes, or actions.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Do not claim that you changed, fixed, deleted, stopped, or optimized anything.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "never infer why a process is running or what the owner is doing",
-            systemMessage,
-            StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(
-            "never end with an offer, invitation, recommendation, or next step",
-            systemMessage,
-            StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(
-            "null means unavailable and is_complete false means partial",
-            systemMessage,
-            StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(
-            "Never treat a partial folder measurement as a final folder total.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "An incomplete folder scan means only that its results are partial; never infer why it is incomplete or how much unmeasured data exists.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Never claim software is unused, harmful, outdated, or removable.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Never claim startup entries are enabled, expensive, or safe to disable.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Never recommend deletion, uninstalling, disabling, cleanup, or optimization.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "without inventory-style recitation",
-            systemMessage,
-            StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(
-            "Treat supplied deterministic findings as authoritative.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Never upgrade or downgrade a supplied finding severity.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Never invent additional findings or reinterpret partial data as complete.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Use only supplied deterministic findings and overall_state for severity or pressure language.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Never judge severity or pressure from raw metric values.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Refer to process names exactly as supplied; never rename them or identify applications from them.",
-            systemMessage,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "instead of repeating every finding mechanically",
-            systemMessage,
-            StringComparison.OrdinalIgnoreCase);
+    [Theory]
+    [InlineData("Ibang opening ito.")]
+    [InlineData("Stable ako ngayon. Code ang sanhi nito.")]
+    [InlineData("Stable ako ngayon. Sabihin mo lang at aayusin ko.")]
+    [InlineData("Stable ako ngayon. Okay ba talaga?")]
+    public async Task ExplainAsyncRejectsUnsafeOutputWithoutRetry(
+        string modelOutput)
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            ChatResponse(modelOutput, ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+        var request = CreateExplanationRequest() with
+        {
+            TopProcesses =
+            [
+                new MachineProcessSnapshot(1, "Code", 1d, 1)
+            ]
+        };
+
+        var explanation = await explainer.ExplainAsync(request);
+
+        Assert.Equal(StableOpening, explanation.Text);
+        Assert.Equal(
+            MachineExplanationSource.DeterministicFallback,
+            explanation.Source);
+        Assert.Equal(1, handler.CallCount);
     }
 
     [Fact]
-    public async Task ExplainAsyncWithEmptyContentThrows()
+    public async Task ExplainAsyncFallbackUsesApplicableFindingAndSource()
     {
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse("   ", ModelName));
@@ -580,14 +425,35 @@ public sealed class OllamaMachineStateExplainerTests
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
             ModelName);
+        var request = CreateExplanationRequest() with
+        {
+            Findings = new MachineFindingsSnapshot(
+                OverallState: MachineOverallState.Stable,
+                Findings:
+                [
+                    new MachineFinding(
+                        Code: "data.folder-scan.partial",
+                        Severity: MachineFindingSeverity.Info,
+                        Title: "Storage inspection is partial",
+                        Detail: "Measured folder sizes are lower bounds.")
+                ])
+        };
 
-        await Assert.ThrowsAsync<InvalidDataException>(
-            () => explainer.ExplainAsync(
-                CreateExplanationRequest()));
+        var explanation = await explainer.ExplainAsync(request);
+
+        Assert.Equal(
+            "Stable ako ngayon. Partial pa ang storage inspection, " +
+                "kaya lower bounds lang ang measured folder sizes.",
+            explanation.Text);
+        Assert.Equal(ModelName, explanation.Model);
+        Assert.Equal(
+            MachineExplanationSource.DeterministicFallback,
+            explanation.Source);
+        Assert.Equal(1, handler.CallCount);
     }
 
     [Fact]
-    public async Task ExplainAsyncWithToolCallThrows()
+    public async Task ExplainAsyncWithToolCallReturnsFallbackWithoutRetry()
     {
         using var handler = new CapturingHttpMessageHandler(
             ToolCallResponse);
@@ -596,9 +462,70 @@ public sealed class OllamaMachineStateExplainerTests
             httpClient,
             ModelName);
 
-        await Assert.ThrowsAsync<InvalidDataException>(
-            () => explainer.ExplainAsync(
-                CreateExplanationRequest()));
+        var explanation = await explainer.ExplainAsync(
+            CreateExplanationRequest());
+
+        Assert.Equal(StableOpening, explanation.Text);
+        Assert.Equal(
+            MachineExplanationSource.DeterministicFallback,
+            explanation.Source);
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task ExplainAsyncWithMalformedResponseReturnsFallback()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{not-json",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+
+        var explanation = await explainer.ExplainAsync(
+            CreateExplanationRequest());
+
+        Assert.Equal(StableOpening, explanation.Text);
+        Assert.Equal(
+            MachineExplanationSource.DeterministicFallback,
+            explanation.Source);
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task ExplainAsyncWithTransportFailureStillThrows()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            explainer.ExplainAsync(CreateExplanationRequest()));
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task ExplainAsyncWithTimeoutStillThrows()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            throw new TaskCanceledException("Simulated timeout."));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+
+        await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            explainer.ExplainAsync(CreateExplanationRequest()));
+        Assert.Equal(1, handler.CallCount);
     }
 
     [Fact]
@@ -611,11 +538,12 @@ public sealed class OllamaMachineStateExplainerTests
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
             ModelName);
-        using var cancellationTokenSource = new CancellationTokenSource();
+        using var cancellationTokenSource =
+            new CancellationTokenSource();
         cancellationTokenSource.Cancel();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(
-            () => explainer.ExplainAsync(
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            explainer.ExplainAsync(
                 CreateExplanationRequest(),
                 cancellationTokenSource.Token));
         Assert.Equal(0, handler.CallCount);
@@ -623,30 +551,27 @@ public sealed class OllamaMachineStateExplainerTests
 
     private static MachineStateExplanationRequest
         CreateExplanationRequest() =>
-            new(
-                new MachineIdentity(
-                    "DESKTOP-TEST",
-                    "Windows 11",
-                    "X64"),
-                new MachineResourceSnapshot(
-                    CpuUsagePercent: 25,
-                    TotalMemoryBytes: 16_000_000_000,
-                    UsedMemoryBytes: 8_000_000_000,
-                    CapturedAt: new DateTimeOffset(
-                        2026,
-                        8,
-                        6,
-                        10,
-                        0,
-                        0,
-                        TimeSpan.Zero)),
-                [
-                    new MachineProcessSnapshot(
-                        ProcessId: 100,
-                        Name: "test-process",
-                        CpuUsagePercent: 5,
-                        WorkingSetBytes: 250_000_000)
-                ]);
+        new(
+            Identity: new MachineIdentity(
+                "DESKTOP-TEST",
+                "Windows 11",
+                "X64"),
+            Resources: new MachineResourceSnapshot(
+                CpuUsagePercent: 25d,
+                TotalMemoryBytes: 16_000_000_000,
+                UsedMemoryBytes: 8_000_000_000,
+                CapturedAt: DateTimeOffset.UnixEpoch),
+            TopProcesses:
+            [
+                new MachineProcessSnapshot(
+                    ProcessId: 100,
+                    Name: "test-process",
+                    CpuUsagePercent: 5d,
+                    WorkingSetBytes: 250_000_000)
+            ],
+            Findings: new MachineFindingsSnapshot(
+                OverallState: MachineOverallState.Stable,
+                Findings: Array.Empty<MachineFinding>()));
 
     private static MachineFinding CreateFinding(
         string code,
@@ -695,7 +620,7 @@ public sealed class OllamaMachineStateExplainerTests
             message = new
             {
                 role = "assistant",
-                content = "Unexpected tool request.",
+                content = StableOpening,
                 tool_calls = new[]
                 {
                     new
