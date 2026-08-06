@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The ambient Windows presence now includes bounded, cancellable, read-only inspection of the largest top-level folders on the system volume.
+The ambient Windows presence now includes a searchable, read-only inventory of classic desktop software registered for the machine and current user.
 
 ## Product direction
 
@@ -16,4 +16,4 @@ Machine is a local-first Windows intelligence layer that observes, explains, and
 
 ## Next slice
 
-Add a read-only installed-software inventory.
+Add a read-only startup-application inventory.

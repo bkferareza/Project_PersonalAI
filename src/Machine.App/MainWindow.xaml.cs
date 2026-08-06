@@ -4,6 +4,7 @@ using Machine.Core;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 
@@ -43,6 +44,8 @@ public sealed partial class MainWindow : Window
     private readonly IMachineStorageProvider _storageProvider;
     private readonly IMachineFolderInspectionProvider
         _folderInspectionProvider;
+    private readonly IMachineSoftwareInventoryProvider
+        _softwareInventoryProvider;
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
     private CancellationTokenSource?
@@ -53,6 +56,8 @@ public sealed partial class MainWindow : Window
         _latestProcessSnapshots =
             Array.Empty<MachineProcessSnapshot>();
     private MachineStorageSnapshot? _latestStorageSnapshot;
+    private MachineSoftwareInventorySnapshot?
+        _latestSoftwareInventorySnapshot;
     private bool _contentLoadStarted;
     private bool _detailsExpanded;
     private bool _hasSuccessfulExplanation;
@@ -60,6 +65,7 @@ public sealed partial class MainWindow : Window
     private bool _isExplanationRequestRunning;
     private bool _isFolderScanRunning;
     private bool _isStorageRequestRunning;
+    private bool _isSoftwareInventoryRequestRunning;
 
     public MainWindow(
         IMachineIdentityProvider identityProvider,
@@ -68,7 +74,8 @@ public sealed partial class MainWindow : Window
         IOllamaStatusProvider ollamaStatusProvider,
         IMachineStateExplainer machineStateExplainer,
         IMachineStorageProvider storageProvider,
-        IMachineFolderInspectionProvider folderInspectionProvider)
+        IMachineFolderInspectionProvider folderInspectionProvider,
+        IMachineSoftwareInventoryProvider softwareInventoryProvider)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
         ArgumentNullException.ThrowIfNull(resourceProvider);
@@ -77,6 +84,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(machineStateExplainer);
         ArgumentNullException.ThrowIfNull(storageProvider);
         ArgumentNullException.ThrowIfNull(folderInspectionProvider);
+        ArgumentNullException.ThrowIfNull(softwareInventoryProvider);
 
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
@@ -85,6 +93,7 @@ public sealed partial class MainWindow : Window
         _machineStateExplainer = machineStateExplainer;
         _storageProvider = storageProvider;
         _folderInspectionProvider = folderInspectionProvider;
+        _softwareInventoryProvider = softwareInventoryProvider;
 
         InitializeComponent();
         Activated += OnWindowActivated;
@@ -140,6 +149,9 @@ public sealed partial class MainWindow : Window
                 RunProcessLoopAsync(cancellationToken),
                 RunOllamaStatusLoopAsync(cancellationToken),
                 LoadStorageAsync(
+                    isManualRefresh: false,
+                    cancellationToken: cancellationToken),
+                LoadSoftwareInventoryAsync(
                     isManualRefresh: false,
                     cancellationToken: cancellationToken));
         }
@@ -879,6 +891,174 @@ public sealed partial class MainWindow : Window
             !_windowCancellationTokenSource.IsCancellationRequested;
     }
 
+    private async void OnRefreshSoftwareClicked(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await LoadSoftwareInventoryAsync(
+            isManualRefresh: true,
+            cancellationToken:
+                _windowCancellationTokenSource.Token);
+    }
+
+    private async Task LoadSoftwareInventoryAsync(
+        bool isManualRefresh,
+        CancellationToken cancellationToken)
+    {
+        if (_isSoftwareInventoryRequestRunning)
+        {
+            return;
+        }
+
+        _isSoftwareInventoryRequestRunning = true;
+        if (isManualRefresh)
+        {
+            RefreshSoftwareButton.Content = "Refreshing...";
+        }
+
+        UpdateRefreshSoftwareButtonState();
+
+        if (isManualRefresh)
+        {
+            await Task.Yield();
+        }
+
+        try
+        {
+            var snapshot = await _softwareInventoryProvider
+                .GetAsync(cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            UpdateSoftwareInventory(snapshot);
+            _latestSoftwareInventorySnapshot = snapshot;
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+
+            if (_latestSoftwareInventorySnapshot is null)
+            {
+                InstalledSoftwareList.ItemsSource =
+                    Array.Empty<InstalledSoftwareDisplayItem>();
+                SoftwareInventorySummaryText.Text =
+                    "0 registrations found\nShowing 0";
+            }
+
+            SoftwareInventoryStatusText.Text =
+                "Software inventory is temporarily unavailable.";
+        }
+        finally
+        {
+            _isSoftwareInventoryRequestRunning = false;
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                RefreshSoftwareButton.Content =
+                    "Refresh software";
+                UpdateRefreshSoftwareButtonState();
+            }
+        }
+    }
+
+    private void UpdateSoftwareInventory(
+        MachineSoftwareInventorySnapshot snapshot)
+    {
+        ApplySoftwareInventoryFilter(snapshot);
+
+        SoftwareInventoryStatusText.Text = snapshot.Items.Count == 0
+            ? "No classic desktop software registrations found."
+            : !snapshot.IsComplete
+                ? $"Inventory is partial · " +
+                    $"{snapshot.SkippedEntryCount} entries skipped"
+                : string.Empty;
+    }
+
+    private void OnSoftwareSearchTextChanged(
+        object sender,
+        TextChangedEventArgs e)
+    {
+        if (_latestSoftwareInventorySnapshot is not null)
+        {
+            ApplySoftwareInventoryFilter(
+                _latestSoftwareInventorySnapshot);
+        }
+    }
+
+    private void ApplySoftwareInventoryFilter(
+        MachineSoftwareInventorySnapshot snapshot)
+    {
+        var searchText = SoftwareSearchBox.Text.Trim();
+        var filteredItems = snapshot.Items
+            .Where(item =>
+                searchText.Length == 0 ||
+                item.Name.Contains(
+                    searchText,
+                    StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrWhiteSpace(item.Publisher) &&
+                    item.Publisher.Contains(
+                        searchText,
+                        StringComparison.OrdinalIgnoreCase)))
+            .Select(CreateInstalledSoftwareDisplayItem)
+            .ToArray();
+
+        InstalledSoftwareList.ItemsSource = filteredItems;
+        SoftwareInventorySummaryText.Text =
+            $"{snapshot.Items.Count} registrations found\n" +
+            $"Showing {filteredItems.Length}";
+    }
+
+    private static InstalledSoftwareDisplayItem
+        CreateInstalledSoftwareDisplayItem(
+            MachineInstalledSoftwareSnapshot software)
+    {
+        var publisher = string.IsNullOrWhiteSpace(software.Publisher)
+            ? "Publisher unavailable"
+            : software.Publisher.Trim();
+        var version = string.IsNullOrWhiteSpace(software.Version)
+            ? "Version unavailable"
+            : software.Version.Trim();
+        var scope = software.Scope switch
+        {
+            MachineSoftwareScope.LocalMachine => "Machine",
+            MachineSoftwareScope.CurrentUser => "Current user",
+            _ => UnavailableValue,
+        };
+        var registryView = software.RegistryView switch
+        {
+            MachineSoftwareRegistryView.Registry32 =>
+                "32-bit registration",
+            MachineSoftwareRegistryView.Registry64 =>
+                "64-bit registration",
+            _ => "Registration view unavailable",
+        };
+        var estimatedSize =
+            software.EstimatedSizeBytes is long bytes && bytes >= 0
+                ? FormatBytes(bytes)
+                : "Size unavailable";
+        var installLocation =
+            string.IsNullOrWhiteSpace(software.InstallLocation)
+                ? string.Empty
+                : $"Installed at {software.InstallLocation.Trim()}";
+
+        return new InstalledSoftwareDisplayItem(
+            software.Name,
+            $"{publisher} · {version}",
+            $"{scope} · {registryView} · {estimatedSize}",
+            installLocation);
+    }
+
+    private void UpdateRefreshSoftwareButtonState()
+    {
+        RefreshSoftwareButton.IsEnabled =
+            !_isSoftwareInventoryRequestRunning &&
+            !_windowCancellationTokenSource.IsCancellationRequested;
+    }
+
     private static string FormatBytes(long bytes)
     {
         if (bytes >= BytesPerTebibyte)
@@ -1041,3 +1221,9 @@ public sealed record StorageVolumeDisplayItem(
 public sealed record LargeFolderDisplayItem(
     string Path,
     string Details);
+
+public sealed record InstalledSoftwareDisplayItem(
+    string Name,
+    string PublisherAndVersion,
+    string RegistrationDetails,
+    string InstallLocationDetails);

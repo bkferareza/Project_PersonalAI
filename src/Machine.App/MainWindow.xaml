@@ -353,6 +353,66 @@
                     Margin="0,8,0,0"
                     Text="No folder scan yet."
                     TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Margin="0,16,0,0"
+                    Text="Installed software"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Text="Classic desktop registrations from Windows."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Text="Microsoft Store apps are not included yet."
+                    TextWrapping="Wrap" />
+                <TextBox
+                    x:Name="SoftwareSearchBox"
+                    AutomationProperties.AutomationId="SoftwareSearchBox"
+                    PlaceholderText="Search by name or publisher"
+                    TextChanged="OnSoftwareSearchTextChanged" />
+                <TextBlock
+                    x:Name="SoftwareInventorySummaryText"
+                    AutomationProperties.AutomationId="SoftwareInventorySummaryText"
+                    Text="0 registrations found&#x0a;Showing 0"
+                    TextWrapping="Wrap" />
+                <Button
+                    x:Name="RefreshSoftwareButton"
+                    AutomationProperties.AutomationId="RefreshSoftwareButton"
+                    Click="OnRefreshSoftwareClicked"
+                    Content="Refresh software"
+                    HorizontalAlignment="Left"
+                    IsEnabled="False" />
+                <ListView
+                    x:Name="InstalledSoftwareList"
+                    AutomationProperties.AutomationId="InstalledSoftwareList"
+                    MaxHeight="360"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    SelectionMode="None">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="local:InstalledSoftwareDisplayItem">
+                            <StackPanel Margin="0,4,0,4" Spacing="2">
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind Name}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind PublisherAndVersion}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind RegistrationDetails}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind InstallLocationDetails}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <TextBlock
+                    x:Name="SoftwareInventoryStatusText"
+                    AutomationProperties.AutomationId="SoftwareInventoryStatusText"
+                    Margin="0,8,0,0"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
             </StackPanel>
         </ScrollViewer>
     </Grid>

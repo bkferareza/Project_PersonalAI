@@ -28,6 +28,8 @@ public partial class App : Application
             new WindowsMachineStorageProvider();
         IMachineFolderInspectionProvider folderInspectionProvider =
             new WindowsMachineFolderInspectionProvider();
+        IMachineSoftwareInventoryProvider softwareInventoryProvider =
+            new WindowsMachineSoftwareInventoryProvider();
         var ollamaHttpClient = new HttpClient
         {
             BaseAddress = new Uri(
@@ -58,7 +60,8 @@ public partial class App : Application
             ollamaStatusProvider,
             machineStateExplainer,
             storageProvider,
-            folderInspectionProvider);
+            folderInspectionProvider,
+            softwareInventoryProvider);
         _window.Closed += OnWindowClosed;
         _window.Activate();
     }
