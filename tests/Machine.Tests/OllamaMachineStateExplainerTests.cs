@@ -39,6 +39,21 @@ public sealed class OllamaMachineStateExplainerTests
             .GetProperty("think")
             .GetBoolean());
         Assert.Equal(
+            "5m",
+            handler.RequestJson
+                .GetProperty("keep_alive")
+                .GetString());
+        var options = handler.RequestJson.GetProperty("options");
+        Assert.Equal(
+            0.3d,
+            options.GetProperty("temperature").GetDouble());
+        Assert.Equal(
+            4096,
+            options.GetProperty("num_ctx").GetInt32());
+        Assert.Equal(
+            160,
+            options.GetProperty("num_predict").GetInt32());
+        Assert.Equal(
             "Kalma lang, verified load lang ito.",
             explanation.Text);
         Assert.Equal("qwen3.5:4b-runtime", explanation.Model);
@@ -116,21 +131,41 @@ public sealed class OllamaMachineStateExplainerTests
             "system");
 
         Assert.Contains(
-            "only the verified machine facts",
+            "natural conversational Filipino Taglish",
             systemMessage,
             StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Start with one concise overall assessment.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Do not recite every supplied value.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Use at most one dry or mildly sarcastic remark.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "no more than 60 words",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Never invent causes, diagnoses, temperatures, hardware details, processes, or actions.",
+            systemMessage,
+            StringComparison.Ordinal);
         Assert.Contains(
             "Do not claim that you changed, fixed, deleted, stopped, or optimized anything.",
             systemMessage,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Never invent a cause",
+            "never infer why a process is running or what the owner is doing",
             systemMessage,
-            StringComparison.Ordinal);
+            StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
-            "Use no more than 80 words.",
+            "never end with an offer, invitation, recommendation, or next step",
             systemMessage,
-            StringComparison.Ordinal);
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -138,6 +173,21 @@ public sealed class OllamaMachineStateExplainerTests
     {
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse("   ", ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+
+        await Assert.ThrowsAsync<InvalidDataException>(
+            () => explainer.ExplainAsync(
+                CreateExplanationRequest()));
+    }
+
+    [Fact]
+    public async Task ExplainAsyncWithToolCallThrows()
+    {
+        using var handler = new CapturingHttpMessageHandler(
+            ToolCallResponse);
         using var httpClient = CreateHttpClient(handler);
         var explainer = new OllamaMachineStateExplainer(
             httpClient,
@@ -213,6 +263,37 @@ public sealed class OllamaMachineStateExplainerTests
             {
                 role = "assistant",
                 content
+            }
+        });
+
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                responseJson,
+                Encoding.UTF8,
+                "application/json")
+        };
+    }
+
+    private static HttpResponseMessage ToolCallResponse()
+    {
+        var responseJson = JsonSerializer.Serialize(new
+        {
+            model = ModelName,
+            message = new
+            {
+                role = "assistant",
+                content = "Unexpected tool request.",
+                tool_calls = new[]
+                {
+                    new
+                    {
+                        function = new
+                        {
+                            name = "not_allowed"
+                        }
+                    }
+                }
             }
         });
 

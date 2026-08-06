@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
             Array.Empty<MachineProcessSnapshot>();
     private bool _contentLoadStarted;
     private bool _detailsExpanded;
+    private bool _hasSuccessfulExplanation;
     private bool _isOllamaServiceAvailable;
     private bool _isExplanationRequestRunning;
 
@@ -468,10 +469,16 @@ public sealed partial class MainWindow : Window
 
         _isExplanationRequestRunning = true;
         UpdateExplainMachineStateButtonState();
-        MachineExplanationStatusText.Text = "Thinking...";
+        ExplainMachineStateButton.Content = "Thinking...";
+        MachineExplanationProgressRing.Visibility =
+            Visibility.Visible;
+        MachineExplanationProgressRing.IsActive = true;
+        MachineExplanationStatusText.Text =
+            "Reading the current machine state...";
 
         var cancellationToken =
             _windowCancellationTokenSource.Token;
+        var stopwatch = Stopwatch.StartNew();
 
         try
         {
@@ -484,26 +491,53 @@ public sealed partial class MainWindow : Window
                     request,
                     cancellationToken);
 
+            stopwatch.Stop();
             cancellationToken.ThrowIfCancellationRequested();
 
             MachineExplanationText.Text = explanation.Text;
+            var elapsedSeconds =
+                stopwatch.Elapsed.TotalSeconds.ToString(
+                    "F1",
+                    CultureInfo.InvariantCulture);
+            MachineExplanationMetadataText.Text =
+                $"Generated locally in {elapsedSeconds}s · " +
+                explanation.Model;
+            MachineExplanationMetadataText.Visibility =
+                Visibility.Visible;
             MachineExplanationStatusText.Text = string.Empty;
+            _hasSuccessfulExplanation = true;
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
         {
+            stopwatch.Stop();
         }
         catch (Exception exception)
         {
+            stopwatch.Stop();
             Debug.WriteLine(exception);
+
+            if (!_hasSuccessfulExplanation)
+            {
+                MachineExplanationMetadataText.Text = string.Empty;
+                MachineExplanationMetadataText.Visibility =
+                    Visibility.Collapsed;
+            }
+
             MachineExplanationStatusText.Text =
                 "Machine explanation is temporarily unavailable.";
         }
         finally
         {
+            stopwatch.Stop();
             _isExplanationRequestRunning = false;
             if (!cancellationToken.IsCancellationRequested)
             {
+                ExplainMachineStateButton.Content =
+                    "Explain current state";
+                MachineExplanationProgressRing.IsActive = false;
+                MachineExplanationProgressRing.Visibility =
+                    Visibility.Collapsed;
                 UpdateExplainMachineStateButtonState();
             }
         }

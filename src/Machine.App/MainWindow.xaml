@@ -200,22 +200,52 @@
                     FontWeight="SemiBold"
                     Margin="0,16,0,0"
                     Text="Machine explanation" />
-                <Button
-                    x:Name="ExplainMachineStateButton"
-                    AutomationProperties.AutomationId="ExplainMachineStateButton"
-                    Click="OnExplainMachineStateClicked"
-                    Content="Explain current state"
-                    HorizontalAlignment="Left"
-                    IsEnabled="False" />
-                <TextBlock
-                    x:Name="MachineExplanationText"
-                    AutomationProperties.AutomationId="MachineExplanationText"
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    x:Name="MachineExplanationStatusText"
-                    AutomationProperties.AutomationId="MachineExplanationStatusText"
-                    Text="No explanation requested yet."
-                    TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button
+                        x:Name="ExplainMachineStateButton"
+                        AutomationProperties.AutomationId="ExplainMachineStateButton"
+                        Click="OnExplainMachineStateClicked"
+                        Content="Explain current state"
+                        HorizontalAlignment="Left"
+                        IsEnabled="False" />
+                    <ProgressRing
+                        x:Name="MachineExplanationProgressRing"
+                        AutomationProperties.AutomationId="MachineExplanationProgressRing"
+                        Height="20"
+                        IsActive="False"
+                        VerticalAlignment="Center"
+                        Visibility="Collapsed"
+                        Width="20" />
+                </StackPanel>
+                <Border
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            FontWeight="SemiBold"
+                            Text="Machine says" />
+                        <TextBlock
+                            x:Name="MachineExplanationText"
+                            AutomationProperties.AutomationId="MachineExplanationText"
+                            Text="No explanation yet."
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            x:Name="MachineExplanationMetadataText"
+                            AutomationProperties.AutomationId="MachineExplanationMetadataText"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed" />
+                        <TextBlock
+                            x:Name="MachineExplanationStatusText"
+                            AutomationProperties.AutomationId="MachineExplanationStatusText"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
     </Grid>

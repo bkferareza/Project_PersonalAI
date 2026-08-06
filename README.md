@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The ambient Windows presence can now generate one user-requested, locally powered explanation of the latest verified machine state through qwen3.5:4b.
+The ambient Windows presence now produces concise, grounded, naturally styled Taglish machine-state explanations with measured local-generation latency.
 
 ## Product direction
 
@@ -16,4 +16,4 @@ Machine is a local-first Windows intelligence layer that observes, explains, and
 
 ## Next slice
 
-Refine the machine personality and explanation presentation.
+Add a read-only storage overview.
