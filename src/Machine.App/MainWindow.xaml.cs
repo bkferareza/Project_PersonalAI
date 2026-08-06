@@ -1,19 +1,25 @@
 using System.Diagnostics;
 using System.Globalization;
 using Machine.Core;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Windows.Graphics;
+using Windows.UI.ViewManagement;
 
 namespace Machine.App;
 
 public sealed partial class MainWindow : Window
 {
-    private const int CompactWindowWidth = 360;
-    private const int CompactWindowHeight = 120;
+    private const int CompactIdleShellHeight = 56;
+    private const int CompactContextShellHeight = 104;
     private const int ExpandedWindowWidth = 520;
     private const int ExpandedWindowHeight = 760;
     private const int WorkAreaMargin = 16;
@@ -23,7 +29,7 @@ public sealed partial class MainWindow : Window
     private const int ExplanationStartupNameCount = 5;
     private const int FindingsDisplayCount = 8;
     private const string UnavailableValue = "Unavailable";
-    private const double CompactIdleOpacity = 0.68d;
+    private const double CompactIdleOpacity = 0.76d;
     private const double BytesPerMebibyte =
         1024d * 1024d;
     private const double BytesPerGibibyte =
@@ -39,7 +45,6 @@ public sealed partial class MainWindow : Window
         TimeSpan.FromSeconds(10);
     private static readonly TimeSpan LargeFolderScanTimeBudget =
         TimeSpan.FromSeconds(30);
-
     private readonly IMachineIdentityProvider _identityProvider;
     private readonly IMachineResourceProvider _resourceProvider;
     private readonly IMachineProcessProvider _processProvider;
@@ -56,8 +61,14 @@ public sealed partial class MainWindow : Window
         _startupInventoryProvider;
     private readonly MachineInsightTriggerPolicy
         _insightTriggerPolicy = new();
+    private readonly CompactPresenceInteraction
+        _compactPresenceInteraction = new();
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
+    private readonly SystemBackdrop _dashboardBackdrop;
+    private readonly DesktopAcrylicBackdrop _compactBackdrop = new();
+    private readonly DispatcherQueueTimer _compactCollapseTimer;
+    private readonly UISettings _uiSettings = new();
     private CancellationTokenSource?
         _folderScanCancellationTokenSource;
     private MachineIdentity? _latestIdentity;
@@ -88,7 +99,17 @@ public sealed partial class MainWindow : Window
     private bool _isSoftwareInventoryRequestRunning;
     private bool _isPackagedSoftwareInventoryRequestRunning;
     private bool _isStartupInventoryRequestRunning;
-    private bool _isPointerOverCompactShell;
+    private int _pendingCompactCollapseVersion;
+    private MachineOverallState _latestOverallState =
+        MachineOverallState.Unknown;
+    private CompactPresencePresentation?
+        _appliedCompactPresentation;
+    private CompactPresenceVisualMode?
+        _activePresenceVisualMode;
+    private Storyboard? _presenceMotionStoryboard;
+    private Storyboard? _newInsightBloomStoryboard;
+    private bool _showNewInsightBloom;
+    private bool _isAnimationSettingsChangeSubscribed;
 
     public MainWindow(
         IMachineIdentityProvider identityProvider,
@@ -128,8 +149,22 @@ public sealed partial class MainWindow : Window
         _startupInventoryProvider = startupInventoryProvider;
 
         InitializeComponent();
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(CompactDragRegion);
+        _dashboardBackdrop = SystemBackdrop!;
+        _compactCollapseTimer =
+            MainContent.DispatcherQueue.CreateTimer();
+        _compactCollapseTimer.Interval =
+            CompactPresenceLayout.CollapseDelay;
+        _compactCollapseTimer.IsRepeating = false;
+        _compactCollapseTimer.Tick += OnCompactCollapseTimerTick;
+        if (OperatingSystem.IsWindowsVersionAtLeast(
+            10,
+            0,
+            19041))
+        {
+            _uiSettings.AnimationsEnabledChanged +=
+                OnSystemAnimationsEnabledChanged;
+            _isAnimationSettingsChangeSubscribed = true;
+        }
         Activated += OnWindowActivated;
         Closed += OnWindowClosed;
     }
@@ -140,7 +175,7 @@ public sealed partial class MainWindow : Window
     {
         if (_windowPresentationConfigured)
         {
-            UpdateShellProminence();
+            UpdateCompactKeyboardFocus();
             return;
         }
 
@@ -154,6 +189,7 @@ public sealed partial class MainWindow : Window
                 presenter.IsMaximizable = false;
                 presenter.IsResizable = false;
                 presenter.IsMinimizable = true;
+                presenter.SetBorderAndTitleBar(false, false);
             }
         }
         catch (Exception exception)
@@ -161,10 +197,8 @@ public sealed partial class MainWindow : Window
             Debug.WriteLine(exception);
         }
 
-        ResizeAndPositionWindow(
-            CompactWindowWidth,
-            CompactWindowHeight);
-        UpdateShellProminence();
+        ApplyCompactPresentation(force: true);
+        ApplyPresenceVisualMode(force: true);
     }
 
     private async void OnMainContentLoaded(
@@ -335,26 +369,17 @@ public sealed partial class MainWindow : Window
     private void UpdatePresenceState(
         MachineOverallState overallState)
     {
+        _latestOverallState = overallState;
         var stateBrush = GetStateBrush(overallState);
 
-        switch (overallState)
-        {
-            case MachineOverallState.Stable:
-                PresenceStateText.Text = "Stable";
-                break;
-            case MachineOverallState.Attention:
-                PresenceStateText.Text = "Busy";
-                break;
-            case MachineOverallState.Warning:
-            case MachineOverallState.Critical:
-                PresenceStateText.Text = "Under pressure";
-                break;
-            default:
-                PresenceStateText.Text = "Status unavailable";
-                break;
-        }
-
+        PresenceStateText.Text =
+            CompactPresenceLayout.GetIdlePhrase(overallState);
+        PresenceContextStateText.Text = overallState.ToString();
         PresenceIndicator.Fill = stateBrush;
+        PresenceCoreGlow.Fill = stateBrush;
+        PresenceCoreRing.Stroke = stateBrush;
+        PresenceOrbit.Stroke = stateBrush;
+        ApplyPresenceVisualMode();
     }
 
     private static Brush GetStateBrush(
@@ -555,8 +580,6 @@ public sealed partial class MainWindow : Window
 
         if (!snapshot.IsRunningModelStatusAvailable)
         {
-            OllamaPresenceStatusText.Text =
-                "Online · Model status unavailable";
             ClearOllamaModels(
                 "Loaded-model status is unavailable.");
             UpdateExplainMachineStateButtonState();
@@ -572,8 +595,6 @@ public sealed partial class MainWindow : Window
 
         if (displayItems.Length == 0)
         {
-            OllamaPresenceStatusText.Text =
-                "Online · No model loaded";
             OllamaLoadedModelsStatusText.Text =
                 "No models currently loaded.";
             UpdateExplainMachineStateButtonState();
@@ -581,9 +602,6 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        OllamaPresenceStatusText.Text = displayItems.Length == 1
-            ? $"Online · {displayItems[0].Name}"
-            : $"Online · {displayItems.Length} models";
         OllamaLoadedModelsStatusText.Text = string.Empty;
         UpdateExplainMachineStateButtonState();
         TryRequestDashboardInsight();
@@ -592,7 +610,6 @@ public sealed partial class MainWindow : Window
     private void ShowOllamaOffline()
     {
         _isOllamaServiceAvailable = false;
-        OllamaPresenceStatusText.Text = "Offline";
         OllamaServiceStatusText.Text = "Offline";
         OllamaVersionText.Text = UnavailableValue;
         ClearOllamaModels(
@@ -704,6 +721,7 @@ public sealed partial class MainWindow : Window
         }
 
         _isExplanationRequestRunning = true;
+        ApplyPresenceVisualMode();
         UpdateExplainMachineStateButtonState();
         ExplainMachineStateButton.Content = "Refreshing...";
         MachineExplanationProgressRing.Visibility =
@@ -805,6 +823,15 @@ public sealed partial class MainWindow : Window
 
             if (!cancellationToken.IsCancellationRequested)
             {
+                if (insightAccepted)
+                {
+                    BeginNewInsightBloom();
+                }
+                else
+                {
+                    ApplyPresenceVisualMode();
+                }
+
                 ExplainMachineStateButton.Content =
                     "Refresh insight";
                 MachineExplanationProgressRing.IsActive = false;
@@ -1861,31 +1888,52 @@ public sealed partial class MainWindow : Window
         object sender,
         PointerRoutedEventArgs e)
     {
-        _isPointerOverCompactShell = true;
-        UpdateShellProminence();
+        if (!SupportsHover(e))
+        {
+            return;
+        }
+
+        _compactCollapseTimer.Stop();
+        _compactPresenceInteraction.PointerEntered();
+        ApplyCompactPresentation();
     }
 
     private void OnCompactShellPointerExited(
         object sender,
         PointerRoutedEventArgs e)
     {
-        _isPointerOverCompactShell = false;
-        UpdateShellProminence();
+        if (!SupportsHover(e))
+        {
+            return;
+        }
+
+        ScheduleCompactCollapse(
+            _compactPresenceInteraction.PointerExited());
     }
+
+    private static bool SupportsHover(
+        PointerRoutedEventArgs e) =>
+        e.Pointer.PointerDeviceType is
+            PointerDeviceType.Mouse or PointerDeviceType.Pen;
 
     private void OnMainContentGotFocus(
         object sender,
         RoutedEventArgs e) =>
-        UpdateShellProminence();
+        UpdateCompactKeyboardFocus();
 
     private void OnMainContentLostFocus(
         object sender,
         RoutedEventArgs e) =>
         MainContent.DispatcherQueue.TryEnqueue(
-            UpdateShellProminence);
+            UpdateCompactKeyboardFocus);
 
-    private void UpdateShellProminence()
+    private void UpdateCompactKeyboardFocus()
     {
+        if (_windowCancellationTokenSource.IsCancellationRequested)
+        {
+            return;
+        }
+
         var focusedControl = MainContent.XamlRoot is null
             ? null
             : FocusManager.GetFocusedElement(
@@ -1893,17 +1941,18 @@ public sealed partial class MainWindow : Window
         var keyboardFocusIsInside =
             focusedControl?.FocusState == FocusState.Keyboard &&
             IsInsideCompactShell(focusedControl);
-        var isProminent = _detailsExpanded ||
-            _isPointerOverCompactShell ||
-            keyboardFocusIsInside;
+        var collapseVersion =
+            _compactPresenceInteraction.SetKeyboardFocus(
+                keyboardFocusIsInside);
 
-        CompactInteractionPanel.IsHitTestVisible = isProminent;
-        CompactShell.Opacity = isProminent
-            ? 1d
-            : CompactIdleOpacity;
-        CompactInteractionPanel.Opacity = isProminent
-            ? 1d
-            : 0d;
+        if (keyboardFocusIsInside)
+        {
+            _compactCollapseTimer.Stop();
+            ApplyCompactPresentation();
+            return;
+        }
+
+        ScheduleCompactCollapse(collapseVersion);
     }
 
     private bool IsInsideCompactShell(
@@ -1922,34 +1971,464 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
-    private void OnDetailsToggleClicked(
+    private void ScheduleCompactCollapse(int requestVersion)
+    {
+        if (_windowCancellationTokenSource.IsCancellationRequested ||
+            _detailsExpanded ||
+            _compactPresenceInteraction.Presentation !=
+                CompactPresencePresentation.Context)
+        {
+            return;
+        }
+
+        _pendingCompactCollapseVersion = requestVersion;
+        _compactCollapseTimer.Stop();
+        _compactCollapseTimer.Start();
+    }
+
+    private void OnCompactCollapseTimerTick(
+        DispatcherQueueTimer sender,
+        object args)
+    {
+        sender.Stop();
+
+        if (_compactPresenceInteraction.TryCompleteCollapse(
+            _pendingCompactCollapseVersion))
+        {
+            ApplyCompactPresentation();
+        }
+    }
+
+    private void OnCompactPresenceClicked(
         object sender,
         RoutedEventArgs e)
     {
-        _detailsExpanded = !_detailsExpanded;
+        if (!_compactPresenceInteraction.OpenDashboard())
+        {
+            return;
+        }
+
+        SetDashboardExpanded(true);
+    }
+
+    private void OnDashboardBackRequested(
+        NavigationView sender,
+        NavigationViewBackRequestedEventArgs args)
+    {
+        if (!_compactPresenceInteraction.CloseDashboard())
+        {
+            return;
+        }
+
+        SetDashboardExpanded(false);
+    }
+
+    private void SetDashboardExpanded(bool isExpanded)
+    {
+        _detailsExpanded = isExpanded;
 
         DetailsPanel.Visibility = _detailsExpanded
             ? Visibility.Visible
             : Visibility.Collapsed;
-        DetailsToggleButton.Content = _detailsExpanded
-            ? "Close dashboard"
-            : "Open dashboard";
-
-        UpdateShellProminence();
-
-        ResizeAndPositionWindow(
-            _detailsExpanded
-                ? ExpandedWindowWidth
-                : CompactWindowWidth,
-            _detailsExpanded
-                ? ExpandedWindowHeight
-                : CompactWindowHeight);
+        _compactCollapseTimer.Stop();
+        ApplyCompactPresentation();
 
         if (_detailsExpanded)
         {
             DetailsPanel.SelectedItem = OverviewNavigationItem;
             ShowDashboardPage("overview");
+            MainContent.DispatcherQueue.TryEnqueue(
+                DispatcherQueuePriority.Low,
+                () =>
+                {
+                    if (_detailsExpanded &&
+                        !_windowCancellationTokenSource
+                            .IsCancellationRequested)
+                    {
+                        OverviewNavigationItem.Focus(
+                            FocusState.Programmatic);
+                    }
+                });
             TryRequestDashboardInsight();
+        }
+    }
+
+    private void ApplyCompactPresentation(bool force = false)
+    {
+        var presentation =
+            _compactPresenceInteraction.Presentation;
+
+        if (!force &&
+            _appliedCompactPresentation == presentation)
+        {
+            return;
+        }
+
+        _appliedCompactPresentation = presentation;
+        var showContext = presentation !=
+            CompactPresencePresentation.Idle;
+        var isDashboardExpanded = presentation ==
+            CompactPresencePresentation.Dashboard;
+
+        CompactIdlePanel.Visibility = showContext
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        CompactContextPanel.Visibility = showContext
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        CompactIdlePanel.Opacity = showContext ? 0d : 1d;
+        CompactContextPanel.Opacity = showContext ? 1d : 0d;
+        CompactShell.Opacity = showContext
+            ? 1d
+            : CompactIdleOpacity;
+        CompactShell.Height = showContext
+            ? CompactContextShellHeight
+            : CompactIdleShellHeight;
+        CompactShell.CornerRadius = new CornerRadius(
+            showContext ? 26d : 28d);
+        var isSurfaceInteractive =
+            CompactPresenceLayout.IsSurfaceInteractive(presentation);
+        CompactPresenceSurface.IsHitTestVisible =
+            isSurfaceInteractive;
+        CompactPresenceSurface.IsTabStop = isSurfaceInteractive;
+        AutomationProperties.SetAccessibilityView(
+            CompactPresenceSurface,
+            isSurfaceInteractive
+                ? AccessibilityView.Control
+                : AccessibilityView.Raw);
+        AutomationProperties.SetName(
+            CompactPresenceSurface,
+            isSurfaceInteractive
+                ? "Open Machine dashboard"
+                : string.Empty);
+
+        UpdateWindowChrome(isDashboardExpanded);
+
+        var targetSize = presentation switch
+        {
+            CompactPresencePresentation.Dashboard =>
+                new CompactPresenceSize(
+                    ExpandedWindowWidth,
+                    ExpandedWindowHeight),
+            CompactPresencePresentation.Context =>
+                CompactPresenceLayout.ContextSize,
+            _ => CompactPresenceLayout.IdleSize
+        };
+
+        ResizeAndPositionWindow(
+            targetSize.Width,
+            targetSize.Height);
+    }
+
+    private void BeginNewInsightBloom()
+    {
+        if (_windowCancellationTokenSource.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _showNewInsightBloom = true;
+        ApplyPresenceVisualMode(force: true);
+    }
+
+    private void ApplyPresenceVisualMode(bool force = false)
+    {
+        if (_windowCancellationTokenSource.IsCancellationRequested)
+        {
+            return;
+        }
+
+        var mode = CompactPresenceLayout.SelectVisualMode(
+            _latestOverallState,
+            _isExplanationRequestRunning,
+            _showNewInsightBloom);
+
+        if (!force && _activePresenceVisualMode == mode)
+        {
+            return;
+        }
+
+        StopPresenceAnimations();
+        _activePresenceVisualMode = mode;
+        PresencePulseTransform.ScaleX = 1d;
+        PresencePulseTransform.ScaleY = 1d;
+        PresenceOrbitTransform.Angle = 0d;
+        PresenceOrbit.Opacity = 0d;
+        PresenceOrbit.Visibility = Visibility.Collapsed;
+        PresenceCoreGlow.Opacity = GetStaticGlowOpacity(mode);
+
+        if (!_uiSettings.AnimationsEnabled)
+        {
+            if (mode == CompactPresenceVisualMode.NewInsight)
+            {
+                _showNewInsightBloom = false;
+                _activePresenceVisualMode = null;
+                ApplyPresenceVisualMode(force: true);
+            }
+
+            return;
+        }
+
+        if (mode == CompactPresenceVisualMode.NewInsight)
+        {
+            StartNewInsightBloom();
+            return;
+        }
+
+        if (mode == CompactPresenceVisualMode.Generating)
+        {
+            StartGeneratingMotion();
+            return;
+        }
+
+        var specification = mode switch
+        {
+            CompactPresenceVisualMode.Stable =>
+                new PresenceMotionSpecification(
+                    TimeSpan.FromSeconds(2.5),
+                    0.14d,
+                    0.34d,
+                    0.96d,
+                    1.05d),
+            CompactPresenceVisualMode.Attention =>
+                new PresenceMotionSpecification(
+                    TimeSpan.FromSeconds(1.8),
+                    0.2d,
+                    0.45d,
+                    0.95d,
+                    1.07d),
+            CompactPresenceVisualMode.Warning =>
+                new PresenceMotionSpecification(
+                    TimeSpan.FromSeconds(1.4),
+                    0.24d,
+                    0.52d,
+                    0.94d,
+                    1.09d),
+            CompactPresenceVisualMode.Critical =>
+                new PresenceMotionSpecification(
+                    TimeSpan.FromSeconds(1.1),
+                    0.28d,
+                    0.62d,
+                    0.93d,
+                    1.11d),
+            _ => new PresenceMotionSpecification(
+                TimeSpan.FromSeconds(2.75),
+                0.1d,
+                0.23d,
+                0.97d,
+                1.03d)
+        };
+
+        StartPresencePulse(specification);
+    }
+
+    private void StartPresencePulse(
+        PresenceMotionSpecification specification)
+    {
+        var storyboard = new Storyboard();
+        AddDoubleAnimation(
+            storyboard,
+            PresenceCoreGlow,
+            nameof(UIElement.Opacity),
+            specification.MinimumGlowOpacity,
+            specification.MaximumGlowOpacity,
+            specification.HalfCycleDuration,
+            autoReverse: true,
+            repeatForever: true);
+        AddDoubleAnimation(
+            storyboard,
+            PresencePulseTransform,
+            nameof(ScaleTransform.ScaleX),
+            specification.MinimumScale,
+            specification.MaximumScale,
+            specification.HalfCycleDuration,
+            autoReverse: true,
+            repeatForever: true);
+        AddDoubleAnimation(
+            storyboard,
+            PresencePulseTransform,
+            nameof(ScaleTransform.ScaleY),
+            specification.MinimumScale,
+            specification.MaximumScale,
+            specification.HalfCycleDuration,
+            autoReverse: true,
+            repeatForever: true);
+
+        _presenceMotionStoryboard = storyboard;
+        storyboard.Begin();
+    }
+
+    private void StartGeneratingMotion()
+    {
+        PresenceOrbit.Visibility = Visibility.Visible;
+        PresenceOrbit.Opacity = 0.58d;
+
+        var storyboard = new Storyboard();
+        AddDoubleAnimation(
+            storyboard,
+            PresenceCoreGlow,
+            nameof(UIElement.Opacity),
+            0.18d,
+            0.42d,
+            TimeSpan.FromSeconds(1.6),
+            autoReverse: true,
+            repeatForever: true);
+        AddDoubleAnimation(
+            storyboard,
+            PresenceOrbitTransform,
+            nameof(RotateTransform.Angle),
+            0d,
+            360d,
+            TimeSpan.FromSeconds(6),
+            autoReverse: false,
+            repeatForever: true);
+
+        _presenceMotionStoryboard = storyboard;
+        storyboard.Begin();
+    }
+
+    private void StartNewInsightBloom()
+    {
+        var storyboard = new Storyboard();
+        AddDoubleAnimation(
+            storyboard,
+            PresenceCoreGlow,
+            nameof(UIElement.Opacity),
+            0.2d,
+            0.72d,
+            TimeSpan.FromMilliseconds(360),
+            autoReverse: true,
+            repeatForever: false);
+        AddDoubleAnimation(
+            storyboard,
+            PresencePulseTransform,
+            nameof(ScaleTransform.ScaleX),
+            1d,
+            1.24d,
+            TimeSpan.FromMilliseconds(360),
+            autoReverse: true,
+            repeatForever: false);
+        AddDoubleAnimation(
+            storyboard,
+            PresencePulseTransform,
+            nameof(ScaleTransform.ScaleY),
+            1d,
+            1.24d,
+            TimeSpan.FromMilliseconds(360),
+            autoReverse: true,
+            repeatForever: false);
+
+        _newInsightBloomStoryboard = storyboard;
+        storyboard.Completed += OnNewInsightBloomCompleted;
+        storyboard.Begin();
+    }
+
+    private void OnNewInsightBloomCompleted(
+        object? sender,
+        object e)
+    {
+        if (_newInsightBloomStoryboard is not null)
+        {
+            _newInsightBloomStoryboard.Completed -=
+                OnNewInsightBloomCompleted;
+            _newInsightBloomStoryboard = null;
+        }
+
+        _showNewInsightBloom = false;
+        _activePresenceVisualMode = null;
+        ApplyPresenceVisualMode(force: true);
+    }
+
+    private static void AddDoubleAnimation(
+        Storyboard storyboard,
+        DependencyObject target,
+        string targetProperty,
+        double from,
+        double to,
+        TimeSpan duration,
+        bool autoReverse,
+        bool repeatForever)
+    {
+        var animation = new DoubleAnimation
+        {
+            From = from,
+            To = to,
+            Duration = new Duration(duration),
+            AutoReverse = autoReverse,
+            EasingFunction = new SineEase
+            {
+                EasingMode = EasingMode.EaseInOut
+            }
+        };
+
+        if (repeatForever)
+        {
+            animation.RepeatBehavior = RepeatBehavior.Forever;
+        }
+
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(
+            animation,
+            targetProperty);
+        storyboard.Children.Add(animation);
+    }
+
+    private static double GetStaticGlowOpacity(
+        CompactPresenceVisualMode mode) => mode switch
+        {
+            CompactPresenceVisualMode.Attention => 0.32d,
+            CompactPresenceVisualMode.Warning => 0.38d,
+            CompactPresenceVisualMode.Critical => 0.46d,
+            CompactPresenceVisualMode.Generating => 0.34d,
+            CompactPresenceVisualMode.NewInsight => 0.5d,
+            CompactPresenceVisualMode.Unknown => 0.15d,
+            _ => 0.24d
+        };
+
+    private void StopPresenceAnimations()
+    {
+        _presenceMotionStoryboard?.Stop();
+        _presenceMotionStoryboard = null;
+
+        if (_newInsightBloomStoryboard is not null)
+        {
+            _newInsightBloomStoryboard.Completed -=
+                OnNewInsightBloomCompleted;
+            _newInsightBloomStoryboard.Stop();
+            _newInsightBloomStoryboard = null;
+        }
+    }
+
+    private void OnSystemAnimationsEnabledChanged(
+        UISettings sender,
+        object args)
+    {
+        MainContent.DispatcherQueue.TryEnqueue(() =>
+            ApplyPresenceVisualMode(force: true));
+    }
+
+    private void UpdateWindowChrome(bool isDashboardExpanded)
+    {
+        try
+        {
+            var targetBackdrop = isDashboardExpanded
+                ? _dashboardBackdrop
+                : _compactBackdrop;
+            if (!ReferenceEquals(SystemBackdrop, targetBackdrop))
+            {
+                SystemBackdrop = targetBackdrop;
+            }
+
+            if (AppWindow.Presenter is OverlappedPresenter presenter)
+            {
+                presenter.SetBorderAndTitleBar(
+                    isDashboardExpanded,
+                    isDashboardExpanded);
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
         }
     }
 
@@ -2043,25 +2522,28 @@ public sealed partial class MainWindow : Window
                 Math.Min(requestedSize.Width, maximumWidth),
                 Math.Min(requestedSize.Height, maximumHeight));
 
-            AppWindow.Resize(targetSize);
-            var windowSize = AppWindow.Size;
-
             var workAreaLeft =
                 displayArea.OuterBounds.X + workArea.X;
             var workAreaTop =
                 displayArea.OuterBounds.Y + workArea.Y;
-            var positionX = Math.Max(
-                workAreaLeft,
-                workAreaLeft + workArea.Width -
-                    windowSize.Width - WorkAreaMargin);
-            var positionY = Math.Max(
-                workAreaTop,
-                workAreaTop + workArea.Height -
-                    windowSize.Height - WorkAreaMargin);
+            var targetCompactSize = new CompactPresenceSize(
+                targetSize.Width,
+                targetSize.Height);
+            var position =
+                CompactPresenceLayout.CalculateBottomRightPosition(
+                    new CompactPresenceWorkArea(
+                        workAreaLeft,
+                        workAreaTop,
+                        workArea.Width,
+                        workArea.Height),
+                    targetCompactSize,
+                    WorkAreaMargin);
 
-            AppWindow.Move(new PointInt32(
-                positionX,
-                positionY));
+            AppWindow.MoveAndResize(new RectInt32(
+                position.X,
+                position.Y,
+                targetSize.Width,
+                targetSize.Height));
         }
         catch (Exception exception)
         {
@@ -2073,7 +2555,16 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            AppWindow.Resize(requestedSize);
+            var currentPosition = AppWindow.Position;
+            var currentSize = AppWindow.Size;
+            var right = currentPosition.X + currentSize.Width;
+            var bottom = currentPosition.Y + currentSize.Height;
+
+            AppWindow.MoveAndResize(new RectInt32(
+                right - requestedSize.Width,
+                bottom - requestedSize.Height,
+                requestedSize.Width,
+                requestedSize.Height));
         }
         catch (Exception exception)
         {
@@ -2085,9 +2576,28 @@ public sealed partial class MainWindow : Window
         object sender,
         WindowEventArgs args)
     {
+        _compactCollapseTimer.Stop();
+        _compactCollapseTimer.Tick -= OnCompactCollapseTimerTick;
+        if (_isAnimationSettingsChangeSubscribed &&
+            OperatingSystem.IsWindowsVersionAtLeast(
+                10,
+                0,
+                19041))
+        {
+            _uiSettings.AnimationsEnabledChanged -=
+                OnSystemAnimationsEnabledChanged;
+        }
+        StopPresenceAnimations();
         _folderScanCancellationTokenSource?.Cancel();
         _windowCancellationTokenSource.Cancel();
     }
+
+    private sealed record PresenceMotionSpecification(
+        TimeSpan HalfCycleDuration,
+        double MinimumGlowOpacity,
+        double MaximumGlowOpacity,
+        double MinimumScale,
+        double MaximumScale);
 }
 
 public sealed record ProcessDisplayItem(

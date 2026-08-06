@@ -48,6 +48,38 @@
                     Value="{ThemeResource TextFillColorSecondaryBrush}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
+            <Style
+                x:Key="AmbientSurfaceControlStyle"
+                TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter
+                    Property="HorizontalContentAlignment"
+                    Value="Stretch" />
+                <Setter
+                    Property="VerticalContentAlignment"
+                    Value="Stretch" />
+                <Setter Property="VerticalAlignment" Value="Stretch" />
+                <Setter Property="IsTabStop" Value="True" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid
+                                Background="{TemplateBinding Background}">
+                                <ContentPresenter
+                                    Content="{TemplateBinding Content}"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalAlignment="Stretch"
+                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -57,119 +89,151 @@
         <Border
             x:Name="CompactShell"
             AutomationProperties.AutomationId="CompactShell"
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="1"
-            CornerRadius="14"
+            BorderThickness="0.5"
+            CornerRadius="28"
             Grid.Row="0"
-            Margin="6,4"
-            Opacity="0.68"
+            Height="56"
+            Margin="4"
+            Opacity="0.76"
             PointerEntered="OnCompactShellPointerEntered"
             PointerExited="OnCompactShellPointerExited">
             <Border.OpacityTransition>
                 <ScalarTransition Duration="0:0:0.16" />
             </Border.OpacityTransition>
-            <Grid Padding="10,3,10,7" RowSpacing="1">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="24" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="25" />
-                </Grid.RowDefinitions>
-                <Grid
-                    x:Name="CompactDragRegion"
-                    AutomationProperties.AccessibilityView="Raw"
-                    Background="Transparent"
-                    Grid.Row="0">
-                    <TextBlock
-                        FontSize="10"
-                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                        Text="Machine"
-                        VerticalAlignment="Center" />
-                </Grid>
-                <Grid Grid.Row="1">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" Spacing="7">
+            <Button
+                x:Name="CompactPresenceSurface"
+                AutomationProperties.AutomationId="CompactPresenceSurface"
+                AutomationProperties.HelpText="Open the Machine dashboard"
+                AutomationProperties.Name="Open Machine dashboard"
+                Click="OnCompactPresenceClicked"
+                Style="{StaticResource AmbientSurfaceControlStyle}"
+                ToolTipService.ToolTip="{x:Null}">
+                <Grid Padding="12,7">
+                    <Grid
+                        x:Name="PresenceCoreHost"
+                        AutomationProperties.AccessibilityView="Raw"
+                        Height="40"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        Width="40">
+                        <Grid
+                            x:Name="PresencePulseLayer"
+                            RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform
+                                    x:Name="PresencePulseTransform"
+                                    ScaleX="1"
+                                    ScaleY="1" />
+                            </Grid.RenderTransform>
+                            <Ellipse
+                                x:Name="PresenceCoreGlow"
+                                Fill="{ThemeResource TextFillColorSecondaryBrush}"
+                                Height="36"
+                                Opacity="0.18"
+                                Width="36" />
+                            <Ellipse
+                                x:Name="PresenceCoreRing"
+                                Height="24"
+                                Opacity="0.55"
+                                Stroke="{ThemeResource TextFillColorSecondaryBrush}"
+                                StrokeThickness="1"
+                                Width="24" />
+                            <Ellipse
+                                x:Name="PresenceIndicator"
+                                Fill="{ThemeResource TextFillColorSecondaryBrush}"
+                                Height="12"
+                                Width="12" />
+                        </Grid>
                         <Ellipse
-                            x:Name="PresenceIndicator"
-                            AutomationProperties.AccessibilityView="Raw"
-                            Fill="{ThemeResource TextFillColorSecondaryBrush}"
-                            Height="8"
-                            VerticalAlignment="Center"
-                            Width="8" />
+                            x:Name="PresenceOrbit"
+                            Height="36"
+                            Opacity="0"
+                            RenderTransformOrigin="0.5,0.5"
+                            Stroke="{ThemeResource TextFillColorSecondaryBrush}"
+                            StrokeDashArray="1,2.4"
+                            StrokeThickness="1.5"
+                            Visibility="Collapsed"
+                            Width="36">
+                            <Ellipse.RenderTransform>
+                                <RotateTransform
+                                    x:Name="PresenceOrbitTransform" />
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                    </Grid>
+
+                    <Grid
+                        x:Name="CompactIdlePanel"
+                        IsHitTestVisible="False"
+                        Margin="50,0,4,0"
+                        Opacity="1">
+                        <Grid.OpacityTransition>
+                            <ScalarTransition Duration="0:0:0.16" />
+                        </Grid.OpacityTransition>
                         <TextBlock
                             x:Name="PresenceStateText"
                             AutomationProperties.AutomationId="PresenceStateText"
-                            FontSize="16"
+                            FontSize="15"
                             FontWeight="SemiBold"
-                            Text="Status unavailable"
+                            Text="Status unclear"
+                            TextTrimming="CharacterEllipsis"
                             VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock
-                        x:Name="OllamaPresenceStatusText"
-                        AutomationProperties.AutomationId="OllamaPresenceStatusText"
-                        FontSize="10"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Grid.Column="1"
-                        HorizontalAlignment="Right"
-                        MaxWidth="150"
-                        Text="Local status loading"
-                        TextTrimming="CharacterEllipsis"
-                        VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid
+                        x:Name="CompactContextPanel"
+                        IsHitTestVisible="False"
+                        Margin="56,0,4,0"
+                        Opacity="0"
+                        Visibility="Collapsed">
+                        <Grid.OpacityTransition>
+                            <ScalarTransition Duration="0:0:0.16" />
+                        </Grid.OpacityTransition>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                            x:Name="PresenceContextStateText"
+                            AutomationProperties.AutomationId="PresenceContextStateText"
+                            FontSize="15"
+                            FontWeight="SemiBold"
+                            Text="Unknown" />
+                        <TextBlock
+                            x:Name="CompactInsightPreviewText"
+                            AutomationProperties.AutomationId="CompactInsightPreviewText"
+                            FontSize="11"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Grid.Row="1"
+                            MaxLines="2"
+                            Text="Watching for a meaningful change."
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="Wrap"
+                            VerticalAlignment="Center" />
+                        <TextBlock
+                            x:Name="PresenceTelemetryText"
+                            AutomationProperties.AutomationId="PresenceTelemetryText"
+                            FontSize="10"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Grid.Row="2"
+                            Text="CPU unavailable &#x00B7; Memory unavailable"
+                            TextTrimming="CharacterEllipsis" />
+                    </Grid>
                 </Grid>
-                <TextBlock
-                    x:Name="PresenceTelemetryText"
-                    AutomationProperties.AutomationId="PresenceTelemetryText"
-                    FontSize="11"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Grid.Row="2"
-                    Text="CPU unavailable &#x00B7; Memory unavailable"
-                    TextTrimming="CharacterEllipsis" />
-                <Grid
-                    x:Name="CompactInteractionPanel"
-                    Grid.Row="3"
-                    IsHitTestVisible="False"
-                    Opacity="0">
-                    <Grid.OpacityTransition>
-                        <ScalarTransition Duration="0:0:0.16" />
-                    </Grid.OpacityTransition>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        x:Name="CompactInsightPreviewText"
-                        AutomationProperties.AutomationId="CompactInsightPreviewText"
-                        FontSize="10"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Margin="0,0,8,0"
-                        Text="Watching for a meaningful change."
-                        TextTrimming="CharacterEllipsis"
-                        VerticalAlignment="Center" />
-                    <Button
-                        x:Name="DetailsToggleButton"
-                        AutomationProperties.AutomationId="DetailsToggleButton"
-                        Click="OnDetailsToggleClicked"
-                        Content="Open dashboard"
-                        FontSize="10"
-                        Grid.Column="1"
-                        MinHeight="24"
-                        Padding="8,1"
-                        VerticalAlignment="Center" />
-                </Grid>
-            </Grid>
+            </Button>
         </Border>
 
         <NavigationView
             x:Name="DetailsPanel"
             AutomationProperties.AutomationId="DetailsPanel"
+            BackRequested="OnDashboardBackRequested"
             CompactPaneLength="44"
             Grid.Row="1"
             HorizontalContentAlignment="Stretch"
-            IsBackButtonVisible="Collapsed"
+            IsBackButtonVisible="Visible"
+            IsBackEnabled="True"
             IsPaneOpen="False"
             IsSettingsVisible="False"
             Margin="6,2,6,4"
