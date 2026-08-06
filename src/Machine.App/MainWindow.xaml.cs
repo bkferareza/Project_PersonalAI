@@ -12,8 +12,8 @@ namespace Machine.App;
 
 public sealed partial class MainWindow : Window
 {
-    private const int CompactWindowWidth = 400;
-    private const int CompactWindowHeight = 200;
+    private const int CompactWindowWidth = 360;
+    private const int CompactWindowHeight = 120;
     private const int ExpandedWindowWidth = 520;
     private const int ExpandedWindowHeight = 760;
     private const int WorkAreaMargin = 16;
@@ -23,7 +23,7 @@ public sealed partial class MainWindow : Window
     private const int ExplanationStartupNameCount = 5;
     private const int FindingsDisplayCount = 8;
     private const string UnavailableValue = "Unavailable";
-    private const double CompactIdleOpacity = 0.82d;
+    private const double CompactIdleOpacity = 0.68d;
     private const double BytesPerMebibyte =
         1024d * 1024d;
     private const double BytesPerGibibyte =
@@ -54,6 +54,8 @@ public sealed partial class MainWindow : Window
         _packagedSoftwareInventoryProvider;
     private readonly IMachineStartupInventoryProvider
         _startupInventoryProvider;
+    private readonly MachineInsightTriggerPolicy
+        _insightTriggerPolicy = new();
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
     private CancellationTokenSource?
@@ -77,6 +79,8 @@ public sealed partial class MainWindow : Window
     private bool _contentLoadStarted;
     private bool _detailsExpanded;
     private bool _hasSuccessfulExplanation;
+    private bool _initialContextHydrationCompleted;
+    private bool _windowPresentationConfigured;
     private bool _isOllamaServiceAvailable;
     private bool _isExplanationRequestRunning;
     private bool _isFolderScanRunning;
@@ -124,6 +128,8 @@ public sealed partial class MainWindow : Window
         _startupInventoryProvider = startupInventoryProvider;
 
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(CompactDragRegion);
         Activated += OnWindowActivated;
         Closed += OnWindowClosed;
     }
@@ -132,7 +138,13 @@ public sealed partial class MainWindow : Window
         object sender,
         WindowActivatedEventArgs args)
     {
-        Activated -= OnWindowActivated;
+        if (_windowPresentationConfigured)
+        {
+            UpdateShellProminence();
+            return;
+        }
+
+        _windowPresentationConfigured = true;
 
         try
         {
@@ -152,6 +164,7 @@ public sealed partial class MainWindow : Window
         ResizeAndPositionWindow(
             CompactWindowWidth,
             CompactWindowHeight);
+        UpdateShellProminence();
     }
 
     private async void OnMainContentLoaded(
@@ -172,10 +185,14 @@ public sealed partial class MainWindow : Window
             var cancellationToken =
                 _windowCancellationTokenSource.Token;
 
+            var telemetryLoop =
+                RunTelemetryLoopAsync(cancellationToken);
+            var processLoop =
+                RunProcessLoopAsync(cancellationToken);
+            var ollamaStatusLoop =
+                RunOllamaStatusLoopAsync(cancellationToken);
+
             await Task.WhenAll(
-                RunTelemetryLoopAsync(cancellationToken),
-                RunProcessLoopAsync(cancellationToken),
-                RunOllamaStatusLoopAsync(cancellationToken),
                 LoadStorageAsync(
                     isManualRefresh: false,
                     cancellationToken: cancellationToken),
@@ -188,6 +205,21 @@ public sealed partial class MainWindow : Window
                 LoadStartupInventoryAsync(
                     isManualRefresh: false,
                     cancellationToken: cancellationToken));
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _insightTriggerPolicy.EstablishBaseline(
+                _latestFindingsSnapshot);
+            _initialContextHydrationCompleted = true;
+            TryRequestDashboardInsight();
+
+            await Task.WhenAll(
+                telemetryLoop,
+                processLoop,
+                ollamaStatusLoop);
         }
         finally
         {
@@ -208,6 +240,7 @@ public sealed partial class MainWindow : Window
             ArchitectureText.Text = identity.Architecture;
             LoadStatusText.Text = string.Empty;
             UpdateExplainMachineStateButtonState();
+            TryRequestDashboardInsight();
         }
         catch (Exception exception)
         {
@@ -253,8 +286,6 @@ public sealed partial class MainWindow : Window
 
             CpuUsageText.Text =
                 $"{snapshot.CpuUsagePercent:F1}%";
-            CompactCpuUsageText.Text =
-                $"{snapshot.CpuUsagePercent:F1}%";
 
             var usedMemory =
                 snapshot.UsedMemoryBytes / BytesPerGibibyte;
@@ -268,16 +299,15 @@ public sealed partial class MainWindow : Window
 
             MemoryUsageText.Text =
                 $"{usedMemory:F1} GB / {totalMemory:F1} GB";
-            CompactMemoryUsageText.Text =
-                $"{usedMemory:F1} / {totalMemory:F1} GB";
             TelemetryStatusText.Text = string.Empty;
             TelemetryStatusText.Visibility = Visibility.Collapsed;
 
             PresenceTelemetryText.Text =
                 $"{snapshot.CpuUsagePercent:F1}% CPU · " +
                 $"{memoryUsagePercent:F0}% memory";
-            ReevaluateFindings();
+            ReevaluateFindings(observeInsightTriggers: true);
             UpdateExplainMachineStateButtonState();
+            TryRequestDashboardInsight();
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -292,8 +322,6 @@ public sealed partial class MainWindow : Window
             {
                 CpuUsageText.Text = UnavailableValue;
                 MemoryUsageText.Text = UnavailableValue;
-                CompactCpuUsageText.Text = "--";
-                CompactMemoryUsageText.Text = "--";
                 PresenceTelemetryText.Text =
                     "CPU unavailable · Memory unavailable";
             }
@@ -327,9 +355,6 @@ public sealed partial class MainWindow : Window
         }
 
         PresenceIndicator.Fill = stateBrush;
-        MachineExplanationStateBadgeText.Text =
-            overallState.ToString();
-        MachineExplanationStateBadgeText.Foreground = stateBrush;
     }
 
     private static Brush GetStateBrush(
@@ -350,7 +375,8 @@ public sealed partial class MainWindow : Window
         return (Brush)Application.Current.Resources[resourceKey];
     }
 
-    private void ReevaluateFindings()
+    private void ReevaluateFindings(
+        bool observeInsightTriggers = false)
     {
         var snapshot = MachineFindingsEvaluator.Evaluate(
             new MachineFindingsInput(
@@ -365,6 +391,20 @@ public sealed partial class MainWindow : Window
         _latestFindingsSnapshot = snapshot;
         UpdatePresenceState(snapshot.OverallState);
         UpdateCurrentFindings(snapshot);
+
+        if (!observeInsightTriggers)
+        {
+            return;
+        }
+
+        var decision = _insightTriggerPolicy.ObserveTelemetry(
+            snapshot,
+            DateTimeOffset.UtcNow,
+            IsInsightContextAvailable(),
+            allowAutomaticGeneration:
+                _initialContextHydrationCompleted);
+
+        StartInsightGeneration(decision);
     }
 
     private void UpdateCurrentFindings(
@@ -438,6 +478,7 @@ public sealed partial class MainWindow : Window
                 .ToArray();
             ProcessStatusText.Text = string.Empty;
             UpdateExplainMachineStateButtonState();
+            TryRequestDashboardInsight();
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -519,6 +560,7 @@ public sealed partial class MainWindow : Window
             ClearOllamaModels(
                 "Loaded-model status is unavailable.");
             UpdateExplainMachineStateButtonState();
+            TryRequestDashboardInsight();
             return;
         }
 
@@ -535,6 +577,7 @@ public sealed partial class MainWindow : Window
             OllamaLoadedModelsStatusText.Text =
                 "No models currently loaded.";
             UpdateExplainMachineStateButtonState();
+            TryRequestDashboardInsight();
             return;
         }
 
@@ -543,6 +586,7 @@ public sealed partial class MainWindow : Window
             : $"Online · {displayItems.Length} models";
         OllamaLoadedModelsStatusText.Text = string.Empty;
         UpdateExplainMachineStateButtonState();
+        TryRequestDashboardInsight();
     }
 
     private void ShowOllamaOffline()
@@ -587,11 +631,47 @@ public sealed partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        if (_isExplanationRequestRunning)
+        var decision = _insightTriggerPolicy.RequestManual(
+            _latestFindingsSnapshot,
+            IsInsightContextAvailable());
+
+        if (!decision.ShouldGenerate)
+        {
+            UpdateExplainMachineStateButtonState();
+            return;
+        }
+
+        await GenerateInsightAsync(decision);
+    }
+
+    private void TryRequestDashboardInsight()
+    {
+        if (!_detailsExpanded)
         {
             return;
         }
 
+        var decision =
+            _insightTriggerPolicy.RequestForDashboard(
+                _latestFindingsSnapshot,
+                DateTimeOffset.UtcNow,
+                IsInsightContextAvailable());
+
+        StartInsightGeneration(decision);
+    }
+
+    private void StartInsightGeneration(
+        MachineInsightTriggerDecision decision)
+    {
+        if (decision.ShouldGenerate)
+        {
+            _ = GenerateInsightAsync(decision);
+        }
+    }
+
+    private async Task GenerateInsightAsync(
+        MachineInsightTriggerDecision decision)
+    {
         var identity = _latestIdentity;
         var resources = _latestResourceSnapshot;
         var processSnapshots = _latestProcessSnapshots.ToArray();
@@ -605,28 +685,35 @@ public sealed partial class MainWindow : Window
         var startupInventorySnapshot =
             _latestStartupInventorySnapshot;
         var findingsSnapshot = _latestFindingsSnapshot;
+        var cancellationToken =
+            _windowCancellationTokenSource.Token;
 
         if (identity is null ||
             resources is null ||
             processSnapshots.Length == 0 ||
-            !_isOllamaServiceAvailable)
+            cancellationToken.IsCancellationRequested)
         {
+            var followUp = _insightTriggerPolicy.CompleteRequest(
+                decision,
+                insightAccepted: false,
+                DateTimeOffset.UtcNow,
+                isOllamaOnline: false);
             UpdateExplainMachineStateButtonState();
+            StartInsightGeneration(followUp);
             return;
         }
 
         _isExplanationRequestRunning = true;
         UpdateExplainMachineStateButtonState();
-        ExplainMachineStateButton.Content = "Generating...";
+        ExplainMachineStateButton.Content = "Refreshing...";
         MachineExplanationProgressRing.Visibility =
             Visibility.Visible;
         MachineExplanationProgressRing.IsActive = true;
         MachineExplanationStatusText.Text =
-            "Checking the verified snapshot...";
+            "Refreshing from verified local context...";
 
-        var cancellationToken =
-            _windowCancellationTokenSource.Token;
         var stopwatch = Stopwatch.StartNew();
+        var insightAccepted = false;
 
         try
         {
@@ -651,21 +738,39 @@ public sealed partial class MainWindow : Window
             stopwatch.Stop();
             cancellationToken.ThrowIfCancellationRequested();
 
-            MachineExplanationText.Text = explanation.Text;
-            var elapsedSeconds =
-                stopwatch.Elapsed.TotalSeconds.ToString(
-                    "F1",
-                    CultureInfo.InvariantCulture);
-            MachineExplanationMetadataText.Text =
-                explanation.Source ==
-                    MachineExplanationSource.DeterministicFallback
-                    ? "Verified summary · local safeguard"
-                    : $"Verified locally · {explanation.Model} · " +
-                        $"{elapsedSeconds}s";
-            MachineExplanationMetadataText.Visibility =
-                Visibility.Visible;
-            MachineExplanationStatusText.Text = string.Empty;
-            _hasSuccessfulExplanation = true;
+            var latestFingerprint =
+                MachineInsightContextFingerprint.Create(
+                    _latestFindingsSnapshot);
+
+            if (_insightTriggerPolicy.IsCurrentContext(decision) &&
+                string.Equals(
+                    decision.ContextFingerprint,
+                    latestFingerprint,
+                    StringComparison.Ordinal))
+            {
+                MachineExplanationText.Text = explanation.Text;
+                CompactInsightPreviewText.Text = explanation.Text;
+                var elapsedSeconds =
+                    stopwatch.Elapsed.TotalSeconds.ToString(
+                        "F1",
+                        CultureInfo.InvariantCulture);
+                MachineExplanationMetadataText.Text =
+                    explanation.Source ==
+                        MachineExplanationSource.DeterministicFallback
+                        ? "Verified summary · local safeguard"
+                        : $"Generated locally · {explanation.Model} · " +
+                            $"{elapsedSeconds}s";
+                MachineExplanationMetadataText.Visibility =
+                    Visibility.Visible;
+                MachineExplanationStatusText.Text = string.Empty;
+                _hasSuccessfulExplanation = true;
+                insightAccepted = true;
+            }
+            else
+            {
+                MachineExplanationStatusText.Text =
+                    "Watching the latest verified context.";
+            }
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -685,33 +790,45 @@ public sealed partial class MainWindow : Window
             }
 
             MachineExplanationStatusText.Text =
-                "Machine explanation is temporarily unavailable.";
+                "Local insight is temporarily unavailable.";
         }
         finally
         {
             stopwatch.Stop();
             _isExplanationRequestRunning = false;
+
+            var followUp = _insightTriggerPolicy.CompleteRequest(
+                decision,
+                insightAccepted,
+                DateTimeOffset.UtcNow,
+                IsInsightContextAvailable());
+
             if (!cancellationToken.IsCancellationRequested)
             {
                 ExplainMachineStateButton.Content =
-                    "Generate insight";
+                    "Refresh insight";
                 MachineExplanationProgressRing.IsActive = false;
                 MachineExplanationProgressRing.Visibility =
                     Visibility.Collapsed;
                 UpdateExplainMachineStateButtonState();
+                StartInsightGeneration(followUp);
             }
         }
     }
 
+    private bool IsInsightContextAvailable() =>
+        _latestIdentity is not null &&
+        _latestResourceSnapshot is not null &&
+        _latestProcessSnapshots.Count > 0 &&
+        _isOllamaServiceAvailable &&
+        !_windowCancellationTokenSource.IsCancellationRequested;
+
     private void UpdateExplainMachineStateButtonState()
     {
         ExplainMachineStateButton.IsEnabled =
-            _latestIdentity is not null &&
-            _latestResourceSnapshot is not null &&
-            _latestProcessSnapshots.Count > 0 &&
-            _isOllamaServiceAvailable &&
-            !_isExplanationRequestRunning &&
-            !_windowCancellationTokenSource.IsCancellationRequested;
+            IsInsightContextAvailable() &&
+            !_insightTriggerPolicy.IsRequestInFlight &&
+            !_isExplanationRequestRunning;
     }
 
     private static MachineStorageExplanationContext?
@@ -1769,17 +1886,24 @@ public sealed partial class MainWindow : Window
 
     private void UpdateShellProminence()
     {
-        var focusedElement = MainContent.XamlRoot is null
+        var focusedControl = MainContent.XamlRoot is null
             ? null
             : FocusManager.GetFocusedElement(
-                MainContent.XamlRoot) as DependencyObject;
-        var focusIsInside = IsInsideCompactShell(focusedElement);
-
-        CompactShell.Opacity = _detailsExpanded ||
+                MainContent.XamlRoot) as Control;
+        var keyboardFocusIsInside =
+            focusedControl?.FocusState == FocusState.Keyboard &&
+            IsInsideCompactShell(focusedControl);
+        var isProminent = _detailsExpanded ||
             _isPointerOverCompactShell ||
-            focusIsInside
-                ? 1d
-                : CompactIdleOpacity;
+            keyboardFocusIsInside;
+
+        CompactInteractionPanel.IsHitTestVisible = isProminent;
+        CompactShell.Opacity = isProminent
+            ? 1d
+            : CompactIdleOpacity;
+        CompactInteractionPanel.Opacity = isProminent
+            ? 1d
+            : 0d;
     }
 
     private bool IsInsideCompactShell(
@@ -1809,7 +1933,7 @@ public sealed partial class MainWindow : Window
             : Visibility.Collapsed;
         DetailsToggleButton.Content = _detailsExpanded
             ? "Close dashboard"
-            : "View dashboard";
+            : "Open dashboard";
 
         UpdateShellProminence();
 
@@ -1820,6 +1944,47 @@ public sealed partial class MainWindow : Window
             _detailsExpanded
                 ? ExpandedWindowHeight
                 : CompactWindowHeight);
+
+        if (_detailsExpanded)
+        {
+            DetailsPanel.SelectedItem = OverviewNavigationItem;
+            ShowDashboardPage("overview");
+            TryRequestDashboardInsight();
+        }
+    }
+
+    private void OnDashboardNavigationSelectionChanged(
+        NavigationView sender,
+        NavigationViewSelectionChangedEventArgs args)
+    {
+        if (OverviewPage is null)
+        {
+            return;
+        }
+
+        var tag = (args.SelectedItemContainer as NavigationViewItem)?
+            .Tag?.ToString() ?? "overview";
+
+        ShowDashboardPage(tag);
+    }
+
+    private void ShowDashboardPage(string tag)
+    {
+        OverviewPage.Visibility = tag == "overview"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        StoragePage.Visibility = tag == "storage"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        SoftwarePage.Visibility = tag == "software"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        StartupPage.Visibility = tag == "startup"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RuntimePage.Visibility = tag == "runtime"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void ResizeAndPositionWindow(

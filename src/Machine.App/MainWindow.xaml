@@ -13,8 +13,7 @@
         Background="Transparent"
         GotFocus="OnMainContentGotFocus"
         Loaded="OnMainContentLoaded"
-        LostFocus="OnMainContentLostFocus"
-        Margin="12,6">
+        LostFocus="OnMainContentLostFocus">
         <Grid.Resources>
             <Style x:Key="DashboardCardStyle" TargetType="Border">
                 <Setter
@@ -27,16 +26,13 @@
                 <Setter Property="CornerRadius" Value="12" />
                 <Setter Property="Padding" Value="14" />
             </Style>
-            <Style x:Key="CompactMetricChipStyle" TargetType="Border">
-                <Setter
-                    Property="Background"
-                    Value="{ThemeResource ControlFillColorSecondaryBrush}" />
-                <Setter
-                    Property="BorderBrush"
-                    Value="{ThemeResource ControlStrokeColorDefaultBrush}" />
-                <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="8" />
-                <Setter Property="Padding" Value="7,3" />
+            <Style x:Key="PageTitleStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="24" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
+            <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="FontWeight" Value="SemiBold" />
             </Style>
             <Style x:Key="MetricLabelStyle" TargetType="TextBlock">
                 <Setter Property="CharacterSpacing" Value="80" />
@@ -46,76 +42,84 @@
                     Property="Foreground"
                     Value="{ThemeResource TextFillColorSecondaryBrush}" />
             </Style>
+            <Style x:Key="SecondaryTextStyle" TargetType="TextBlock">
+                <Setter
+                    Property="Foreground"
+                    Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+
         <Border
             x:Name="CompactShell"
             AutomationProperties.AutomationId="CompactShell"
             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
-            CornerRadius="16"
+            CornerRadius="14"
             Grid.Row="0"
-            Opacity="0.82"
-            Padding="12,8"
+            Margin="6,4"
+            Opacity="0.68"
             PointerEntered="OnCompactShellPointerEntered"
             PointerExited="OnCompactShellPointerExited">
-            <Grid RowSpacing="3">
+            <Border.OpacityTransition>
+                <ScalarTransition Duration="0:0:0.16" />
+            </Border.OpacityTransition>
+            <Grid Padding="10,3,10,7" RowSpacing="1">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="24" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="25" />
                 </Grid.RowDefinitions>
-                <Grid Grid.Row="0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+                <Grid
+                    x:Name="CompactDragRegion"
+                    AutomationProperties.AccessibilityView="Raw"
+                    Background="Transparent"
+                    Grid.Row="0">
                     <TextBlock
-                        CharacterSpacing="120"
-                        FontSize="12"
-                        FontWeight="SemiBold"
-                        Text="MACHINE"
+                        FontSize="10"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Text="Machine"
                         VerticalAlignment="Center" />
-                    <Border
-                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
-                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="10"
-                        Grid.Column="1"
-                        Padding="8,2">
-                        <TextBlock
-                            x:Name="OllamaPresenceStatusText"
-                            AutomationProperties.AutomationId="OllamaPresenceStatusText"
-                            FontSize="11"
-                            MaxWidth="190"
-                            Text="Status loading..."
-                            TextTrimming="CharacterEllipsis"
-                            VerticalAlignment="Center" />
-                    </Border>
                 </Grid>
-                <StackPanel
-                    Grid.Row="1"
-                    Orientation="Horizontal"
-                    Spacing="8">
-                    <Ellipse
-                        x:Name="PresenceIndicator"
-                        AutomationProperties.AccessibilityView="Raw"
-                        Fill="{ThemeResource TextFillColorSecondaryBrush}"
-                        Height="9"
-                        VerticalAlignment="Center"
-                        Width="9" />
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Ellipse
+                            x:Name="PresenceIndicator"
+                            AutomationProperties.AccessibilityView="Raw"
+                            Fill="{ThemeResource TextFillColorSecondaryBrush}"
+                            Height="8"
+                            VerticalAlignment="Center"
+                            Width="8" />
+                        <TextBlock
+                            x:Name="PresenceStateText"
+                            AutomationProperties.AutomationId="PresenceStateText"
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            Text="Status unavailable"
+                            VerticalAlignment="Center" />
+                    </StackPanel>
                     <TextBlock
-                        x:Name="PresenceStateText"
-                        AutomationProperties.AutomationId="PresenceStateText"
-                        FontSize="18"
-                        FontWeight="SemiBold"
-                        Text="Status unavailable" />
-                </StackPanel>
+                        x:Name="OllamaPresenceStatusText"
+                        AutomationProperties.AutomationId="OllamaPresenceStatusText"
+                        FontSize="10"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Grid.Column="1"
+                        HorizontalAlignment="Right"
+                        MaxWidth="150"
+                        Text="Local status loading"
+                        TextTrimming="CharacterEllipsis"
+                        VerticalAlignment="Center" />
+                </Grid>
                 <TextBlock
                     x:Name="PresenceTelemetryText"
                     AutomationProperties.AutomationId="PresenceTelemetryText"
@@ -124,641 +128,737 @@
                     Grid.Row="2"
                     Text="CPU unavailable &#x00B7; Memory unavailable"
                     TextTrimming="CharacterEllipsis" />
-                <Grid Grid.Row="3" Margin="0,1,0,0">
+                <Grid
+                    x:Name="CompactInteractionPanel"
+                    Grid.Row="3"
+                    IsHitTestVisible="False"
+                    Opacity="0">
+                    <Grid.OpacityTransition>
+                        <ScalarTransition Duration="0:0:0.16" />
+                    </Grid.OpacityTransition>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="72" />
-                        <ColumnDefinition Width="122" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Border Style="{StaticResource CompactMetricChipStyle}">
-                        <StackPanel Spacing="1">
-                            <TextBlock
-                                Style="{StaticResource MetricLabelStyle}"
-                                Text="CPU" />
-                            <TextBlock
-                                x:Name="CompactCpuUsageText"
-                                FontSize="12"
-                                FontWeight="SemiBold"
-                                Text="--" />
-                        </StackPanel>
-                    </Border>
-                    <Border
-                        Grid.Column="1"
-                        Margin="8,0,0,0"
-                        Style="{StaticResource CompactMetricChipStyle}">
-                        <StackPanel Spacing="1">
-                            <TextBlock
-                                Style="{StaticResource MetricLabelStyle}"
-                                Text="MEMORY" />
-                            <TextBlock
-                                x:Name="CompactMemoryUsageText"
-                                FontSize="12"
-                                FontWeight="SemiBold"
-                                Text="--" />
-                        </StackPanel>
-                    </Border>
+                    <TextBlock
+                        x:Name="CompactInsightPreviewText"
+                        AutomationProperties.AutomationId="CompactInsightPreviewText"
+                        FontSize="10"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Margin="0,0,8,0"
+                        Text="Watching for a meaningful change."
+                        TextTrimming="CharacterEllipsis"
+                        VerticalAlignment="Center" />
                     <Button
                         x:Name="DetailsToggleButton"
                         AutomationProperties.AutomationId="DetailsToggleButton"
                         Click="OnDetailsToggleClicked"
-                        Content="View dashboard"
-                        Grid.Column="2"
-                        HorizontalAlignment="Stretch"
-                        Margin="8,0,0,0"
-                        MinHeight="32"
-                        Padding="8,2"
-                        VerticalAlignment="Stretch" />
+                        Content="Open dashboard"
+                        FontSize="10"
+                        Grid.Column="1"
+                        MinHeight="24"
+                        Padding="8,1"
+                        VerticalAlignment="Center" />
                 </Grid>
             </Grid>
         </Border>
 
-        <ScrollViewer
+        <NavigationView
             x:Name="DetailsPanel"
             AutomationProperties.AutomationId="DetailsPanel"
+            CompactPaneLength="44"
             Grid.Row="1"
-            HorizontalScrollBarVisibility="Disabled"
-            Margin="0,12,0,0"
-            VerticalScrollBarVisibility="Auto"
+            HorizontalContentAlignment="Stretch"
+            IsBackButtonVisible="Collapsed"
+            IsPaneOpen="False"
+            IsSettingsVisible="False"
+            Margin="6,2,6,4"
+            OpenPaneLength="140"
+            PaneDisplayMode="LeftCompact"
+            SelectionChanged="OnDashboardNavigationSelectionChanged"
             Visibility="Collapsed">
-            <StackPanel Padding="0,0,0,16" Spacing="12">
-                <StackPanel Spacing="2">
-                    <TextBlock
-                        FontSize="24"
-                        FontWeight="SemiBold"
-                        Text="Dashboard" />
-                    <TextBlock
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Verified local machine overview" />
-                </StackPanel>
-                <Border Style="{StaticResource DashboardCardStyle}">
-                    <StackPanel Spacing="4">
-                        <TextBlock
-                            Style="{StaticResource MetricLabelStyle}"
-                            Text="THIS MACHINE" />
-                        <TextBlock
-                            x:Name="DeviceNameText"
-                            AutomationProperties.AutomationId="DeviceNameText"
-                            FontSize="17"
-                            FontWeight="SemiBold"
-                            Text="Loading..."
-                            TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="6">
+            <NavigationView.MenuItems>
+                <NavigationViewItem
+                    x:Name="OverviewNavigationItem"
+                    AutomationProperties.AutomationId="OverviewNavigationItem"
+                    Content="Overview"
+                    IsSelected="True"
+                    Tag="overview">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Home" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    AutomationProperties.AutomationId="StorageNavigationItem"
+                    Content="Storage"
+                    Tag="storage">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Folder" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    AutomationProperties.AutomationId="SoftwareNavigationItem"
+                    Content="Software"
+                    Tag="software">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="AllApps" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    AutomationProperties.AutomationId="StartupNavigationItem"
+                    Content="Startup"
+                    Tag="startup">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Play" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    AutomationProperties.AutomationId="RuntimeNavigationItem"
+                    Content="Runtime"
+                    Tag="runtime">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Setting" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+
+            <Grid>
+                <ScrollViewer
+                    x:Name="OverviewPage"
+                    AutomationProperties.AutomationId="OverviewPage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Padding="12,0,12,16" Spacing="10">
+                        <StackPanel Spacing="2">
                             <TextBlock
-                                x:Name="OperatingSystemText"
-                                AutomationProperties.AutomationId="OperatingSystemText"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="Loading..."
-                                TextWrapping="Wrap" />
+                                Style="{StaticResource PageTitleStyle}"
+                                Text="Overview" />
                             <TextBlock
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="&#x00B7;" />
-                            <TextBlock
-                                x:Name="ArchitectureText"
-                                AutomationProperties.AutomationId="ArchitectureText"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="Loading..."
-                                TextWrapping="Wrap" />
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Verified local machine context" />
                         </StackPanel>
-                        <TextBlock
-                            x:Name="LoadStatusText"
-                            AutomationProperties.AutomationId="LoadStatusText"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-                <Grid ColumnSpacing="10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Border Style="{StaticResource DashboardCardStyle}">
-                        <StackPanel Spacing="4">
-                            <TextBlock
-                                Style="{StaticResource MetricLabelStyle}"
-                                Text="CPU" />
-                            <TextBlock
-                                x:Name="CpuUsageText"
-                                AutomationProperties.AutomationId="CpuUsageText"
-                                FontSize="24"
-                                FontWeight="SemiBold"
-                                Text="Loading..."
-                                TextWrapping="Wrap" />
-                            <TextBlock
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="Current usage" />
-                        </StackPanel>
-                    </Border>
-                    <Border
-                        Grid.Column="1"
-                        Style="{StaticResource DashboardCardStyle}">
-                        <StackPanel Spacing="4">
-                            <TextBlock
-                                Style="{StaticResource MetricLabelStyle}"
-                                Text="MEMORY" />
-                            <TextBlock
-                                x:Name="MemoryUsageText"
-                                AutomationProperties.AutomationId="MemoryUsageText"
-                                FontSize="20"
-                                FontWeight="SemiBold"
-                                Text="Loading..."
-                                TextWrapping="Wrap" />
-                            <TextBlock
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="Used / total" />
-                        </StackPanel>
-                    </Border>
-                </Grid>
-                <TextBlock
-                    x:Name="TelemetryStatusText"
-                    AutomationProperties.AutomationId="TelemetryStatusText"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    TextWrapping="Wrap"
-                    Visibility="Collapsed" />
-                <Border Style="{StaticResource DashboardCardStyle}">
-                    <StackPanel Spacing="10">
-                        <Grid>
-                            <TextBlock
-                                FontSize="16"
-                                FontWeight="SemiBold"
-                                Text="Current findings" />
-                            <Border
-                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
-                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                HorizontalAlignment="Right"
-                                Padding="8,2">
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="4">
+                                <TextBlock
+                                    Style="{StaticResource MetricLabelStyle}"
+                                    Text="THIS MACHINE" />
+                                <TextBlock
+                                    x:Name="DeviceNameText"
+                                    AutomationProperties.AutomationId="DeviceNameText"
+                                    FontSize="17"
+                                    FontWeight="SemiBold"
+                                    Text="Loading..."
+                                    TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock
+                                        x:Name="OperatingSystemText"
+                                        AutomationProperties.AutomationId="OperatingSystemText"
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Loading..." />
+                                    <TextBlock
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="&#x00B7;" />
+                                    <TextBlock
+                                        x:Name="ArchitectureText"
+                                        AutomationProperties.AutomationId="ArchitectureText"
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Loading..." />
+                                </StackPanel>
+                                <TextBlock
+                                    x:Name="LoadStatusText"
+                                    AutomationProperties.AutomationId="LoadStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource MetricLabelStyle}"
+                                    Text="DETERMINISTIC STATE" />
                                 <TextBlock
                                     x:Name="FindingsOverallStateText"
                                     AutomationProperties.AutomationId="FindingsOverallStateText"
-                                    FontSize="11"
-                                    FontWeight="SemiBold"
-                                    Text="Unknown"
-                                    TextWrapping="Wrap" />
-                            </Border>
-                        </Grid>
-                        <TextBlock
-                            x:Name="FindingsSummaryText"
-                            AutomationProperties.AutomationId="FindingsSummaryText"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="Resource telemetry and readable system-volume data are unavailable."
-                            TextWrapping="Wrap" />
-                        <ItemsControl
-                            x:Name="CurrentFindingsList"
-                            AutomationProperties.AutomationId="CurrentFindingsList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="local:MachineFindingDisplayItem">
-                                    <StackPanel Margin="0,4,0,4" Spacing="2">
-                                        <TextBlock
-                                            FontWeight="SemiBold"
-                                            Text="{x:Bind Header}"
-                                            TextWrapping="Wrap" />
-                                        <TextBlock
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{x:Bind Detail}"
-                                            TextWrapping="Wrap" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </Border>
-                <Border Style="{StaticResource DashboardCardStyle}">
-                    <StackPanel Spacing="10">
-                        <Grid>
-                            <TextBlock
-                                FontSize="16"
-                                FontWeight="SemiBold"
-                                Text="Machine insight" />
-                            <Border
-                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
-                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                HorizontalAlignment="Right"
-                                Padding="8,2">
-                                <TextBlock
-                                    x:Name="MachineExplanationStateBadgeText"
-                                    FontSize="11"
+                                    FontSize="24"
                                     FontWeight="SemiBold"
                                     Text="Unknown" />
+                            </StackPanel>
+                        </Border>
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource DashboardCardStyle}">
+                                <StackPanel Spacing="4">
+                                    <TextBlock
+                                        Style="{StaticResource MetricLabelStyle}"
+                                        Text="CPU" />
+                                    <TextBlock
+                                        x:Name="CpuUsageText"
+                                        AutomationProperties.AutomationId="CpuUsageText"
+                                        FontSize="23"
+                                        FontWeight="SemiBold"
+                                        Text="Loading..."
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Current usage" />
+                                </StackPanel>
+                            </Border>
+                            <Border
+                                Grid.Column="1"
+                                Style="{StaticResource DashboardCardStyle}">
+                                <StackPanel Spacing="4">
+                                    <TextBlock
+                                        Style="{StaticResource MetricLabelStyle}"
+                                        Text="MEMORY" />
+                                    <TextBlock
+                                        x:Name="MemoryUsageText"
+                                        AutomationProperties.AutomationId="MemoryUsageText"
+                                        FontSize="19"
+                                        FontWeight="SemiBold"
+                                        Text="Loading..."
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Used / total" />
+                                </StackPanel>
                             </Border>
                         </Grid>
                         <TextBlock
-                            x:Name="MachineExplanationText"
-                            AutomationProperties.AutomationId="MachineExplanationText"
-                            FontSize="16"
-                            LineHeight="23"
-                            Text="No explanation yet."
-                            TextWrapping="Wrap" />
-                        <TextBlock
-                            x:Name="MachineExplanationStatusText"
-                            AutomationProperties.AutomationId="MachineExplanationStatusText"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            TextWrapping="Wrap" />
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock
-                                x:Name="MachineExplanationMetadataText"
-                                AutomationProperties.AutomationId="MachineExplanationMetadataText"
-                                FontSize="12"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                TextWrapping="Wrap"
-                                VerticalAlignment="Center"
-                                Visibility="Collapsed" />
-                            <ProgressRing
-                                x:Name="MachineExplanationProgressRing"
-                                AutomationProperties.AutomationId="MachineExplanationProgressRing"
-                                Grid.Column="1"
-                                Height="20"
-                                IsActive="False"
-                                VerticalAlignment="Center"
-                                Visibility="Collapsed"
-                                Width="20" />
-                            <Button
-                                x:Name="ExplainMachineStateButton"
-                                AutomationProperties.AutomationId="ExplainMachineStateButton"
-                                Click="OnExplainMachineStateClicked"
-                                Content="Generate insight"
-                                Grid.Column="2"
-                                HorizontalAlignment="Right"
-                                IsEnabled="False" />
-                        </Grid>
+                            x:Name="TelemetryStatusText"
+                            AutomationProperties.AutomationId="TelemetryStatusText"
+                            Style="{StaticResource SecondaryTextStyle}"
+                            Visibility="Collapsed" />
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Current findings" />
+                                <TextBlock
+                                    x:Name="FindingsSummaryText"
+                                    AutomationProperties.AutomationId="FindingsSummaryText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Resource telemetry and readable system-volume data are unavailable." />
+                                <ItemsControl
+                                    x:Name="CurrentFindingsList"
+                                    AutomationProperties.AutomationId="CurrentFindingsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:MachineFindingDisplayItem">
+                                            <StackPanel Margin="0,3" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Header}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind Detail}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="9">
+                                <Grid>
+                                    <TextBlock
+                                        Style="{StaticResource SectionTitleStyle}"
+                                        Text="Local insight" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        HorizontalAlignment="Right"
+                                        Text="Event-driven" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="MachineExplanationText"
+                                    AutomationProperties.AutomationId="MachineExplanationText"
+                                    FontSize="16"
+                                    LineHeight="23"
+                                    Text="Watching for a meaningful change."
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="MachineExplanationStatusText"
+                                    AutomationProperties.AutomationId="MachineExplanationStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        x:Name="MachineExplanationMetadataText"
+                                        AutomationProperties.AutomationId="MachineExplanationMetadataText"
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        TextWrapping="Wrap"
+                                        VerticalAlignment="Center"
+                                        Visibility="Collapsed" />
+                                    <ProgressRing
+                                        x:Name="MachineExplanationProgressRing"
+                                        AutomationProperties.AutomationId="MachineExplanationProgressRing"
+                                        Grid.Column="1"
+                                        Height="18"
+                                        IsActive="False"
+                                        VerticalAlignment="Center"
+                                        Visibility="Collapsed"
+                                        Width="18" />
+                                    <Button
+                                        x:Name="ExplainMachineStateButton"
+                                        AutomationProperties.AutomationId="ExplainMachineStateButton"
+                                        Click="OnExplainMachineStateClicked"
+                                        Content="Refresh insight"
+                                        FontSize="12"
+                                        Grid.Column="2"
+                                        HorizontalAlignment="Right"
+                                        IsEnabled="False" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                </Border>
-                <TextBlock
-                    FontSize="20"
-                    FontWeight="SemiBold"
-                    Margin="0,4,0,0"
-                    Text="Diagnostics" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Text="Top processes" />
-                <ItemsControl
-                    x:Name="TopProcessesList"
-                    AutomationProperties.AutomationId="TopProcessesList">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="local:ProcessDisplayItem">
-                            <StackPanel Margin="0,4,0,4" Spacing="2">
+                </ScrollViewer>
+
+                <ScrollViewer
+                    x:Name="StoragePage"
+                    AutomationProperties.AutomationId="StoragePage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="12,0,12,16" Spacing="10">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                Style="{StaticResource PageTitleStyle}"
+                                Text="Storage" />
+                            <TextBlock
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Read-only volume and folder inspection" />
+                        </StackPanel>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Volumes" />
+                                <TextBlock
+                                    x:Name="SystemStorageSummaryText"
+                                    AutomationProperties.AutomationId="SystemStorageSummaryText"
+                                    Text="Loading..."
+                                    TextWrapping="Wrap" />
+                                <ItemsControl
+                                    x:Name="StorageVolumesList"
+                                    AutomationProperties.AutomationId="StorageVolumesList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:StorageVolumeDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Header}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind VolumeDetails}" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind CapacityDetails}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock
+                                    x:Name="StorageStatusText"
+                                    AutomationProperties.AutomationId="StorageStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Loading..." />
+                                <Button
+                                    x:Name="RefreshStorageButton"
+                                    AutomationProperties.AutomationId="RefreshStorageButton"
+                                    Click="OnRefreshStorageClicked"
+                                    Content="Refresh storage"
+                                    HorizontalAlignment="Left"
+                                    IsEnabled="False" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    x:Name="LargeFolderRootText"
+                                    AutomationProperties.AutomationId="LargeFolderRootText"
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Largest folders on system volume" />
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Read-only inspection of top-level folders with a 30-second time budget." />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button
+                                        x:Name="ScanLargeFoldersButton"
+                                        AutomationProperties.AutomationId="ScanLargeFoldersButton"
+                                        Click="OnScanLargeFoldersClicked"
+                                        Content="Scan large folders"
+                                        IsEnabled="False" />
+                                    <Button
+                                        x:Name="CancelLargeFolderScanButton"
+                                        AutomationProperties.AutomationId="CancelLargeFolderScanButton"
+                                        Click="OnCancelLargeFolderScanClicked"
+                                        Content="Cancel"
+                                        IsEnabled="False" />
+                                    <ProgressRing
+                                        x:Name="LargeFolderScanProgressRing"
+                                        AutomationProperties.AutomationId="LargeFolderScanProgressRing"
+                                        Height="20"
+                                        IsActive="False"
+                                        VerticalAlignment="Center"
+                                        Visibility="Collapsed"
+                                        Width="20" />
+                                </StackPanel>
+                                <ItemsControl
+                                    x:Name="LargeFoldersList"
+                                    AutomationProperties.AutomationId="LargeFoldersList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:LargeFolderDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Path}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind Details}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock
+                                    x:Name="LargeFolderScanStatusText"
+                                    AutomationProperties.AutomationId="LargeFolderScanStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="No folder scan yet." />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer
+                    x:Name="SoftwarePage"
+                    AutomationProperties.AutomationId="SoftwarePage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="12,0,12,16" Spacing="10">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                Style="{StaticResource PageTitleStyle}"
+                                Text="Software" />
+                            <TextBlock
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Searchable read-only registrations" />
+                        </StackPanel>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Classic desktop" />
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Registrations reported by Windows. No usage or removal inference." />
+                                <TextBox
+                                    x:Name="SoftwareSearchBox"
+                                    AutomationProperties.AutomationId="SoftwareSearchBox"
+                                    PlaceholderText="Search by name or publisher"
+                                    TextChanged="OnSoftwareSearchTextChanged" />
+                                <TextBlock
+                                    x:Name="SoftwareInventorySummaryText"
+                                    AutomationProperties.AutomationId="SoftwareInventorySummaryText"
+                                    Text="0 registrations found&#x0a;Showing 0"
+                                    TextWrapping="Wrap" />
+                                <Button
+                                    x:Name="RefreshSoftwareButton"
+                                    AutomationProperties.AutomationId="RefreshSoftwareButton"
+                                    Click="OnRefreshSoftwareClicked"
+                                    Content="Refresh classic software"
+                                    HorizontalAlignment="Left"
+                                    IsEnabled="False" />
+                                <ListView
+                                    x:Name="InstalledSoftwareList"
+                                    AutomationProperties.AutomationId="InstalledSoftwareList"
+                                    MaxHeight="260"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                    SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:InstalledSoftwareDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Name}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind PublisherAndVersion}" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind RegistrationDetails}" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind InstallLocationDetails}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                                <TextBlock
+                                    x:Name="SoftwareInventoryStatusText"
+                                    AutomationProperties.AutomationId="SoftwareInventoryStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Loading..." />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Packaged applications" />
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Current-user MSIX/AppX packages. Source and update status are not inferred." />
+                                <TextBox
+                                    x:Name="PackagedSoftwareSearchBox"
+                                    AutomationProperties.AutomationId="PackagedSoftwareSearchBox"
+                                    PlaceholderText="Search by name, publisher, or package family"
+                                    TextChanged="OnPackagedSoftwareSearchTextChanged" />
+                                <TextBlock
+                                    x:Name="PackagedSoftwareInventorySummaryText"
+                                    AutomationProperties.AutomationId="PackagedSoftwareInventorySummaryText"
+                                    Text="0 packages found&#x0a;Showing 0"
+                                    TextWrapping="Wrap" />
+                                <Button
+                                    x:Name="RefreshPackagedSoftwareButton"
+                                    AutomationProperties.AutomationId="RefreshPackagedSoftwareButton"
+                                    Click="OnRefreshPackagedSoftwareClicked"
+                                    Content="Refresh packaged applications"
+                                    HorizontalAlignment="Left"
+                                    IsEnabled="False" />
+                                <ListView
+                                    x:Name="PackagedSoftwareList"
+                                    AutomationProperties.AutomationId="PackagedSoftwareList"
+                                    MaxHeight="260"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                    SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:PackagedSoftwareDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind DisplayName}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind PublisherVersionArchitecture}" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind PackageFamilyDetails}" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind PackageFlagsDetails}" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind InstalledLocationDetails}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                                <TextBlock
+                                    x:Name="PackagedSoftwareInventoryStatusText"
+                                    AutomationProperties.AutomationId="PackagedSoftwareInventoryStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Loading..." />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer
+                    x:Name="StartupPage"
+                    AutomationProperties.AutomationId="StartupPage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="12,0,12,16" Spacing="10">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                Style="{StaticResource PageTitleStyle}"
+                                Text="Startup" />
+                            <TextBlock
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Run keys and Startup folders only" />
+                        </StackPanel>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Startup applications" />
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Read-only registrations. Enabled state and startup impact are not inferred." />
+                                <TextBox
+                                    x:Name="StartupSearchBox"
+                                    AutomationProperties.AutomationId="StartupSearchBox"
+                                    PlaceholderText="Search by name, command, or path"
+                                    TextChanged="OnStartupSearchTextChanged" />
+                                <TextBlock
+                                    x:Name="StartupInventorySummaryText"
+                                    AutomationProperties.AutomationId="StartupInventorySummaryText"
+                                    Text="0 entries found&#x0a;Showing 0"
+                                    TextWrapping="Wrap" />
+                                <Button
+                                    x:Name="RefreshStartupButton"
+                                    AutomationProperties.AutomationId="RefreshStartupButton"
+                                    Click="OnRefreshStartupClicked"
+                                    Content="Refresh startup applications"
+                                    HorizontalAlignment="Left"
+                                    IsEnabled="False" />
+                                <ListView
+                                    x:Name="StartupApplicationsList"
+                                    AutomationProperties.AutomationId="StartupApplicationsList"
+                                    MaxHeight="430"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                    SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:StartupApplicationDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Name}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind CommandOrPathDetails}" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind SourceDetails}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                                <TextBlock
+                                    x:Name="StartupInventoryStatusText"
+                                    AutomationProperties.AutomationId="StartupInventoryStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Loading..." />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer
+                    x:Name="RuntimePage"
+                    AutomationProperties.AutomationId="RuntimePage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="12,0,12,16" Spacing="10">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                Style="{StaticResource PageTitleStyle}"
+                                Text="Runtime" />
+                            <TextBlock
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Local processes and Ollama status" />
+                        </StackPanel>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Top processes" />
+                                <ItemsControl
+                                    x:Name="TopProcessesList"
+                                    AutomationProperties.AutomationId="TopProcessesList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:ProcessDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Name}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind Details}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock
+                                    x:Name="ProcessStatusText"
+                                    AutomationProperties.AutomationId="ProcessStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Ollama" />
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        FontWeight="SemiBold"
+                                        Text="Service" />
+                                    <TextBlock
+                                        x:Name="OllamaServiceStatusText"
+                                        AutomationProperties.AutomationId="OllamaServiceStatusText"
+                                        Grid.Column="1"
+                                        Text="Loading..."
+                                        TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        FontWeight="SemiBold"
+                                        Text="Version" />
+                                    <TextBlock
+                                        x:Name="OllamaVersionText"
+                                        AutomationProperties.AutomationId="OllamaVersionText"
+                                        Grid.Column="1"
+                                        Text="Loading..."
+                                        TextWrapping="Wrap" />
+                                </Grid>
                                 <TextBlock
                                     FontWeight="SemiBold"
-                                    Text="{x:Bind Name}"
-                                    TextWrapping="Wrap" />
+                                    Text="Loaded models" />
+                                <ItemsControl
+                                    x:Name="OllamaRunningModelsList"
+                                    AutomationProperties.AutomationId="OllamaRunningModelsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:OllamaModelDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Name}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind ModelDetails}" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind RuntimeDetails}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                                 <TextBlock
-                                    Text="{x:Bind Details}"
-                                    TextWrapping="Wrap" />
+                                    x:Name="OllamaLoadedModelsStatusText"
+                                    AutomationProperties.AutomationId="OllamaLoadedModelsStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Loading..." />
                             </StackPanel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <TextBlock
-                    x:Name="ProcessStatusText"
-                    AutomationProperties.AutomationId="ProcessStatusText"
-                    Margin="0,8,0,0"
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Margin="0,16,0,0"
-                    Text="Ollama" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Text="Service" />
-                <TextBlock
-                    x:Name="OllamaServiceStatusText"
-                    AutomationProperties.AutomationId="OllamaServiceStatusText"
-                    Margin="0,0,0,8"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Text="Version" />
-                <TextBlock
-                    x:Name="OllamaVersionText"
-                    AutomationProperties.AutomationId="OllamaVersionText"
-                    Margin="0,0,0,8"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Text="Loaded models" />
-                <ItemsControl
-                    x:Name="OllamaRunningModelsList"
-                    AutomationProperties.AutomationId="OllamaRunningModelsList">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="local:OllamaModelDisplayItem">
-                            <StackPanel Margin="0,4,0,4" Spacing="2">
-                                <TextBlock
-                                    FontWeight="SemiBold"
-                                    Text="{x:Bind Name}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind ModelDetails}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind RuntimeDetails}"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <TextBlock
-                    x:Name="OllamaLoadedModelsStatusText"
-                    AutomationProperties.AutomationId="OllamaLoadedModelsStatusText"
-                    Margin="0,8,0,0"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Margin="0,16,0,0"
-                    Text="Storage" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Text="System volume" />
-                <TextBlock
-                    x:Name="SystemStorageSummaryText"
-                    AutomationProperties.AutomationId="SystemStorageSummaryText"
-                    Margin="0,0,0,8"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Text="All volumes" />
-                <ItemsControl
-                    x:Name="StorageVolumesList"
-                    AutomationProperties.AutomationId="StorageVolumesList">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="local:StorageVolumeDisplayItem">
-                            <StackPanel Margin="0,4,0,4" Spacing="2">
-                                <TextBlock
-                                    FontWeight="SemiBold"
-                                    Text="{x:Bind Header}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind VolumeDetails}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind CapacityDetails}"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <TextBlock
-                    x:Name="StorageStatusText"
-                    AutomationProperties.AutomationId="StorageStatusText"
-                    Margin="0,8,0,0"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-                <Button
-                    x:Name="RefreshStorageButton"
-                    AutomationProperties.AutomationId="RefreshStorageButton"
-                    Click="OnRefreshStorageClicked"
-                    Content="Refresh storage"
-                    HorizontalAlignment="Left"
-                    IsEnabled="False" />
-                <TextBlock
-                    x:Name="LargeFolderRootText"
-                    AutomationProperties.AutomationId="LargeFolderRootText"
-                    FontWeight="SemiBold"
-                    Margin="0,16,0,0"
-                    Text="Largest folders on system volume"
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    Text="Scan the system volume to measure its largest top-level folders."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    Text="The scan is read-only and stops after 30 seconds."
-                    TextWrapping="Wrap" />
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button
-                        x:Name="ScanLargeFoldersButton"
-                        AutomationProperties.AutomationId="ScanLargeFoldersButton"
-                        Click="OnScanLargeFoldersClicked"
-                        Content="Scan large folders"
-                        IsEnabled="False" />
-                    <Button
-                        x:Name="CancelLargeFolderScanButton"
-                        AutomationProperties.AutomationId="CancelLargeFolderScanButton"
-                        Click="OnCancelLargeFolderScanClicked"
-                        Content="Cancel"
-                        IsEnabled="False" />
-                    <ProgressRing
-                        x:Name="LargeFolderScanProgressRing"
-                        AutomationProperties.AutomationId="LargeFolderScanProgressRing"
-                        Height="20"
-                        IsActive="False"
-                        VerticalAlignment="Center"
-                        Visibility="Collapsed"
-                        Width="20" />
-                </StackPanel>
-                <ItemsControl
-                    x:Name="LargeFoldersList"
-                    AutomationProperties.AutomationId="LargeFoldersList">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="local:LargeFolderDisplayItem">
-                            <StackPanel Margin="0,4,0,4" Spacing="2">
-                                <TextBlock
-                                    FontWeight="SemiBold"
-                                    Text="{x:Bind Path}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind Details}"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <TextBlock
-                    x:Name="LargeFolderScanStatusText"
-                    AutomationProperties.AutomationId="LargeFolderScanStatusText"
-                    Margin="0,8,0,0"
-                    Text="No folder scan yet."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Margin="0,16,0,0"
-                    Text="Installed software"
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    Text="Classic desktop registrations from Windows."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    Text="MSIX/AppX packages are listed separately below."
-                    TextWrapping="Wrap" />
-                <TextBox
-                    x:Name="SoftwareSearchBox"
-                    AutomationProperties.AutomationId="SoftwareSearchBox"
-                    PlaceholderText="Search by name or publisher"
-                    TextChanged="OnSoftwareSearchTextChanged" />
-                <TextBlock
-                    x:Name="SoftwareInventorySummaryText"
-                    AutomationProperties.AutomationId="SoftwareInventorySummaryText"
-                    Text="0 registrations found&#x0a;Showing 0"
-                    TextWrapping="Wrap" />
-                <Button
-                    x:Name="RefreshSoftwareButton"
-                    AutomationProperties.AutomationId="RefreshSoftwareButton"
-                    Click="OnRefreshSoftwareClicked"
-                    Content="Refresh software"
-                    HorizontalAlignment="Left"
-                    IsEnabled="False" />
-                <ListView
-                    x:Name="InstalledSoftwareList"
-                    AutomationProperties.AutomationId="InstalledSoftwareList"
-                    MaxHeight="360"
-                    ScrollViewer.VerticalScrollBarVisibility="Auto"
-                    SelectionMode="None">
-                    <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="local:InstalledSoftwareDisplayItem">
-                            <StackPanel Margin="0,4,0,4" Spacing="2">
-                                <TextBlock
-                                    FontWeight="SemiBold"
-                                    Text="{x:Bind Name}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind PublisherAndVersion}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind RegistrationDetails}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind InstallLocationDetails}"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-                <TextBlock
-                    x:Name="SoftwareInventoryStatusText"
-                    AutomationProperties.AutomationId="SoftwareInventoryStatusText"
-                    Margin="0,8,0,0"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Margin="0,16,0,0"
-                    Text="Packaged applications"
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    Text="MSIX/AppX packages registered for the current user."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    Text="Installation source and update status are not inferred."
-                    TextWrapping="Wrap" />
-                <TextBox
-                    x:Name="PackagedSoftwareSearchBox"
-                    AutomationProperties.AutomationId="PackagedSoftwareSearchBox"
-                    PlaceholderText="Search by name, publisher, or package family"
-                    TextChanged="OnPackagedSoftwareSearchTextChanged" />
-                <TextBlock
-                    x:Name="PackagedSoftwareInventorySummaryText"
-                    AutomationProperties.AutomationId="PackagedSoftwareInventorySummaryText"
-                    Text="0 packages found&#x0a;Showing 0"
-                    TextWrapping="Wrap" />
-                <Button
-                    x:Name="RefreshPackagedSoftwareButton"
-                    AutomationProperties.AutomationId="RefreshPackagedSoftwareButton"
-                    Click="OnRefreshPackagedSoftwareClicked"
-                    Content="Refresh packaged applications"
-                    HorizontalAlignment="Left"
-                    IsEnabled="False" />
-                <ListView
-                    x:Name="PackagedSoftwareList"
-                    AutomationProperties.AutomationId="PackagedSoftwareList"
-                    MaxHeight="360"
-                    ScrollViewer.VerticalScrollBarVisibility="Auto"
-                    SelectionMode="None">
-                    <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="local:PackagedSoftwareDisplayItem">
-                            <StackPanel Margin="0,4,0,4" Spacing="2">
-                                <TextBlock
-                                    FontWeight="SemiBold"
-                                    Text="{x:Bind DisplayName}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind PublisherVersionArchitecture}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind PackageFamilyDetails}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind PackageFlagsDetails}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind InstalledLocationDetails}"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-                <TextBlock
-                    x:Name="PackagedSoftwareInventoryStatusText"
-                    AutomationProperties.AutomationId="PackagedSoftwareInventoryStatusText"
-                    Margin="0,8,0,0"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Margin="0,16,0,0"
-                    Text="Startup applications"
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    Text="Read-only entries from Run registry keys and Startup folders."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    Text="Enabled state and startup impact are not reported."
-                    TextWrapping="Wrap" />
-                <TextBox
-                    x:Name="StartupSearchBox"
-                    AutomationProperties.AutomationId="StartupSearchBox"
-                    PlaceholderText="Search by name, command, or path"
-                    TextChanged="OnStartupSearchTextChanged" />
-                <TextBlock
-                    x:Name="StartupInventorySummaryText"
-                    AutomationProperties.AutomationId="StartupInventorySummaryText"
-                    Text="0 entries found&#x0a;Showing 0"
-                    TextWrapping="Wrap" />
-                <Button
-                    x:Name="RefreshStartupButton"
-                    AutomationProperties.AutomationId="RefreshStartupButton"
-                    Click="OnRefreshStartupClicked"
-                    Content="Refresh startup applications"
-                    HorizontalAlignment="Left"
-                    IsEnabled="False" />
-                <ListView
-                    x:Name="StartupApplicationsList"
-                    AutomationProperties.AutomationId="StartupApplicationsList"
-                    MaxHeight="360"
-                    ScrollViewer.VerticalScrollBarVisibility="Auto"
-                    SelectionMode="None">
-                    <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="local:StartupApplicationDisplayItem">
-                            <StackPanel Margin="0,4,0,4" Spacing="2">
-                                <TextBlock
-                                    FontWeight="SemiBold"
-                                    Text="{x:Bind Name}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind CommandOrPathDetails}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="{x:Bind SourceDetails}"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-                <TextBlock
-                    x:Name="StartupInventoryStatusText"
-                    AutomationProperties.AutomationId="StartupInventoryStatusText"
-                    Margin="0,8,0,0"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-            </StackPanel>
-        </ScrollViewer>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </NavigationView>
     </Grid>
 </Window>
