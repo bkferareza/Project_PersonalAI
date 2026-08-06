@@ -18,8 +18,8 @@ namespace Machine.App;
 
 public sealed partial class MainWindow : Window
 {
-    private const int CompactIdleShellHeight = 56;
-    private const int CompactContextShellHeight = 104;
+    private const int CompactIdleShellHeight = 96;
+    private const int CompactContextShellHeight = 100;
     private const int ExpandedWindowWidth = 520;
     private const int ExpandedWindowHeight = 760;
     private const int WorkAreaMargin = 16;
@@ -29,7 +29,6 @@ public sealed partial class MainWindow : Window
     private const int ExplanationStartupNameCount = 5;
     private const int FindingsDisplayCount = 8;
     private const string UnavailableValue = "Unavailable";
-    private const double CompactIdleOpacity = 0.76d;
     private const double BytesPerMebibyte =
         1024d * 1024d;
     private const double BytesPerGibibyte =
@@ -372,10 +371,9 @@ public sealed partial class MainWindow : Window
         _latestOverallState = overallState;
         var stateBrush = GetStateBrush(overallState);
 
-        PresenceStateText.Text =
-            CompactPresenceLayout.GetIdlePhrase(overallState);
         PresenceContextStateText.Text = overallState.ToString();
-        PresenceIndicator.Fill = stateBrush;
+        PresenceOuterGlow.Fill = stateBrush;
+        PresenceEnergyLayer.Fill = stateBrush;
         PresenceCoreGlow.Fill = stateBrush;
         PresenceCoreRing.Stroke = stateBrush;
         PresenceOrbit.Stroke = stateBrush;
@@ -383,22 +381,34 @@ public sealed partial class MainWindow : Window
     }
 
     private static Brush GetStateBrush(
-        MachineOverallState overallState)
-    {
-        var resourceKey = overallState switch
+        MachineOverallState overallState) =>
+        new SolidColorBrush(overallState switch
         {
             MachineOverallState.Stable =>
-                "SystemFillColorSuccessBrush",
+                new global::Windows.UI.Color
+                {
+                    A = 255, R = 199, G = 241, B = 255
+                },
             MachineOverallState.Attention =>
-                "SystemFillColorCautionBrush",
-            MachineOverallState.Warning or
-                MachineOverallState.Critical =>
-                    "SystemFillColorCriticalBrush",
-            _ => "TextFillColorSecondaryBrush"
-        };
-
-        return (Brush)Application.Current.Resources[resourceKey];
-    }
+                new global::Windows.UI.Color
+                {
+                    A = 255, R = 155, G = 183, B = 255
+                },
+            MachineOverallState.Warning =>
+                new global::Windows.UI.Color
+                {
+                    A = 255, R = 240, G = 180, B = 106
+                },
+            MachineOverallState.Critical =>
+                new global::Windows.UI.Color
+                {
+                    A = 255, R = 255, G = 118, B = 147
+                },
+            _ => new global::Windows.UI.Color
+            {
+                A = 255, R = 191, G = 203, B = 255
+            }
+        });
 
     private void ReevaluateFindings(
         bool observeInsightTriggers = false)
@@ -2011,6 +2021,25 @@ public sealed partial class MainWindow : Window
         SetDashboardExpanded(true);
     }
 
+    private void OnCompactPresenceTapped(
+        object sender,
+        TappedRoutedEventArgs e) =>
+        OnCompactPresenceClicked(sender, e);
+
+    private void OnCompactPresenceKeyDown(
+        object sender,
+        KeyRoutedEventArgs e)
+    {
+        if (!CompactPresenceLayout.IsDashboardActivationKey(
+            (uint)e.Key))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        OnCompactPresenceClicked(sender, e);
+    }
+
     private void OnDashboardBackRequested(
         NavigationView sender,
         NavigationViewBackRequestedEventArgs args)
@@ -2070,22 +2099,13 @@ public sealed partial class MainWindow : Window
         var isDashboardExpanded = presentation ==
             CompactPresencePresentation.Dashboard;
 
-        CompactIdlePanel.Visibility = showContext
-            ? Visibility.Collapsed
-            : Visibility.Visible;
         CompactContextPanel.Visibility = showContext
             ? Visibility.Visible
             : Visibility.Collapsed;
-        CompactIdlePanel.Opacity = showContext ? 0d : 1d;
         CompactContextPanel.Opacity = showContext ? 1d : 0d;
-        CompactShell.Opacity = showContext
-            ? 1d
-            : CompactIdleOpacity;
         CompactShell.Height = showContext
             ? CompactContextShellHeight
             : CompactIdleShellHeight;
-        CompactShell.CornerRadius = new CornerRadius(
-            showContext ? 26d : 28d);
         var isSurfaceInteractive =
             CompactPresenceLayout.IsSurfaceInteractive(presentation);
         CompactPresenceSurface.IsHitTestVisible =
@@ -2153,8 +2173,10 @@ public sealed partial class MainWindow : Window
         PresencePulseTransform.ScaleX = 1d;
         PresencePulseTransform.ScaleY = 1d;
         PresenceOrbitTransform.Angle = 0d;
-        PresenceOrbit.Opacity = 0d;
-        PresenceOrbit.Visibility = Visibility.Collapsed;
+        PresenceOrbit.Opacity = 0.34d;
+        PresenceOrbit.Visibility = Visibility.Visible;
+        PresenceSweepHost.Visibility = Visibility.Collapsed;
+        PresenceSweepTransform.X = -30d;
         PresenceCoreGlow.Opacity = GetStaticGlowOpacity(mode);
 
         if (!_uiSettings.AnimationsEnabled)
@@ -2185,38 +2207,43 @@ public sealed partial class MainWindow : Window
         {
             CompactPresenceVisualMode.Stable =>
                 new PresenceMotionSpecification(
-                    TimeSpan.FromSeconds(2.5),
-                    0.14d,
+                    TimeSpan.FromSeconds(3.4),
+                    TimeSpan.FromSeconds(14),
+                    0.16d,
                     0.34d,
-                    0.96d,
-                    1.05d),
+                    0.98d,
+                    1.035d),
             CompactPresenceVisualMode.Attention =>
                 new PresenceMotionSpecification(
                     TimeSpan.FromSeconds(1.8),
+                    TimeSpan.FromSeconds(11),
                     0.2d,
                     0.45d,
                     0.95d,
                     1.07d),
             CompactPresenceVisualMode.Warning =>
                 new PresenceMotionSpecification(
-                    TimeSpan.FromSeconds(1.4),
+                    TimeSpan.FromSeconds(1.3),
+                    TimeSpan.FromSeconds(9),
                     0.24d,
                     0.52d,
                     0.94d,
                     1.09d),
             CompactPresenceVisualMode.Critical =>
                 new PresenceMotionSpecification(
-                    TimeSpan.FromSeconds(1.1),
+                    TimeSpan.FromSeconds(0.95),
+                    TimeSpan.FromSeconds(7),
                     0.28d,
                     0.62d,
                     0.93d,
                     1.11d),
             _ => new PresenceMotionSpecification(
-                TimeSpan.FromSeconds(2.75),
+                TimeSpan.FromSeconds(3.75),
+                TimeSpan.FromSeconds(16),
                 0.1d,
                 0.23d,
-                0.97d,
-                1.03d)
+                0.98d,
+                1.025d)
         };
 
         StartPresencePulse(specification);
@@ -2246,6 +2273,15 @@ public sealed partial class MainWindow : Window
             repeatForever: true);
         AddDoubleAnimation(
             storyboard,
+            PresenceOrbitTransform,
+            nameof(RotateTransform.Angle),
+            0d,
+            360d,
+            specification.RingDriftDuration,
+            autoReverse: false,
+            repeatForever: true);
+        AddDoubleAnimation(
+            storyboard,
             PresencePulseTransform,
             nameof(ScaleTransform.ScaleY),
             specification.MinimumScale,
@@ -2260,7 +2296,7 @@ public sealed partial class MainWindow : Window
 
     private void StartGeneratingMotion()
     {
-        PresenceOrbit.Visibility = Visibility.Visible;
+        PresenceSweepHost.Visibility = Visibility.Visible;
         PresenceOrbit.Opacity = 0.58d;
 
         var storyboard = new Storyboard();
@@ -2280,6 +2316,15 @@ public sealed partial class MainWindow : Window
             0d,
             360d,
             TimeSpan.FromSeconds(6),
+            autoReverse: false,
+            repeatForever: true);
+        AddDoubleAnimation(
+            storyboard,
+            PresenceSweepTransform,
+            nameof(TranslateTransform.X),
+            -30d,
+            64d,
+            TimeSpan.FromSeconds(2.8),
             autoReverse: false,
             repeatForever: true);
 
@@ -2594,6 +2639,7 @@ public sealed partial class MainWindow : Window
 
     private sealed record PresenceMotionSpecification(
         TimeSpan HalfCycleDuration,
+        TimeSpan RingDriftDuration,
         double MinimumGlowOpacity,
         double MaximumGlowOpacity,
         double MinimumScale,

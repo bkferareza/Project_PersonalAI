@@ -37,23 +37,13 @@ public readonly record struct CompactPresencePosition(
 public static class CompactPresenceLayout
 {
     public static readonly CompactPresenceSize IdleSize =
-        new(208, 64);
+        new(96, 96);
 
     public static readonly CompactPresenceSize ContextSize =
-        new(328, 112);
+        new(280, 100);
 
     public static readonly TimeSpan CollapseDelay =
-        TimeSpan.FromMilliseconds(325);
-
-    public static string GetIdlePhrase(
-        MachineOverallState overallState) => overallState switch
-        {
-            MachineOverallState.Stable => "All quiet",
-            MachineOverallState.Attention => "Keeping watch",
-            MachineOverallState.Warning => "Under pressure",
-            MachineOverallState.Critical => "Critical condition",
-            _ => "Status unclear"
-        };
+        TimeSpan.FromMilliseconds(300);
 
     public static CompactPresenceVisualMode SelectVisualMode(
         MachineOverallState overallState,
@@ -87,6 +77,9 @@ public static class CompactPresenceLayout
     public static bool IsSurfaceInteractive(
         CompactPresencePresentation presentation) =>
         presentation != CompactPresencePresentation.Dashboard;
+
+    public static bool IsDashboardActivationKey(
+        uint virtualKey) => virtualKey is 13 or 32;
 
     public static CompactPresencePosition CalculateBottomRightPosition(
         CompactPresenceWorkArea workArea,

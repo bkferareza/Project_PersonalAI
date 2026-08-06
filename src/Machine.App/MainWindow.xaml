@@ -48,148 +48,46 @@
                     Value="{ThemeResource TextFillColorSecondaryBrush}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
-            <Style
-                x:Key="AmbientSurfaceControlStyle"
-                TargetType="Button">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="HorizontalAlignment" Value="Stretch" />
-                <Setter
-                    Property="HorizontalContentAlignment"
-                    Value="Stretch" />
-                <Setter
-                    Property="VerticalContentAlignment"
-                    Value="Stretch" />
-                <Setter Property="VerticalAlignment" Value="Stretch" />
-                <Setter Property="IsTabStop" Value="True" />
-                <Setter Property="Padding" Value="0" />
-                <Setter Property="UseSystemFocusVisuals" Value="True" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="Button">
-                            <Grid
-                                Background="{TemplateBinding Background}">
-                                <ContentPresenter
-                                    Content="{TemplateBinding Content}"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                    VerticalAlignment="Stretch"
-                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
-                            </Grid>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border
+        <Grid
             x:Name="CompactShell"
             AutomationProperties.AutomationId="CompactShell"
-            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="0.5"
-            CornerRadius="28"
+            Background="Transparent"
             Grid.Row="0"
-            Height="56"
-            Margin="4"
-            Opacity="0.76"
+            Height="96"
             PointerEntered="OnCompactShellPointerEntered"
             PointerExited="OnCompactShellPointerExited">
-            <Border.OpacityTransition>
+            <Grid.OpacityTransition>
                 <ScalarTransition Duration="0:0:0.16" />
-            </Border.OpacityTransition>
-            <Button
+            </Grid.OpacityTransition>
+            <Grid
                 x:Name="CompactPresenceSurface"
                 AutomationProperties.AutomationId="CompactPresenceSurface"
                 AutomationProperties.HelpText="Open the Machine dashboard"
                 AutomationProperties.Name="Open Machine dashboard"
-                Click="OnCompactPresenceClicked"
-                Style="{StaticResource AmbientSurfaceControlStyle}"
+                Background="Transparent"
+                IsTabStop="True"
+                KeyDown="OnCompactPresenceKeyDown"
+                Tapped="OnCompactPresenceTapped"
                 ToolTipService.ToolTip="{x:Null}">
-                <Grid Padding="12,7">
-                    <Grid
-                        x:Name="PresenceCoreHost"
-                        AutomationProperties.AccessibilityView="Raw"
-                        Height="40"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Center"
-                        Width="40">
-                        <Grid
-                            x:Name="PresencePulseLayer"
-                            RenderTransformOrigin="0.5,0.5">
-                            <Grid.RenderTransform>
-                                <ScaleTransform
-                                    x:Name="PresencePulseTransform"
-                                    ScaleX="1"
-                                    ScaleY="1" />
-                            </Grid.RenderTransform>
-                            <Ellipse
-                                x:Name="PresenceCoreGlow"
-                                Fill="{ThemeResource TextFillColorSecondaryBrush}"
-                                Height="36"
-                                Opacity="0.18"
-                                Width="36" />
-                            <Ellipse
-                                x:Name="PresenceCoreRing"
-                                Height="24"
-                                Opacity="0.55"
-                                Stroke="{ThemeResource TextFillColorSecondaryBrush}"
-                                StrokeThickness="1"
-                                Width="24" />
-                            <Ellipse
-                                x:Name="PresenceIndicator"
-                                Fill="{ThemeResource TextFillColorSecondaryBrush}"
-                                Height="12"
-                                Width="12" />
-                        </Grid>
-                        <Ellipse
-                            x:Name="PresenceOrbit"
-                            Height="36"
-                            Opacity="0"
-                            RenderTransformOrigin="0.5,0.5"
-                            Stroke="{ThemeResource TextFillColorSecondaryBrush}"
-                            StrokeDashArray="1,2.4"
-                            StrokeThickness="1.5"
-                            Visibility="Collapsed"
-                            Width="36">
-                            <Ellipse.RenderTransform>
-                                <RotateTransform
-                                    x:Name="PresenceOrbitTransform" />
-                            </Ellipse.RenderTransform>
-                        </Ellipse>
-                    </Grid>
-
-                    <Grid
-                        x:Name="CompactIdlePanel"
-                        IsHitTestVisible="False"
-                        Margin="50,0,4,0"
-                        Opacity="1">
-                        <Grid.OpacityTransition>
-                            <ScalarTransition Duration="0:0:0.16" />
-                        </Grid.OpacityTransition>
-                        <TextBlock
-                            x:Name="PresenceStateText"
-                            AutomationProperties.AutomationId="PresenceStateText"
-                            FontSize="15"
-                            FontWeight="SemiBold"
-                            Text="Status unclear"
-                            TextTrimming="CharacterEllipsis"
-                            VerticalAlignment="Center" />
-                    </Grid>
-
-                    <Grid
-                        x:Name="CompactContextPanel"
-                        IsHitTestVisible="False"
-                        Margin="56,0,4,0"
-                        Opacity="0"
-                        Visibility="Collapsed">
-                        <Grid.OpacityTransition>
-                            <ScalarTransition Duration="0:0:0.16" />
-                        </Grid.OpacityTransition>
+                <Border
+                    x:Name="CompactContextPanel"
+                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="28"
+                    IsHitTestVisible="False"
+                    Opacity="0"
+                    Visibility="Collapsed">
+                    <Border.OpacityTransition>
+                        <ScalarTransition Duration="0:0:0.16" />
+                    </Border.OpacityTransition>
+                    <Grid Margin="102,12,14,10">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
@@ -198,7 +96,7 @@
                         <TextBlock
                             x:Name="PresenceContextStateText"
                             AutomationProperties.AutomationId="PresenceContextStateText"
-                            FontSize="15"
+                            FontSize="14"
                             FontWeight="SemiBold"
                             Text="Unknown" />
                         <TextBlock
@@ -221,9 +119,118 @@
                             Text="CPU unavailable &#x00B7; Memory unavailable"
                             TextTrimming="CharacterEllipsis" />
                     </Grid>
+                </Border>
+                <Grid
+                    x:Name="PresenceCoreHost"
+                    AutomationProperties.AccessibilityView="Raw"
+                    Height="88"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    Width="88">
+                    <Grid
+                        x:Name="PresencePulseLayer"
+                        RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <ScaleTransform
+                                x:Name="PresencePulseTransform"
+                                ScaleX="1"
+                                ScaleY="1" />
+                        </Grid.RenderTransform>
+                        <Ellipse
+                            x:Name="PresenceOuterGlow"
+                            Fill="#FF83DFFF"
+                            Height="82"
+                            Opacity="0.10"
+                            Width="82" />
+                        <Ellipse
+                            x:Name="PresenceEnergyLayer"
+                            Fill="#FF7166F2"
+                            Height="68"
+                            Opacity="0.22"
+                            Width="68" />
+                        <Ellipse
+                            x:Name="PresenceCoreGlow"
+                            Fill="#FFC7F1FF"
+                            Height="56"
+                            Opacity="0.24"
+                            Width="56" />
+                        <Ellipse
+                            x:Name="PresenceCore"
+                            Height="42"
+                            Width="42">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush Center="0.35,0.3" GradientOrigin="0.35,0.3">
+                                    <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                    <GradientStop Color="#FFC9F4FF" Offset="0.28" />
+                                    <GradientStop Color="#FF659FF7" Offset="0.66" />
+                                    <GradientStop Color="#FF6347B8" Offset="1" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse
+                            x:Name="PresenceCoreRing"
+                            Height="58"
+                            Opacity="0.6"
+                            Stroke="#FFB8EAFF"
+                            StrokeThickness="1"
+                            Width="58" />
+                        <Ellipse
+                            Height="46"
+                            Opacity="0.34"
+                            Stroke="#FFC7F1FF"
+                            StrokeThickness="0.75"
+                            Width="46" />
+                    </Grid>
+                    <Ellipse
+                        x:Name="PresenceOrbit"
+                        Height="82"
+                        Opacity="0.34"
+                        RenderTransformOrigin="0.5,0.5"
+                        Stroke="#FF9FDBFF"
+                        StrokeDashArray="1,3.2"
+                        StrokeThickness="1"
+                        Width="82">
+                        <Ellipse.RenderTransform>
+                            <RotateTransform
+                                x:Name="PresenceOrbitTransform" />
+                        </Ellipse.RenderTransform>
+                    </Ellipse>
+                    <Ellipse
+                        Height="72"
+                        Opacity="0.2"
+                        Stroke="#FFBFCBFF"
+                        StrokeDashArray="0.7,4.4"
+                        StrokeThickness="0.75"
+                        Width="72" />
+                    <Grid
+                        x:Name="PresenceSweepHost"
+                        Height="64"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Width="64">
+                        <Ellipse
+                            x:Name="PresenceSweep"
+                            Height="18"
+                            Opacity="0.48"
+                            VerticalAlignment="Center"
+                            Width="30">
+                            <Ellipse.Fill>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#00FFFFFF" Offset="0" />
+                                    <GradientStop Color="#B8E6FAFF" Offset="0.5" />
+                                    <GradientStop Color="#00FFFFFF" Offset="1" />
+                                </LinearGradientBrush>
+                            </Ellipse.Fill>
+                            <Ellipse.RenderTransform>
+                                <TranslateTransform
+                                    x:Name="PresenceSweepTransform"
+                                    X="-30" />
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                    </Grid>
                 </Grid>
-            </Button>
-        </Border>
+            </Grid>
+        </Grid>
 
         <NavigationView
             x:Name="DetailsPanel"
