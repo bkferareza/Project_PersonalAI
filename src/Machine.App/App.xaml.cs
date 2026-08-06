@@ -19,10 +19,13 @@ public partial class App : Application
             new WindowsMachineIdentityProvider();
         IMachineResourceProvider resourceProvider =
             new WindowsMachineResourceProvider();
+        IMachineProcessProvider processProvider =
+            new WindowsMachineProcessProvider();
 
         _window = new MainWindow(
             identityProvider,
-            resourceProvider);
+            resourceProvider,
+            processProvider);
         _window.Activate();
     }
 }
