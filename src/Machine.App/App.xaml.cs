@@ -24,6 +24,8 @@ public partial class App : Application
             new WindowsMachineResourceProvider();
         IMachineProcessProvider processProvider =
             new WindowsMachineProcessProvider();
+        IMachineStorageProvider storageProvider =
+            new WindowsMachineStorageProvider();
         var ollamaHttpClient = new HttpClient
         {
             BaseAddress = new Uri(
@@ -52,7 +54,8 @@ public partial class App : Application
             resourceProvider,
             processProvider,
             ollamaStatusProvider,
-            machineStateExplainer);
+            machineStateExplainer,
+            storageProvider);
         _window.Closed += OnWindowClosed;
         _window.Activate();
     }

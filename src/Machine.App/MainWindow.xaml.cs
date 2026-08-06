@@ -22,6 +22,8 @@ public sealed partial class MainWindow : Window
         1024d * 1024d;
     private const double BytesPerGibibyte =
         1024d * 1024d * 1024d;
+    private const double BytesPerTebibyte =
+        1024d * 1024d * 1024d * 1024d;
 
     private static readonly TimeSpan TelemetryRefreshInterval =
         TimeSpan.FromSeconds(2);
@@ -35,6 +37,7 @@ public sealed partial class MainWindow : Window
     private readonly IMachineProcessProvider _processProvider;
     private readonly IOllamaStatusProvider _ollamaStatusProvider;
     private readonly IMachineStateExplainer _machineStateExplainer;
+    private readonly IMachineStorageProvider _storageProvider;
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
     private MachineIdentity? _latestIdentity;
@@ -42,30 +45,35 @@ public sealed partial class MainWindow : Window
     private IReadOnlyList<MachineProcessSnapshot>
         _latestProcessSnapshots =
             Array.Empty<MachineProcessSnapshot>();
+    private MachineStorageSnapshot? _latestStorageSnapshot;
     private bool _contentLoadStarted;
     private bool _detailsExpanded;
     private bool _hasSuccessfulExplanation;
     private bool _isOllamaServiceAvailable;
     private bool _isExplanationRequestRunning;
+    private bool _isStorageRequestRunning;
 
     public MainWindow(
         IMachineIdentityProvider identityProvider,
         IMachineResourceProvider resourceProvider,
         IMachineProcessProvider processProvider,
         IOllamaStatusProvider ollamaStatusProvider,
-        IMachineStateExplainer machineStateExplainer)
+        IMachineStateExplainer machineStateExplainer,
+        IMachineStorageProvider storageProvider)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
         ArgumentNullException.ThrowIfNull(resourceProvider);
         ArgumentNullException.ThrowIfNull(processProvider);
         ArgumentNullException.ThrowIfNull(ollamaStatusProvider);
         ArgumentNullException.ThrowIfNull(machineStateExplainer);
+        ArgumentNullException.ThrowIfNull(storageProvider);
 
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
         _processProvider = processProvider;
         _ollamaStatusProvider = ollamaStatusProvider;
         _machineStateExplainer = machineStateExplainer;
+        _storageProvider = storageProvider;
 
         InitializeComponent();
         Activated += OnWindowActivated;
@@ -119,7 +127,10 @@ public sealed partial class MainWindow : Window
             await Task.WhenAll(
                 RunTelemetryLoopAsync(cancellationToken),
                 RunProcessLoopAsync(cancellationToken),
-                RunOllamaStatusLoopAsync(cancellationToken));
+                RunOllamaStatusLoopAsync(cancellationToken),
+                LoadStorageAsync(
+                    isManualRefresh: false,
+                    cancellationToken: cancellationToken));
         }
         finally
         {
@@ -554,8 +565,137 @@ public sealed partial class MainWindow : Window
             !_windowCancellationTokenSource.IsCancellationRequested;
     }
 
+    private async void OnRefreshStorageClicked(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await LoadStorageAsync(
+            isManualRefresh: true,
+            cancellationToken:
+                _windowCancellationTokenSource.Token);
+    }
+
+    private async Task LoadStorageAsync(
+        bool isManualRefresh,
+        CancellationToken cancellationToken)
+    {
+        if (_isStorageRequestRunning)
+        {
+            return;
+        }
+
+        _isStorageRequestRunning = true;
+        UpdateRefreshStorageButtonState();
+
+        if (isManualRefresh)
+        {
+            RefreshStorageButton.Content = "Refreshing...";
+            await Task.Yield();
+        }
+
+        try
+        {
+            var snapshot = await _storageProvider.GetAsync(
+                cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            UpdateStorageOverview(snapshot);
+            _latestStorageSnapshot = snapshot;
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+
+            if (_latestStorageSnapshot is null)
+            {
+                SystemStorageSummaryText.Text =
+                    "System volume unavailable";
+                StorageVolumesList.ItemsSource =
+                    Array.Empty<StorageVolumeDisplayItem>();
+            }
+
+            StorageStatusText.Text =
+                "Storage information is temporarily unavailable.";
+        }
+        finally
+        {
+            _isStorageRequestRunning = false;
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                RefreshStorageButton.Content = "Refresh storage";
+                UpdateRefreshStorageButtonState();
+            }
+        }
+    }
+
+    private void UpdateStorageOverview(
+        MachineStorageSnapshot snapshot)
+    {
+        var displayItems = snapshot.Volumes
+            .Select(CreateStorageVolumeDisplayItem)
+            .ToArray();
+
+        StorageVolumesList.ItemsSource = displayItems;
+
+        var systemVolume = snapshot.Volumes
+            .FirstOrDefault(volume => volume.IsSystemVolume);
+
+        SystemStorageSummaryText.Text = systemVolume is null
+            ? "System volume unavailable"
+            : $"{systemVolume.RootPath} · " +
+                $"{FormatBytes(systemVolume.AvailableFreeSpaceBytes)} " +
+                $"free of {FormatBytes(systemVolume.TotalSizeBytes)}";
+
+        StorageStatusText.Text = displayItems.Length == 0
+            ? "No readable storage volumes found."
+            : string.Empty;
+    }
+
+    private static StorageVolumeDisplayItem
+        CreateStorageVolumeDisplayItem(
+            MachineStorageVolumeSnapshot volume)
+    {
+        var label = string.IsNullOrWhiteSpace(volume.VolumeLabel)
+            ? "No label"
+            : volume.VolumeLabel;
+        var fileSystem = string.IsNullOrWhiteSpace(volume.FileSystem)
+            ? UnavailableValue
+            : volume.FileSystem;
+        var usedBytes = Math.Max(
+            0L,
+            volume.TotalSizeBytes - volume.AvailableFreeSpaceBytes);
+        var header = volume.IsSystemVolume
+            ? $"{volume.RootPath} · System volume"
+            : volume.RootPath;
+
+        return new StorageVolumeDisplayItem(
+            header,
+            $"{label} · {fileSystem}",
+            $"{FormatBytes(usedBytes)} used · " +
+            $"{FormatBytes(volume.AvailableFreeSpaceBytes)} free · " +
+            $"{FormatBytes(volume.TotalSizeBytes)} total");
+    }
+
+    private void UpdateRefreshStorageButtonState()
+    {
+        RefreshStorageButton.IsEnabled =
+            !_isStorageRequestRunning &&
+            !_windowCancellationTokenSource.IsCancellationRequested;
+    }
+
     private static string FormatBytes(long bytes)
     {
+        if (bytes >= BytesPerTebibyte)
+        {
+            return $"{bytes / BytesPerTebibyte:F1} TB";
+        }
+
         if (bytes >= BytesPerGibibyte)
         {
             return $"{bytes / BytesPerGibibyte:F1} GB";
@@ -701,3 +841,8 @@ public sealed record OllamaModelDisplayItem(
     string Name,
     string ModelDetails,
     string RuntimeDetails);
+
+public sealed record StorageVolumeDisplayItem(
+    string Header,
+    string VolumeDetails,
+    string CapacityDetails);

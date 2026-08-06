@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The ambient Windows presence now produces concise, grounded, naturally styled Taglish machine-state explanations with measured local-generation latency.
+The ambient Windows presence now includes a read-only overview of local storage volumes alongside verified machine telemetry and local machine-state explanations.
 
 ## Product direction
 
@@ -16,4 +16,4 @@ Machine is a local-first Windows intelligence layer that observes, explains, and
 
 ## Next slice
 
-Add a read-only storage overview.
+Add read-only large-folder inspection for the system volume.

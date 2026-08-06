@@ -246,6 +246,55 @@
                             TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Margin="0,16,0,0"
+                    Text="Storage" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="System volume" />
+                <TextBlock
+                    x:Name="SystemStorageSummaryText"
+                    AutomationProperties.AutomationId="SystemStorageSummaryText"
+                    Margin="0,0,0,8"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="All volumes" />
+                <ItemsControl
+                    x:Name="StorageVolumesList"
+                    AutomationProperties.AutomationId="StorageVolumesList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="local:StorageVolumeDisplayItem">
+                            <StackPanel Margin="0,4,0,4" Spacing="2">
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind Header}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind VolumeDetails}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind CapacityDetails}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock
+                    x:Name="StorageStatusText"
+                    AutomationProperties.AutomationId="StorageStatusText"
+                    Margin="0,8,0,0"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
+                <Button
+                    x:Name="RefreshStorageButton"
+                    AutomationProperties.AutomationId="RefreshStorageButton"
+                    Click="OnRefreshStorageClicked"
+                    Content="Refresh storage"
+                    HorizontalAlignment="Left"
+                    IsEnabled="False" />
             </StackPanel>
         </ScrollViewer>
     </Grid>
