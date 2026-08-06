@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The ambient Windows presence now includes a read-only overview of local storage volumes alongside verified machine telemetry and local machine-state explanations.
+The ambient Windows presence now includes bounded, cancellable, read-only inspection of the largest top-level folders on the system volume.
 
 ## Product direction
 
@@ -16,4 +16,4 @@ Machine is a local-first Windows intelligence layer that observes, explains, and
 
 ## Next slice
 
-Add read-only large-folder inspection for the system volume.
+Add a read-only installed-software inventory.

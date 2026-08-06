@@ -17,6 +17,7 @@ public sealed partial class MainWindow : Window
     private const int ExpandedWindowHeight = 760;
     private const int WorkAreaMargin = 16;
     private const int TopProcessCount = 5;
+    private const int LargeFolderResultCount = 10;
     private const string UnavailableValue = "Unavailable";
     private const double BytesPerMebibyte =
         1024d * 1024d;
@@ -31,6 +32,8 @@ public sealed partial class MainWindow : Window
         TimeSpan.FromSeconds(5);
     private static readonly TimeSpan OllamaRefreshInterval =
         TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan LargeFolderScanTimeBudget =
+        TimeSpan.FromSeconds(30);
 
     private readonly IMachineIdentityProvider _identityProvider;
     private readonly IMachineResourceProvider _resourceProvider;
@@ -38,8 +41,12 @@ public sealed partial class MainWindow : Window
     private readonly IOllamaStatusProvider _ollamaStatusProvider;
     private readonly IMachineStateExplainer _machineStateExplainer;
     private readonly IMachineStorageProvider _storageProvider;
+    private readonly IMachineFolderInspectionProvider
+        _folderInspectionProvider;
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
+    private CancellationTokenSource?
+        _folderScanCancellationTokenSource;
     private MachineIdentity? _latestIdentity;
     private MachineResourceSnapshot? _latestResourceSnapshot;
     private IReadOnlyList<MachineProcessSnapshot>
@@ -51,6 +58,7 @@ public sealed partial class MainWindow : Window
     private bool _hasSuccessfulExplanation;
     private bool _isOllamaServiceAvailable;
     private bool _isExplanationRequestRunning;
+    private bool _isFolderScanRunning;
     private bool _isStorageRequestRunning;
 
     public MainWindow(
@@ -59,7 +67,8 @@ public sealed partial class MainWindow : Window
         IMachineProcessProvider processProvider,
         IOllamaStatusProvider ollamaStatusProvider,
         IMachineStateExplainer machineStateExplainer,
-        IMachineStorageProvider storageProvider)
+        IMachineStorageProvider storageProvider,
+        IMachineFolderInspectionProvider folderInspectionProvider)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
         ArgumentNullException.ThrowIfNull(resourceProvider);
@@ -67,6 +76,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(ollamaStatusProvider);
         ArgumentNullException.ThrowIfNull(machineStateExplainer);
         ArgumentNullException.ThrowIfNull(storageProvider);
+        ArgumentNullException.ThrowIfNull(folderInspectionProvider);
 
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
@@ -74,6 +84,7 @@ public sealed partial class MainWindow : Window
         _ollamaStatusProvider = ollamaStatusProvider;
         _machineStateExplainer = machineStateExplainer;
         _storageProvider = storageProvider;
+        _folderInspectionProvider = folderInspectionProvider;
 
         InitializeComponent();
         Activated += OnWindowActivated;
@@ -602,6 +613,7 @@ public sealed partial class MainWindow : Window
 
             UpdateStorageOverview(snapshot);
             _latestStorageSnapshot = snapshot;
+            UpdateLargeFolderScanButtonState();
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -686,6 +698,184 @@ public sealed partial class MainWindow : Window
     {
         RefreshStorageButton.IsEnabled =
             !_isStorageRequestRunning &&
+            !_windowCancellationTokenSource.IsCancellationRequested;
+    }
+
+    private async void OnScanLargeFoldersClicked(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_isFolderScanRunning)
+        {
+            return;
+        }
+
+        var rootPath = GetSystemStorageRoot();
+        if (rootPath is null)
+        {
+            UpdateLargeFolderScanButtonState();
+            return;
+        }
+
+        var scanCancellationTokenSource =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                _windowCancellationTokenSource.Token);
+        _folderScanCancellationTokenSource =
+            scanCancellationTokenSource;
+        _isFolderScanRunning = true;
+
+        ScanLargeFoldersButton.Content = "Scanning...";
+        UpdateLargeFolderScanButtonState();
+        CancelLargeFolderScanButton.IsEnabled = true;
+        LargeFolderScanProgressRing.Visibility =
+            Visibility.Visible;
+        LargeFolderScanProgressRing.IsActive = true;
+        LargeFolderRootText.Text =
+            $"Largest folders on {rootPath}";
+        LargeFolderScanStatusText.Text =
+            $"Scanning {rootPath} for up to 30 seconds...";
+
+        var cancellationToken =
+            scanCancellationTokenSource.Token;
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            var snapshot = await _folderInspectionProvider
+                .GetLargestTopLevelFoldersAsync(
+                    rootPath,
+                    LargeFolderResultCount,
+                    LargeFolderScanTimeBudget,
+                    cancellationToken);
+
+            stopwatch.Stop();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            UpdateLargeFolderResults(
+                snapshot,
+                stopwatch.Elapsed >= LargeFolderScanTimeBudget);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            if (!_windowCancellationTokenSource
+                .IsCancellationRequested)
+            {
+                LargeFolderScanStatusText.Text =
+                    "Folder scan cancelled.";
+            }
+        }
+        catch (Exception exception)
+        {
+            stopwatch.Stop();
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                if (!_windowCancellationTokenSource
+                    .IsCancellationRequested)
+                {
+                    LargeFolderScanStatusText.Text =
+                        "Folder scan cancelled.";
+                }
+            }
+            else
+            {
+                Debug.WriteLine(exception);
+                LargeFolderScanStatusText.Text =
+                    "Large-folder inspection is temporarily unavailable.";
+            }
+        }
+        finally
+        {
+            stopwatch.Stop();
+            _isFolderScanRunning = false;
+
+            if (ReferenceEquals(
+                _folderScanCancellationTokenSource,
+                scanCancellationTokenSource))
+            {
+                _folderScanCancellationTokenSource = null;
+            }
+
+            scanCancellationTokenSource.Dispose();
+
+            if (!_windowCancellationTokenSource
+                .IsCancellationRequested)
+            {
+                ScanLargeFoldersButton.Content =
+                    "Scan large folders";
+                CancelLargeFolderScanButton.IsEnabled = false;
+                LargeFolderScanProgressRing.IsActive = false;
+                LargeFolderScanProgressRing.Visibility =
+                    Visibility.Collapsed;
+                UpdateLargeFolderScanButtonState();
+            }
+        }
+    }
+
+    private void OnCancelLargeFolderScanClicked(
+        object sender,
+        RoutedEventArgs e)
+    {
+        CancelLargeFolderScanButton.IsEnabled = false;
+        _folderScanCancellationTokenSource?.Cancel();
+    }
+
+    private void UpdateLargeFolderResults(
+        MachineFolderInspectionSnapshot snapshot,
+        bool timeLimitReached)
+    {
+        var displayItems = snapshot.Folders
+            .Select(folder => new LargeFolderDisplayItem(
+                folder.Path,
+                $"{FormatBytes(folder.SizeBytes)} · " +
+                $"{folder.FileCount.ToString("N0", CultureInfo.InvariantCulture)} files · " +
+                (folder.IsComplete
+                    ? "Complete"
+                    : "Partial")))
+            .ToArray();
+
+        LargeFoldersList.ItemsSource = displayItems;
+
+        var hasPartialResults =
+            !snapshot.IsComplete ||
+            snapshot.SkippedDirectoryCount > 0 ||
+            snapshot.Folders.Any(folder => !folder.IsComplete);
+
+        LargeFolderScanStatusText.Text =
+            timeLimitReached && hasPartialResults
+                ? $"Partial scan · Time limit reached · " +
+                    $"{snapshot.SkippedDirectoryCount} inaccessible directories skipped"
+                : displayItems.Length == 0
+                    ? "No readable top-level folders found."
+                    : !hasPartialResults
+                        ? $"Scan complete · {displayItems.Length} folders measured"
+                        : snapshot.SkippedDirectoryCount > 0
+                            ? $"Partial scan · " +
+                                $"{snapshot.SkippedDirectoryCount} inaccessible directories skipped"
+                            : "Partial scan";
+    }
+
+    private string? GetSystemStorageRoot() =>
+        _latestStorageSnapshot?.Volumes
+            .FirstOrDefault(volume => volume.IsSystemVolume)
+            ?.RootPath;
+
+    private void UpdateLargeFolderScanButtonState()
+    {
+        var rootPath = GetSystemStorageRoot();
+
+        if (!_isFolderScanRunning)
+        {
+            LargeFolderRootText.Text = rootPath is null
+                ? "Largest folders on system volume"
+                : $"Largest folders on {rootPath}";
+        }
+
+        ScanLargeFoldersButton.IsEnabled =
+            rootPath is not null &&
+            !_isFolderScanRunning &&
             !_windowCancellationTokenSource.IsCancellationRequested;
     }
 
@@ -829,6 +1019,7 @@ public sealed partial class MainWindow : Window
         object sender,
         WindowEventArgs args)
     {
+        _folderScanCancellationTokenSource?.Cancel();
         _windowCancellationTokenSource.Cancel();
     }
 }
@@ -846,3 +1037,7 @@ public sealed record StorageVolumeDisplayItem(
     string Header,
     string VolumeDetails,
     string CapacityDetails);
+
+public sealed record LargeFolderDisplayItem(
+    string Path,
+    string Details);

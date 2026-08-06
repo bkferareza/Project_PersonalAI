@@ -295,6 +295,64 @@
                     Content="Refresh storage"
                     HorizontalAlignment="Left"
                     IsEnabled="False" />
+                <TextBlock
+                    x:Name="LargeFolderRootText"
+                    AutomationProperties.AutomationId="LargeFolderRootText"
+                    FontWeight="SemiBold"
+                    Margin="0,16,0,0"
+                    Text="Largest folders on system volume"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Text="Scan the system volume to measure its largest top-level folders."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Text="The scan is read-only and stops after 30 seconds."
+                    TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button
+                        x:Name="ScanLargeFoldersButton"
+                        AutomationProperties.AutomationId="ScanLargeFoldersButton"
+                        Click="OnScanLargeFoldersClicked"
+                        Content="Scan large folders"
+                        IsEnabled="False" />
+                    <Button
+                        x:Name="CancelLargeFolderScanButton"
+                        AutomationProperties.AutomationId="CancelLargeFolderScanButton"
+                        Click="OnCancelLargeFolderScanClicked"
+                        Content="Cancel"
+                        IsEnabled="False" />
+                    <ProgressRing
+                        x:Name="LargeFolderScanProgressRing"
+                        AutomationProperties.AutomationId="LargeFolderScanProgressRing"
+                        Height="20"
+                        IsActive="False"
+                        VerticalAlignment="Center"
+                        Visibility="Collapsed"
+                        Width="20" />
+                </StackPanel>
+                <ItemsControl
+                    x:Name="LargeFoldersList"
+                    AutomationProperties.AutomationId="LargeFoldersList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="local:LargeFolderDisplayItem">
+                            <StackPanel Margin="0,4,0,4" Spacing="2">
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind Path}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind Details}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock
+                    x:Name="LargeFolderScanStatusText"
+                    AutomationProperties.AutomationId="LargeFolderScanStatusText"
+                    Margin="0,8,0,0"
+                    Text="No folder scan yet."
+                    TextWrapping="Wrap" />
             </StackPanel>
         </ScrollViewer>
     </Grid>

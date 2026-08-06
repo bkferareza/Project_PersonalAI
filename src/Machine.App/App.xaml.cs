@@ -26,6 +26,8 @@ public partial class App : Application
             new WindowsMachineProcessProvider();
         IMachineStorageProvider storageProvider =
             new WindowsMachineStorageProvider();
+        IMachineFolderInspectionProvider folderInspectionProvider =
+            new WindowsMachineFolderInspectionProvider();
         var ollamaHttpClient = new HttpClient
         {
             BaseAddress = new Uri(
@@ -55,7 +57,8 @@ public partial class App : Application
             processProvider,
             ollamaStatusProvider,
             machineStateExplainer,
-            storageProvider);
+            storageProvider,
+            folderInspectionProvider);
         _window.Closed += OnWindowClosed;
         _window.Activate();
     }
