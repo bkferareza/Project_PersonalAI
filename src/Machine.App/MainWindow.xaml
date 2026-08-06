@@ -5,137 +5,298 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Machine.App"
     Title="Machine">
+    <Window.SystemBackdrop>
+        <MicaBackdrop Kind="BaseAlt" />
+    </Window.SystemBackdrop>
     <Grid
         x:Name="MainContent"
+        Background="Transparent"
+        GotFocus="OnMainContentGotFocus"
         Loaded="OnMainContentLoaded"
-        Margin="20,12,20,16">
+        LostFocus="OnMainContentLostFocus"
+        Margin="12,6">
+        <Grid.Resources>
+            <Style x:Key="DashboardCardStyle" TargetType="Border">
+                <Setter
+                    Property="Background"
+                    Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter
+                    Property="BorderBrush"
+                    Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="Padding" Value="14" />
+            </Style>
+            <Style x:Key="CompactMetricChipStyle" TargetType="Border">
+                <Setter
+                    Property="Background"
+                    Value="{ThemeResource ControlFillColorSecondaryBrush}" />
+                <Setter
+                    Property="BorderBrush"
+                    Value="{ThemeResource ControlStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="7,3" />
+            </Style>
+            <Style x:Key="MetricLabelStyle" TargetType="TextBlock">
+                <Setter Property="CharacterSpacing" Value="80" />
+                <Setter Property="FontSize" Value="10" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter
+                    Property="Foreground"
+                    Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+        </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <StackPanel
+        <Border
+            x:Name="CompactShell"
+            AutomationProperties.AutomationId="CompactShell"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="16"
             Grid.Row="0"
-            Spacing="8">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Ellipse
-                    x:Name="PresenceIndicator"
-                    AutomationProperties.AccessibilityView="Raw"
-                    Fill="Gray"
-                    Height="10"
-                    VerticalAlignment="Center"
-                    Width="10" />
+            Opacity="0.82"
+            Padding="12,8"
+            PointerEntered="OnCompactShellPointerEntered"
+            PointerExited="OnCompactShellPointerExited">
+            <Grid RowSpacing="3">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        CharacterSpacing="120"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Text="MACHINE"
+                        VerticalAlignment="Center" />
+                    <Border
+                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Grid.Column="1"
+                        Padding="8,2">
+                        <TextBlock
+                            x:Name="OllamaPresenceStatusText"
+                            AutomationProperties.AutomationId="OllamaPresenceStatusText"
+                            FontSize="11"
+                            MaxWidth="190"
+                            Text="Status loading..."
+                            TextTrimming="CharacterEllipsis"
+                            VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+                <StackPanel
+                    Grid.Row="1"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <Ellipse
+                        x:Name="PresenceIndicator"
+                        AutomationProperties.AccessibilityView="Raw"
+                        Fill="{ThemeResource TextFillColorSecondaryBrush}"
+                        Height="9"
+                        VerticalAlignment="Center"
+                        Width="9" />
+                    <TextBlock
+                        x:Name="PresenceStateText"
+                        AutomationProperties.AutomationId="PresenceStateText"
+                        FontSize="18"
+                        FontWeight="SemiBold"
+                        Text="Status unavailable" />
+                </StackPanel>
                 <TextBlock
-                    x:Name="PresenceStateText"
-                    AutomationProperties.AutomationId="PresenceStateText"
-                    FontSize="18"
-                    FontWeight="SemiBold"
-                    Text="Status unavailable" />
-            </StackPanel>
-            <TextBlock
-                x:Name="PresenceTelemetryText"
-                AutomationProperties.AutomationId="PresenceTelemetryText"
-                Text="CPU unavailable · Memory unavailable"
-                TextWrapping="Wrap" />
-            <TextBlock
-                x:Name="OllamaPresenceStatusText"
-                AutomationProperties.AutomationId="OllamaPresenceStatusText"
-                Text="Ollama status loading..."
-                TextWrapping="Wrap" />
-            <Button
-                x:Name="DetailsToggleButton"
-                AutomationProperties.AutomationId="DetailsToggleButton"
-                Click="OnDetailsToggleClicked"
-                Content="Show details"
-                HorizontalAlignment="Left" />
-        </StackPanel>
+                    x:Name="PresenceTelemetryText"
+                    AutomationProperties.AutomationId="PresenceTelemetryText"
+                    FontSize="11"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Grid.Row="2"
+                    Text="CPU unavailable &#x00B7; Memory unavailable"
+                    TextTrimming="CharacterEllipsis" />
+                <Grid Grid.Row="3" Margin="0,1,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="72" />
+                        <ColumnDefinition Width="122" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource CompactMetricChipStyle}">
+                        <StackPanel Spacing="1">
+                            <TextBlock
+                                Style="{StaticResource MetricLabelStyle}"
+                                Text="CPU" />
+                            <TextBlock
+                                x:Name="CompactCpuUsageText"
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                Text="--" />
+                        </StackPanel>
+                    </Border>
+                    <Border
+                        Grid.Column="1"
+                        Margin="8,0,0,0"
+                        Style="{StaticResource CompactMetricChipStyle}">
+                        <StackPanel Spacing="1">
+                            <TextBlock
+                                Style="{StaticResource MetricLabelStyle}"
+                                Text="MEMORY" />
+                            <TextBlock
+                                x:Name="CompactMemoryUsageText"
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                Text="--" />
+                        </StackPanel>
+                    </Border>
+                    <Button
+                        x:Name="DetailsToggleButton"
+                        AutomationProperties.AutomationId="DetailsToggleButton"
+                        Click="OnDetailsToggleClicked"
+                        Content="View dashboard"
+                        Grid.Column="2"
+                        HorizontalAlignment="Stretch"
+                        Margin="8,0,0,0"
+                        MinHeight="32"
+                        Padding="8,2"
+                        VerticalAlignment="Stretch" />
+                </Grid>
+            </Grid>
+        </Border>
 
         <ScrollViewer
             x:Name="DetailsPanel"
             AutomationProperties.AutomationId="DetailsPanel"
             Grid.Row="1"
             HorizontalScrollBarVisibility="Disabled"
-            Margin="0,16,0,0"
+            Margin="0,12,0,0"
             VerticalScrollBarVisibility="Auto"
             Visibility="Collapsed">
-            <StackPanel Spacing="8">
-                <TextBlock
-                    FontSize="28"
-                    FontWeight="SemiBold"
-                    Text="Machine" />
-                <TextBlock
-                    Margin="0,0,0,16"
-                    Text="Windows intelligence layer" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Text="Device name" />
-                <TextBlock
-                    x:Name="DeviceNameText"
-                    AutomationProperties.AutomationId="DeviceNameText"
-                    Margin="0,0,0,8"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Text="Operating system" />
-                <TextBlock
-                    x:Name="OperatingSystemText"
-                    AutomationProperties.AutomationId="OperatingSystemText"
-                    Margin="0,0,0,8"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Text="Architecture" />
-                <TextBlock
-                    x:Name="ArchitectureText"
-                    AutomationProperties.AutomationId="ArchitectureText"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    x:Name="LoadStatusText"
-                    AutomationProperties.AutomationId="LoadStatusText"
-                    Margin="0,8,0,0"
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Margin="0,16,0,0"
-                    Text="CPU usage" />
-                <TextBlock
-                    x:Name="CpuUsageText"
-                    AutomationProperties.AutomationId="CpuUsageText"
-                    Margin="0,0,0,8"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Text="Memory usage" />
-                <TextBlock
-                    x:Name="MemoryUsageText"
-                    AutomationProperties.AutomationId="MemoryUsageText"
-                    Text="Loading..."
-                    TextWrapping="Wrap" />
+            <StackPanel Padding="0,0,0,16" Spacing="12">
+                <StackPanel Spacing="2">
+                    <TextBlock
+                        FontSize="24"
+                        FontWeight="SemiBold"
+                        Text="Dashboard" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Verified local machine overview" />
+                </StackPanel>
+                <Border Style="{StaticResource DashboardCardStyle}">
+                    <StackPanel Spacing="4">
+                        <TextBlock
+                            Style="{StaticResource MetricLabelStyle}"
+                            Text="THIS MACHINE" />
+                        <TextBlock
+                            x:Name="DeviceNameText"
+                            AutomationProperties.AutomationId="DeviceNameText"
+                            FontSize="17"
+                            FontWeight="SemiBold"
+                            Text="Loading..."
+                            TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock
+                                x:Name="OperatingSystemText"
+                                AutomationProperties.AutomationId="OperatingSystemText"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Loading..."
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="&#x00B7;" />
+                            <TextBlock
+                                x:Name="ArchitectureText"
+                                AutomationProperties.AutomationId="ArchitectureText"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Loading..."
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                        <TextBlock
+                            x:Name="LoadStatusText"
+                            AutomationProperties.AutomationId="LoadStatusText"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource DashboardCardStyle}">
+                        <StackPanel Spacing="4">
+                            <TextBlock
+                                Style="{StaticResource MetricLabelStyle}"
+                                Text="CPU" />
+                            <TextBlock
+                                x:Name="CpuUsageText"
+                                AutomationProperties.AutomationId="CpuUsageText"
+                                FontSize="24"
+                                FontWeight="SemiBold"
+                                Text="Loading..."
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Current usage" />
+                        </StackPanel>
+                    </Border>
+                    <Border
+                        Grid.Column="1"
+                        Style="{StaticResource DashboardCardStyle}">
+                        <StackPanel Spacing="4">
+                            <TextBlock
+                                Style="{StaticResource MetricLabelStyle}"
+                                Text="MEMORY" />
+                            <TextBlock
+                                x:Name="MemoryUsageText"
+                                AutomationProperties.AutomationId="MemoryUsageText"
+                                FontSize="20"
+                                FontWeight="SemiBold"
+                                Text="Loading..."
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Used / total" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
                 <TextBlock
                     x:Name="TelemetryStatusText"
                     AutomationProperties.AutomationId="TelemetryStatusText"
-                    Margin="0,8,0,0"
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Margin="0,16,0,0"
-                    Text="Current findings" />
-                <Border
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8"
-                    Padding="12">
-                    <StackPanel Spacing="8">
-                        <TextBlock
-                            x:Name="FindingsOverallStateText"
-                            AutomationProperties.AutomationId="FindingsOverallStateText"
-                            FontWeight="SemiBold"
-                            Text="Unknown"
-                            TextWrapping="Wrap" />
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap"
+                    Visibility="Collapsed" />
+                <Border Style="{StaticResource DashboardCardStyle}">
+                    <StackPanel Spacing="10">
+                        <Grid>
+                            <TextBlock
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Text="Current findings" />
+                            <Border
+                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                HorizontalAlignment="Right"
+                                Padding="8,2">
+                                <TextBlock
+                                    x:Name="FindingsOverallStateText"
+                                    AutomationProperties.AutomationId="FindingsOverallStateText"
+                                    FontSize="11"
+                                    FontWeight="SemiBold"
+                                    Text="Unknown"
+                                    TextWrapping="Wrap" />
+                            </Border>
+                        </Grid>
                         <TextBlock
                             x:Name="FindingsSummaryText"
                             AutomationProperties.AutomationId="FindingsSummaryText"
@@ -162,9 +323,80 @@
                         </ItemsControl>
                     </StackPanel>
                 </Border>
+                <Border Style="{StaticResource DashboardCardStyle}">
+                    <StackPanel Spacing="10">
+                        <Grid>
+                            <TextBlock
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Text="Machine insight" />
+                            <Border
+                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                HorizontalAlignment="Right"
+                                Padding="8,2">
+                                <TextBlock
+                                    x:Name="MachineExplanationStateBadgeText"
+                                    FontSize="11"
+                                    FontWeight="SemiBold"
+                                    Text="Unknown" />
+                            </Border>
+                        </Grid>
+                        <TextBlock
+                            x:Name="MachineExplanationText"
+                            AutomationProperties.AutomationId="MachineExplanationText"
+                            FontSize="16"
+                            LineHeight="23"
+                            Text="No explanation yet."
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            x:Name="MachineExplanationStatusText"
+                            AutomationProperties.AutomationId="MachineExplanationStatusText"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="Wrap" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                x:Name="MachineExplanationMetadataText"
+                                AutomationProperties.AutomationId="MachineExplanationMetadataText"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                TextWrapping="Wrap"
+                                VerticalAlignment="Center"
+                                Visibility="Collapsed" />
+                            <ProgressRing
+                                x:Name="MachineExplanationProgressRing"
+                                AutomationProperties.AutomationId="MachineExplanationProgressRing"
+                                Grid.Column="1"
+                                Height="20"
+                                IsActive="False"
+                                VerticalAlignment="Center"
+                                Visibility="Collapsed"
+                                Width="20" />
+                            <Button
+                                x:Name="ExplainMachineStateButton"
+                                AutomationProperties.AutomationId="ExplainMachineStateButton"
+                                Click="OnExplainMachineStateClicked"
+                                Content="Generate insight"
+                                Grid.Column="2"
+                                HorizontalAlignment="Right"
+                                IsEnabled="False" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+                <TextBlock
+                    FontSize="20"
+                    FontWeight="SemiBold"
+                    Margin="0,4,0,0"
+                    Text="Diagnostics" />
                 <TextBlock
                     FontWeight="SemiBold"
-                    Margin="0,16,0,0"
                     Text="Top processes" />
                 <ItemsControl
                     x:Name="TopProcessesList"
@@ -239,56 +471,6 @@
                     Margin="0,8,0,0"
                     Text="Loading..."
                     TextWrapping="Wrap" />
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Margin="0,16,0,0"
-                    Text="Machine explanation" />
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button
-                        x:Name="ExplainMachineStateButton"
-                        AutomationProperties.AutomationId="ExplainMachineStateButton"
-                        Click="OnExplainMachineStateClicked"
-                        Content="Explain current state"
-                        HorizontalAlignment="Left"
-                        IsEnabled="False" />
-                    <ProgressRing
-                        x:Name="MachineExplanationProgressRing"
-                        AutomationProperties.AutomationId="MachineExplanationProgressRing"
-                        Height="20"
-                        IsActive="False"
-                        VerticalAlignment="Center"
-                        Visibility="Collapsed"
-                        Width="20" />
-                </StackPanel>
-                <Border
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8"
-                    Padding="12">
-                    <StackPanel Spacing="8">
-                        <TextBlock
-                            FontWeight="SemiBold"
-                            Text="Machine says" />
-                        <TextBlock
-                            x:Name="MachineExplanationText"
-                            AutomationProperties.AutomationId="MachineExplanationText"
-                            Text="No explanation yet."
-                            TextWrapping="Wrap" />
-                        <TextBlock
-                            x:Name="MachineExplanationMetadataText"
-                            AutomationProperties.AutomationId="MachineExplanationMetadataText"
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            TextWrapping="Wrap"
-                            Visibility="Collapsed" />
-                        <TextBlock
-                            x:Name="MachineExplanationStatusText"
-                            AutomationProperties.AutomationId="MachineExplanationStatusText"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
                 <TextBlock
                     FontWeight="SemiBold"
                     Margin="0,16,0,0"

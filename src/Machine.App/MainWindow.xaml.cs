@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
 using Machine.Core;
-using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 
@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
     private const int ExplanationStartupNameCount = 5;
     private const int FindingsDisplayCount = 8;
     private const string UnavailableValue = "Unavailable";
+    private const double CompactIdleOpacity = 0.82d;
     private const double BytesPerMebibyte =
         1024d * 1024d;
     private const double BytesPerGibibyte =
@@ -83,6 +84,7 @@ public sealed partial class MainWindow : Window
     private bool _isSoftwareInventoryRequestRunning;
     private bool _isPackagedSoftwareInventoryRequestRunning;
     private bool _isStartupInventoryRequestRunning;
+    private bool _isPointerOverCompactShell;
 
     public MainWindow(
         IMachineIdentityProvider identityProvider,
@@ -251,19 +253,29 @@ public sealed partial class MainWindow : Window
 
             CpuUsageText.Text =
                 $"{snapshot.CpuUsagePercent:F1}%";
+            CompactCpuUsageText.Text =
+                $"{snapshot.CpuUsagePercent:F1}%";
 
             var usedMemory =
                 snapshot.UsedMemoryBytes / BytesPerGibibyte;
             var totalMemory =
                 snapshot.TotalMemoryBytes / BytesPerGibibyte;
+            var memoryUsagePercent =
+                snapshot.TotalMemoryBytes == 0
+                    ? 0d
+                    : snapshot.UsedMemoryBytes /
+                        (double)snapshot.TotalMemoryBytes * 100d;
 
             MemoryUsageText.Text =
                 $"{usedMemory:F1} GB / {totalMemory:F1} GB";
+            CompactMemoryUsageText.Text =
+                $"{usedMemory:F1} / {totalMemory:F1} GB";
             TelemetryStatusText.Text = string.Empty;
+            TelemetryStatusText.Visibility = Visibility.Collapsed;
 
             PresenceTelemetryText.Text =
-                $"CPU {snapshot.CpuUsagePercent:F1}% · " +
-                $"Memory {usedMemory:F1} / {totalMemory:F1} GB";
+                $"{snapshot.CpuUsagePercent:F1}% CPU · " +
+                $"{memoryUsagePercent:F0}% memory";
             ReevaluateFindings();
             UpdateExplainMachineStateButtonState();
         }
@@ -280,42 +292,62 @@ public sealed partial class MainWindow : Window
             {
                 CpuUsageText.Text = UnavailableValue;
                 MemoryUsageText.Text = UnavailableValue;
+                CompactCpuUsageText.Text = "--";
+                CompactMemoryUsageText.Text = "--";
                 PresenceTelemetryText.Text =
                     "CPU unavailable · Memory unavailable";
             }
 
             TelemetryStatusText.Text =
                 "Resource telemetry could not be loaded.";
+            TelemetryStatusText.Visibility = Visibility.Visible;
         }
     }
 
     private void UpdatePresenceState(
         MachineOverallState overallState)
     {
+        var stateBrush = GetStateBrush(overallState);
+
         switch (overallState)
         {
             case MachineOverallState.Stable:
                 PresenceStateText.Text = "Stable";
-                PresenceIndicator.Fill =
-                    new SolidColorBrush(Colors.Green);
                 break;
             case MachineOverallState.Attention:
                 PresenceStateText.Text = "Busy";
-                PresenceIndicator.Fill =
-                    new SolidColorBrush(Colors.Orange);
                 break;
             case MachineOverallState.Warning:
             case MachineOverallState.Critical:
                 PresenceStateText.Text = "Under pressure";
-                PresenceIndicator.Fill =
-                    new SolidColorBrush(Colors.Red);
                 break;
             default:
                 PresenceStateText.Text = "Status unavailable";
-                PresenceIndicator.Fill =
-                    new SolidColorBrush(Colors.Gray);
                 break;
         }
+
+        PresenceIndicator.Fill = stateBrush;
+        MachineExplanationStateBadgeText.Text =
+            overallState.ToString();
+        MachineExplanationStateBadgeText.Foreground = stateBrush;
+    }
+
+    private static Brush GetStateBrush(
+        MachineOverallState overallState)
+    {
+        var resourceKey = overallState switch
+        {
+            MachineOverallState.Stable =>
+                "SystemFillColorSuccessBrush",
+            MachineOverallState.Attention =>
+                "SystemFillColorCautionBrush",
+            MachineOverallState.Warning or
+                MachineOverallState.Critical =>
+                    "SystemFillColorCriticalBrush",
+            _ => "TextFillColorSecondaryBrush"
+        };
+
+        return (Brush)Application.Current.Resources[resourceKey];
     }
 
     private void ReevaluateFindings()
@@ -340,6 +372,8 @@ public sealed partial class MainWindow : Window
     {
         FindingsOverallStateText.Text =
             snapshot.OverallState.ToString();
+        FindingsOverallStateText.Foreground =
+            GetStateBrush(snapshot.OverallState);
 
         var displayItems = snapshot.Findings
             .Take(FindingsDisplayCount)
@@ -481,7 +515,7 @@ public sealed partial class MainWindow : Window
         if (!snapshot.IsRunningModelStatusAvailable)
         {
             OllamaPresenceStatusText.Text =
-                "Ollama online · Model status unavailable";
+                "Online · Model status unavailable";
             ClearOllamaModels(
                 "Loaded-model status is unavailable.");
             UpdateExplainMachineStateButtonState();
@@ -497,7 +531,7 @@ public sealed partial class MainWindow : Window
         if (displayItems.Length == 0)
         {
             OllamaPresenceStatusText.Text =
-                "Ollama online · No model loaded";
+                "Online · No model loaded";
             OllamaLoadedModelsStatusText.Text =
                 "No models currently loaded.";
             UpdateExplainMachineStateButtonState();
@@ -505,8 +539,8 @@ public sealed partial class MainWindow : Window
         }
 
         OllamaPresenceStatusText.Text = displayItems.Length == 1
-            ? $"Ollama online · {displayItems[0].Name} loaded"
-            : $"Ollama online · {displayItems.Length} models loaded";
+            ? $"Online · {displayItems[0].Name}"
+            : $"Online · {displayItems.Length} models";
         OllamaLoadedModelsStatusText.Text = string.Empty;
         UpdateExplainMachineStateButtonState();
     }
@@ -514,7 +548,7 @@ public sealed partial class MainWindow : Window
     private void ShowOllamaOffline()
     {
         _isOllamaServiceAvailable = false;
-        OllamaPresenceStatusText.Text = "Ollama offline";
+        OllamaPresenceStatusText.Text = "Offline";
         OllamaServiceStatusText.Text = "Offline";
         OllamaVersionText.Text = UnavailableValue;
         ClearOllamaModels(
@@ -583,12 +617,12 @@ public sealed partial class MainWindow : Window
 
         _isExplanationRequestRunning = true;
         UpdateExplainMachineStateButtonState();
-        ExplainMachineStateButton.Content = "Thinking...";
+        ExplainMachineStateButton.Content = "Generating...";
         MachineExplanationProgressRing.Visibility =
             Visibility.Visible;
         MachineExplanationProgressRing.IsActive = true;
         MachineExplanationStatusText.Text =
-            "Reading the current machine state...";
+            "Checking the verified snapshot...";
 
         var cancellationToken =
             _windowCancellationTokenSource.Token;
@@ -623,8 +657,11 @@ public sealed partial class MainWindow : Window
                     "F1",
                     CultureInfo.InvariantCulture);
             MachineExplanationMetadataText.Text =
-                $"Generated locally in {elapsedSeconds}s · " +
-                explanation.Model;
+                explanation.Source ==
+                    MachineExplanationSource.DeterministicFallback
+                    ? "Verified summary · local safeguard"
+                    : $"Verified locally · {explanation.Model} · " +
+                        $"{elapsedSeconds}s";
             MachineExplanationMetadataText.Visibility =
                 Visibility.Visible;
             MachineExplanationStatusText.Text = string.Empty;
@@ -657,7 +694,7 @@ public sealed partial class MainWindow : Window
             if (!cancellationToken.IsCancellationRequested)
             {
                 ExplainMachineStateButton.Content =
-                    "Explain current state";
+                    "Generate insight";
                 MachineExplanationProgressRing.IsActive = false;
                 MachineExplanationProgressRing.Visibility =
                     Visibility.Collapsed;
@@ -1703,6 +1740,64 @@ public sealed partial class MainWindow : Window
         return $"{bytes} B";
     }
 
+    private void OnCompactShellPointerEntered(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        _isPointerOverCompactShell = true;
+        UpdateShellProminence();
+    }
+
+    private void OnCompactShellPointerExited(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        _isPointerOverCompactShell = false;
+        UpdateShellProminence();
+    }
+
+    private void OnMainContentGotFocus(
+        object sender,
+        RoutedEventArgs e) =>
+        UpdateShellProminence();
+
+    private void OnMainContentLostFocus(
+        object sender,
+        RoutedEventArgs e) =>
+        MainContent.DispatcherQueue.TryEnqueue(
+            UpdateShellProminence);
+
+    private void UpdateShellProminence()
+    {
+        var focusedElement = MainContent.XamlRoot is null
+            ? null
+            : FocusManager.GetFocusedElement(
+                MainContent.XamlRoot) as DependencyObject;
+        var focusIsInside = IsInsideCompactShell(focusedElement);
+
+        CompactShell.Opacity = _detailsExpanded ||
+            _isPointerOverCompactShell ||
+            focusIsInside
+                ? 1d
+                : CompactIdleOpacity;
+    }
+
+    private bool IsInsideCompactShell(
+        DependencyObject? element)
+    {
+        while (element is not null)
+        {
+            if (ReferenceEquals(element, CompactShell))
+            {
+                return true;
+            }
+
+            element = VisualTreeHelper.GetParent(element);
+        }
+
+        return false;
+    }
+
     private void OnDetailsToggleClicked(
         object sender,
         RoutedEventArgs e)
@@ -1713,8 +1808,10 @@ public sealed partial class MainWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
         DetailsToggleButton.Content = _detailsExpanded
-            ? "Collapse"
-            : "Show details";
+            ? "Close dashboard"
+            : "View dashboard";
+
+        UpdateShellProminence();
 
         ResizeAndPositionWindow(
             _detailsExpanded
