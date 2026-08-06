@@ -115,6 +115,280 @@ public sealed class OllamaMachineStateExplainerTests
     }
 
     [Fact]
+    public async Task ExplainAsyncSendsBoundedVerifiedContext()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            ChatResponse("Verified context received.", ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+        var request = CreateExplanationRequest() with
+        {
+            Storage = new MachineStorageExplanationContext(
+                SystemVolumeRoot: "C:\\",
+                TotalSizeBytes: 1_000_000_000_000,
+                AvailableSizeBytes: 250_000_000_000,
+                LargeFolderScan:
+                    new MachineFolderScanExplanationContext(
+                        Folders:
+                        [
+                            new("Fourth", 100, true),
+                            new("Users", 400, false),
+                            new("Windows", 300, true),
+                            new("ProgramData", 200, true)
+                        ],
+                        IsComplete: false)),
+            Software = new MachineSoftwareExplanationContext(
+                ClassicDesktop:
+                    new MachineSoftwareInventoryExplanationSummary(
+                        RegistrationCount: 143,
+                        IsComplete: true,
+                        SkippedEntryCount: 0),
+                PackagedApplications:
+                    new MachineSoftwareInventoryExplanationSummary(
+                        RegistrationCount: 128,
+                        IsComplete: false,
+                        SkippedEntryCount: 2)),
+            Startup = new MachineStartupExplanationContext(
+                RegistrationCount: 18,
+                RegistryRunCount: 14,
+                StartupFolderCount: 4,
+                MachineCount: 7,
+                CurrentUserCount: 11,
+                IsComplete: false,
+                Names:
+                [
+                    "Zulu",
+                    "alpha",
+                    "Echo",
+                    "bravo",
+                    "Delta",
+                    "charlie",
+                    "Foxtrot"
+                ])
+        };
+
+        await explainer.ExplainAsync(request);
+
+        var payload = GetUserPayload(handler.RequestJson);
+        var storage = payload.GetProperty("storage");
+        Assert.Equal(
+            "C:\\",
+            storage.GetProperty("system_volume_root").GetString());
+        Assert.Equal(
+            1_000_000_000_000,
+            storage.GetProperty("total_bytes").GetInt64());
+        Assert.Equal(
+            250_000_000_000,
+            storage.GetProperty("available_bytes").GetInt64());
+        var folderScan = storage.GetProperty("large_folder_scan");
+        Assert.False(
+            folderScan.GetProperty("is_complete").GetBoolean());
+        var folders = folderScan.GetProperty("folders")
+            .EnumerateArray()
+            .ToArray();
+        Assert.Equal(3, folders.Length);
+        Assert.Equal(
+            ["Users", "Windows", "ProgramData"],
+            folders.Select(folder =>
+                folder.GetProperty("name").GetString()));
+        Assert.Equal(
+            [400L, 300L, 200L],
+            folders.Select(folder =>
+                folder.GetProperty("measured_bytes").GetInt64()));
+        Assert.False(
+            folders[0].GetProperty("is_complete").GetBoolean());
+        Assert.DoesNotContain(
+            folders,
+            folder => folder.GetProperty("name").GetString() ==
+                "Fourth");
+
+        var software = payload.GetProperty("software");
+        var classic = software.GetProperty("classic_desktop");
+        Assert.Equal(
+            143,
+            classic.GetProperty("registration_count").GetInt32());
+        Assert.True(
+            classic.GetProperty("is_complete").GetBoolean());
+        Assert.Equal(
+            0,
+            classic.GetProperty("skipped_entry_count").GetInt32());
+        var packaged =
+            software.GetProperty("packaged_applications");
+        Assert.Equal(
+            128,
+            packaged.GetProperty("registration_count").GetInt32());
+        Assert.False(
+            packaged.GetProperty("is_complete").GetBoolean());
+        Assert.Equal(
+            2,
+            packaged.GetProperty("skipped_entry_count").GetInt32());
+
+        var startup = payload.GetProperty("startup");
+        Assert.Equal(
+            18,
+            startup.GetProperty("registration_count").GetInt32());
+        Assert.Equal(
+            14,
+            startup.GetProperty("registry_run_count").GetInt32());
+        Assert.Equal(
+            4,
+            startup.GetProperty("startup_folder_count").GetInt32());
+        Assert.Equal(
+            7,
+            startup.GetProperty("machine_count").GetInt32());
+        Assert.Equal(
+            11,
+            startup.GetProperty("current_user_count").GetInt32());
+        Assert.False(
+            startup.GetProperty("is_complete").GetBoolean());
+        Assert.Equal(
+            ["alpha", "bravo", "charlie", "Delta", "Echo"],
+            startup.GetProperty("names")
+                .EnumerateArray()
+                .Select(name => name.GetString()));
+    }
+
+    [Fact]
+    public async Task ExplainAsyncRepresentsUnavailableContextAsNull()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            ChatResponse("Unavailable context noted.", ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+
+        await explainer.ExplainAsync(CreateExplanationRequest());
+
+        var payload = GetUserPayload(handler.RequestJson);
+        Assert.Equal(
+            JsonValueKind.Null,
+            payload.GetProperty("storage").ValueKind);
+        Assert.Equal(
+            JsonValueKind.Null,
+            payload.GetProperty("software").ValueKind);
+        Assert.Equal(
+            JsonValueKind.Null,
+            payload.GetProperty("startup").ValueKind);
+    }
+
+    [Fact]
+    public async Task ExplainAsyncPreservesPartialAndNestedUnavailableState()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            ChatResponse("Partial context noted.", ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+        var request = CreateExplanationRequest() with
+        {
+            Storage = new MachineStorageExplanationContext(
+                SystemVolumeRoot: "C:\\",
+                TotalSizeBytes: 100,
+                AvailableSizeBytes: 25,
+                LargeFolderScan: null),
+            Software = new MachineSoftwareExplanationContext(
+                ClassicDesktop:
+                    new MachineSoftwareInventoryExplanationSummary(
+                        RegistrationCount: 10,
+                        IsComplete: false,
+                        SkippedEntryCount: 3),
+                PackagedApplications: null),
+            Startup = new MachineStartupExplanationContext(
+                RegistrationCount: 0,
+                RegistryRunCount: 0,
+                StartupFolderCount: 0,
+                MachineCount: 0,
+                CurrentUserCount: 0,
+                IsComplete: false,
+                Names: Array.Empty<string>())
+        };
+
+        await explainer.ExplainAsync(request);
+
+        var payload = GetUserPayload(handler.RequestJson);
+        Assert.Equal(
+            JsonValueKind.Null,
+            payload.GetProperty("storage")
+                .GetProperty("large_folder_scan")
+                .ValueKind);
+        var software = payload.GetProperty("software");
+        var classic = software.GetProperty("classic_desktop");
+        Assert.False(
+            classic.GetProperty("is_complete").GetBoolean());
+        Assert.Equal(
+            3,
+            classic.GetProperty("skipped_entry_count").GetInt32());
+        Assert.Equal(
+            JsonValueKind.Null,
+            software.GetProperty("packaged_applications").ValueKind);
+        Assert.False(
+            payload.GetProperty("startup")
+                .GetProperty("is_complete")
+                .GetBoolean());
+    }
+
+    [Fact]
+    public async Task ExplainAsyncDoesNotSendRawInventoryDetails()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            ChatResponse("Bounded context received.", ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+        var request = CreateExplanationRequest() with
+        {
+            Software = new MachineSoftwareExplanationContext(
+                ClassicDesktop:
+                    new MachineSoftwareInventoryExplanationSummary(
+                        1,
+                        true,
+                        0),
+                PackagedApplications:
+                    new MachineSoftwareInventoryExplanationSummary(
+                        1,
+                        true,
+                        0)),
+            Startup = new MachineStartupExplanationContext(
+                RegistrationCount: 1,
+                RegistryRunCount: 1,
+                StartupFolderCount: 0,
+                MachineCount: 0,
+                CurrentUserCount: 1,
+                IsComplete: true,
+                Names: ["Machine Agent"])
+        };
+
+        await explainer.ExplainAsync(request);
+
+        var payloadJson = GetUserPayload(handler.RequestJson)
+            .GetRawText();
+        foreach (var forbiddenText in new[]
+        {
+            "\"items\"",
+            "publisher",
+            "version",
+            "install_location",
+            "package_family",
+            "package_full_name",
+            "command",
+            "command_or_path",
+            "startup_path",
+            "\"path\""
+        })
+        {
+            Assert.DoesNotContain(
+                forbiddenText,
+                payloadJson,
+                StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task ExplainAsyncSendsRequiredSystemGuardrails()
     {
         using var handler = new CapturingHttpMessageHandler(() =>
@@ -164,6 +438,34 @@ public sealed class OllamaMachineStateExplainerTests
             StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
             "never end with an offer, invitation, recommendation, or next step",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "null means unavailable and is_complete false means partial",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Never treat a partial folder measurement as a final folder total.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "An incomplete folder scan means only that its results are partial; never infer why it is incomplete or how much unmeasured data exists.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Never claim software is unused, harmful, outdated, or removable.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Never claim startup entries are enabled, expensive, or safe to disable.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Never recommend deletion, uninstalling, disabling, cleanup, or optimization.",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "without inventory-style recitation",
             systemMessage,
             StringComparison.OrdinalIgnoreCase);
     }
@@ -316,6 +618,20 @@ public sealed class OllamaMachineStateExplainerTests
                 message.GetProperty("role").GetString() == role)
             .GetProperty("content")
             .GetString() ?? string.Empty;
+
+    private static JsonElement GetUserPayload(
+        JsonElement requestJson)
+    {
+        const string payloadPrefix =
+            "Explain this verified machine snapshot:";
+        var userMessage = GetMessageContent(requestJson, "user");
+        Assert.StartsWith(payloadPrefix, userMessage);
+
+        using var payloadDocument = JsonDocument.Parse(
+            userMessage[payloadPrefix.Length..].Trim());
+
+        return payloadDocument.RootElement.Clone();
+    }
 
     private sealed class CapturingHttpMessageHandler(
         Func<HttpResponseMessage> responseFactory)

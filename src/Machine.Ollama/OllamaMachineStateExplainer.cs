@@ -9,6 +9,8 @@ public sealed partial class OllamaMachineStateExplainer
     : IMachineStateExplainer
 {
     private const string ChatEndpoint = "api/chat";
+    private const int LargeFolderContextLimit = 3;
+    private const int StartupNameContextLimit = 5;
     private const string UserMessagePrefix =
         "Explain this verified machine snapshot:";
     private const string SystemMessage = """
@@ -17,7 +19,12 @@ public sealed partial class OllamaMachineStateExplainer
         Use only the verified machine facts supplied by the application.
         Never invent causes, diagnoses, temperatures, hardware details, processes, or actions.
         Do not claim that you changed, fixed, deleted, stopped, or optimized anything.
-        Do not recommend actions yet.
+        In optional context, null means unavailable and is_complete false means partial; distinguish those states honestly when relevant.
+        Never treat a partial folder measurement as a final folder total.
+        An incomplete folder scan means only that its results are partial; never infer why it is incomplete or how much unmeasured data exists.
+        Never claim software is unused, harmful, outdated, or removable.
+        Never claim startup entries are enabled, expensive, or safe to disable.
+        Never recommend deletion, uninstalling, disabling, cleanup, or optimization.
         Do not mention being an AI, language model, or Ollama.
 
         Respond in natural conversational Filipino Taglish.
@@ -25,6 +32,7 @@ public sealed partial class OllamaMachineStateExplainer
         Start with one concise overall assessment.
         Support it with only one or two useful observations.
         Mention process names only when they are relevant to the assessment.
+        Summarize the supplied context without inventory-style recitation.
         Do not recite every supplied value.
         Keep every assessment literal and idiomatic: judge pressure only from the supplied CPU and memory values, never infer why a process is running or what the owner is doing, never coin awkward Filipino words, and never end with an offer, invitation, recommendation, or next step.
         Use at most one dry or mildly sarcastic remark.
@@ -159,13 +167,114 @@ public sealed partial class OllamaMachineStateExplainer
                     ProcessId: process.ProcessId,
                     CpuUsagePercent: process.CpuUsagePercent,
                     WorkingSetBytes: process.WorkingSetBytes))
-                .ToArray());
+                .ToArray(),
+            Storage: CreateStoragePayload(request.Storage),
+            Software: CreateSoftwarePayload(request.Software),
+            Startup: CreateStartupPayload(request.Startup));
 
         var payloadJson = JsonSerializer.Serialize(
             payload,
             ExplainerJsonSerializerContext.Default.MachineSnapshotPayload);
 
         return $"{UserMessagePrefix}\n{payloadJson}";
+    }
+
+    private static StorageSnapshotPayload? CreateStoragePayload(
+        MachineStorageExplanationContext? storage)
+    {
+        if (storage is null)
+        {
+            return null;
+        }
+
+        FolderScanSnapshotPayload? folderScan = null;
+
+        if (storage.LargeFolderScan is not null)
+        {
+            ArgumentNullException.ThrowIfNull(
+                storage.LargeFolderScan.Folders);
+
+            var folders = storage.LargeFolderScan.Folders
+                .OrderByDescending(folder => folder.MeasuredSizeBytes)
+                .ThenByDescending(folder => folder.IsComplete)
+                .ThenBy(
+                    folder => folder.Name,
+                    StringComparer.OrdinalIgnoreCase)
+                .ThenBy(
+                    folder => folder.Name,
+                    StringComparer.Ordinal)
+                .Take(LargeFolderContextLimit)
+                .Select(folder => new FolderMeasurementPayload(
+                    Name: folder.Name,
+                    MeasuredBytes: folder.MeasuredSizeBytes,
+                    IsComplete: folder.IsComplete))
+                .ToArray();
+
+            folderScan = new FolderScanSnapshotPayload(
+                IsComplete: storage.LargeFolderScan.IsComplete,
+                Folders: folders);
+        }
+
+        return new StorageSnapshotPayload(
+            SystemVolumeRoot: storage.SystemVolumeRoot,
+            TotalBytes: storage.TotalSizeBytes,
+            AvailableBytes: storage.AvailableSizeBytes,
+            LargeFolderScan: folderScan);
+    }
+
+    private static SoftwareSnapshotPayload? CreateSoftwarePayload(
+        MachineSoftwareExplanationContext? software)
+    {
+        if (software is null)
+        {
+            return null;
+        }
+
+        return new SoftwareSnapshotPayload(
+            ClassicDesktop: CreateSoftwareInventoryPayload(
+                software.ClassicDesktop),
+            PackagedApplications: CreateSoftwareInventoryPayload(
+                software.PackagedApplications));
+    }
+
+    private static SoftwareInventoryPayload?
+        CreateSoftwareInventoryPayload(
+            MachineSoftwareInventoryExplanationSummary? inventory) =>
+        inventory is null
+            ? null
+            : new SoftwareInventoryPayload(
+                RegistrationCount: inventory.RegistrationCount,
+                IsComplete: inventory.IsComplete,
+                SkippedEntryCount: inventory.SkippedEntryCount);
+
+    private static StartupSnapshotPayload? CreateStartupPayload(
+        MachineStartupExplanationContext? startup)
+    {
+        if (startup is null)
+        {
+            return null;
+        }
+
+        ArgumentNullException.ThrowIfNull(startup.Names);
+
+        var names = startup.Names
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .OrderBy(
+                name => name,
+                StringComparer.OrdinalIgnoreCase)
+            .ThenBy(name => name, StringComparer.Ordinal)
+            .Take(StartupNameContextLimit)
+            .ToArray();
+
+        return new StartupSnapshotPayload(
+            RegistrationCount: startup.RegistrationCount,
+            RegistryRunCount: startup.RegistryRunCount,
+            StartupFolderCount: startup.StartupFolderCount,
+            MachineCount: startup.MachineCount,
+            CurrentUserCount: startup.CurrentUserCount,
+            IsComplete: startup.IsComplete,
+            Names: names);
     }
 
     private sealed record ChatRequest(
@@ -224,7 +333,13 @@ public sealed partial class OllamaMachineStateExplainer
         [property: JsonPropertyName("captured_at")]
         DateTimeOffset CapturedAt,
         [property: JsonPropertyName("top_processes")]
-        ProcessSnapshotPayload[] TopProcesses);
+        ProcessSnapshotPayload[] TopProcesses,
+        [property: JsonPropertyName("storage")]
+        StorageSnapshotPayload? Storage,
+        [property: JsonPropertyName("software")]
+        SoftwareSnapshotPayload? Software,
+        [property: JsonPropertyName("startup")]
+        StartupSnapshotPayload? Startup);
 
     private sealed record ProcessSnapshotPayload(
         [property: JsonPropertyName("name")]
@@ -235,6 +350,60 @@ public sealed partial class OllamaMachineStateExplainer
         double CpuUsagePercent,
         [property: JsonPropertyName("working_set_bytes")]
         long WorkingSetBytes);
+
+    private sealed record StorageSnapshotPayload(
+        [property: JsonPropertyName("system_volume_root")]
+        string SystemVolumeRoot,
+        [property: JsonPropertyName("total_bytes")]
+        long TotalBytes,
+        [property: JsonPropertyName("available_bytes")]
+        long AvailableBytes,
+        [property: JsonPropertyName("large_folder_scan")]
+        FolderScanSnapshotPayload? LargeFolderScan);
+
+    private sealed record FolderScanSnapshotPayload(
+        [property: JsonPropertyName("is_complete")]
+        bool IsComplete,
+        [property: JsonPropertyName("folders")]
+        FolderMeasurementPayload[] Folders);
+
+    private sealed record FolderMeasurementPayload(
+        [property: JsonPropertyName("name")]
+        string Name,
+        [property: JsonPropertyName("measured_bytes")]
+        long MeasuredBytes,
+        [property: JsonPropertyName("is_complete")]
+        bool IsComplete);
+
+    private sealed record SoftwareSnapshotPayload(
+        [property: JsonPropertyName("classic_desktop")]
+        SoftwareInventoryPayload? ClassicDesktop,
+        [property: JsonPropertyName("packaged_applications")]
+        SoftwareInventoryPayload? PackagedApplications);
+
+    private sealed record SoftwareInventoryPayload(
+        [property: JsonPropertyName("registration_count")]
+        int RegistrationCount,
+        [property: JsonPropertyName("is_complete")]
+        bool IsComplete,
+        [property: JsonPropertyName("skipped_entry_count")]
+        int SkippedEntryCount);
+
+    private sealed record StartupSnapshotPayload(
+        [property: JsonPropertyName("registration_count")]
+        int RegistrationCount,
+        [property: JsonPropertyName("registry_run_count")]
+        int RegistryRunCount,
+        [property: JsonPropertyName("startup_folder_count")]
+        int StartupFolderCount,
+        [property: JsonPropertyName("machine_count")]
+        int MachineCount,
+        [property: JsonPropertyName("current_user_count")]
+        int CurrentUserCount,
+        [property: JsonPropertyName("is_complete")]
+        bool IsComplete,
+        [property: JsonPropertyName("names")]
+        string[] Names);
 
     [JsonSerializable(typeof(ChatRequest))]
     [JsonSerializable(typeof(ChatResponse))]

@@ -19,6 +19,8 @@ public sealed partial class MainWindow : Window
     private const int WorkAreaMargin = 16;
     private const int TopProcessCount = 5;
     private const int LargeFolderResultCount = 10;
+    private const int ExplanationLargeFolderCount = 3;
+    private const int ExplanationStartupNameCount = 5;
     private const string UnavailableValue = "Unavailable";
     private const double BytesPerMebibyte =
         1024d * 1024d;
@@ -60,6 +62,8 @@ public sealed partial class MainWindow : Window
         _latestProcessSnapshots =
             Array.Empty<MachineProcessSnapshot>();
     private MachineStorageSnapshot? _latestStorageSnapshot;
+    private MachineFolderInspectionSnapshot?
+        _latestFolderInspectionSnapshot;
     private MachineSoftwareInventorySnapshot?
         _latestSoftwareInventorySnapshot;
     private MachinePackagedSoftwareInventorySnapshot?
@@ -516,6 +520,15 @@ public sealed partial class MainWindow : Window
         var identity = _latestIdentity;
         var resources = _latestResourceSnapshot;
         var processSnapshots = _latestProcessSnapshots.ToArray();
+        var storageSnapshot = _latestStorageSnapshot;
+        var folderInspectionSnapshot =
+            _latestFolderInspectionSnapshot;
+        var softwareInventorySnapshot =
+            _latestSoftwareInventorySnapshot;
+        var packagedSoftwareInventorySnapshot =
+            _latestPackagedSoftwareInventorySnapshot;
+        var startupInventorySnapshot =
+            _latestStartupInventorySnapshot;
 
         if (identity is null ||
             resources is null ||
@@ -542,9 +555,17 @@ public sealed partial class MainWindow : Window
         try
         {
             var request = new MachineStateExplanationRequest(
-                identity,
-                resources,
-                processSnapshots);
+                Identity: identity,
+                Resources: resources,
+                TopProcesses: processSnapshots,
+                Storage: CreateStorageExplanationContext(
+                    storageSnapshot,
+                    folderInspectionSnapshot),
+                Software: CreateSoftwareExplanationContext(
+                    softwareInventorySnapshot,
+                    packagedSoftwareInventorySnapshot),
+                Startup: CreateStartupExplanationContext(
+                    startupInventorySnapshot));
             var explanation =
                 await _machineStateExplainer.ExplainAsync(
                     request,
@@ -611,6 +632,153 @@ public sealed partial class MainWindow : Window
             _isOllamaServiceAvailable &&
             !_isExplanationRequestRunning &&
             !_windowCancellationTokenSource.IsCancellationRequested;
+    }
+
+    private static MachineStorageExplanationContext?
+        CreateStorageExplanationContext(
+            MachineStorageSnapshot? storageSnapshot,
+            MachineFolderInspectionSnapshot?
+                folderInspectionSnapshot)
+    {
+        var systemVolume = storageSnapshot?.Volumes
+            .FirstOrDefault(volume => volume.IsSystemVolume);
+
+        if (systemVolume is null)
+        {
+            return null;
+        }
+
+        MachineFolderScanExplanationContext? folderScan = null;
+
+        if (folderInspectionSnapshot is not null &&
+            StorageRootsMatch(
+                systemVolume.RootPath,
+                folderInspectionSnapshot.RootPath))
+        {
+            var folders = folderInspectionSnapshot.Folders
+                .OrderByDescending(folder => folder.SizeBytes)
+                .ThenByDescending(folder => folder.IsComplete)
+                .ThenBy(
+                    folder => folder.Path,
+                    StringComparer.OrdinalIgnoreCase)
+                .ThenBy(
+                    folder => folder.Path,
+                    StringComparer.Ordinal)
+                .Take(ExplanationLargeFolderCount)
+                .Select(folder =>
+                    new MachineFolderMeasurementExplanationContext(
+                        Name: GetFolderName(folder.Path),
+                        MeasuredSizeBytes: folder.SizeBytes,
+                        IsComplete: folder.IsComplete))
+                .ToArray();
+
+            folderScan = new MachineFolderScanExplanationContext(
+                Folders: folders,
+                IsComplete: folderInspectionSnapshot.IsComplete);
+        }
+
+        return new MachineStorageExplanationContext(
+            SystemVolumeRoot: systemVolume.RootPath,
+            TotalSizeBytes: systemVolume.TotalSizeBytes,
+            AvailableSizeBytes:
+                systemVolume.AvailableFreeSpaceBytes,
+            LargeFolderScan: folderScan);
+    }
+
+    private static MachineSoftwareExplanationContext?
+        CreateSoftwareExplanationContext(
+            MachineSoftwareInventorySnapshot?
+                softwareInventorySnapshot,
+            MachinePackagedSoftwareInventorySnapshot?
+                packagedSoftwareInventorySnapshot)
+    {
+        if (softwareInventorySnapshot is null &&
+            packagedSoftwareInventorySnapshot is null)
+        {
+            return null;
+        }
+
+        return new MachineSoftwareExplanationContext(
+            ClassicDesktop: softwareInventorySnapshot is null
+                ? null
+                : new MachineSoftwareInventoryExplanationSummary(
+                    RegistrationCount:
+                        softwareInventorySnapshot.Items.Count,
+                    IsComplete:
+                        softwareInventorySnapshot.IsComplete,
+                    SkippedEntryCount:
+                        softwareInventorySnapshot.SkippedEntryCount),
+            PackagedApplications:
+                packagedSoftwareInventorySnapshot is null
+                    ? null
+                    : new MachineSoftwareInventoryExplanationSummary(
+                        RegistrationCount:
+                            packagedSoftwareInventorySnapshot
+                                .Items.Count,
+                        IsComplete:
+                            packagedSoftwareInventorySnapshot
+                                .IsComplete,
+                        SkippedEntryCount:
+                            packagedSoftwareInventorySnapshot
+                                .SkippedEntryCount));
+    }
+
+    private static MachineStartupExplanationContext?
+        CreateStartupExplanationContext(
+            MachineStartupInventorySnapshot?
+                startupInventorySnapshot)
+    {
+        if (startupInventorySnapshot is null)
+        {
+            return null;
+        }
+
+        var items = startupInventorySnapshot.Items;
+        var names = items
+            .Select(item => item.Name.Trim())
+            .Where(name => name.Length > 0)
+            .OrderBy(
+                name => name,
+                StringComparer.OrdinalIgnoreCase)
+            .ThenBy(name => name, StringComparer.Ordinal)
+            .Take(ExplanationStartupNameCount)
+            .ToArray();
+
+        return new MachineStartupExplanationContext(
+            RegistrationCount: items.Count,
+            RegistryRunCount: items.Count(item =>
+                item.Source ==
+                    MachineStartupSource.RegistryRunKey),
+            StartupFolderCount: items.Count(item =>
+                item.Source ==
+                    MachineStartupSource.StartupFolder),
+            MachineCount: items.Count(item =>
+                item.Scope == MachineStartupScope.AllUsers),
+            CurrentUserCount: items.Count(item =>
+                item.Scope == MachineStartupScope.CurrentUser),
+            IsComplete: startupInventorySnapshot.IsComplete,
+            Names: names);
+    }
+
+    private static bool StorageRootsMatch(
+        string first,
+        string second) =>
+        string.Equals(
+            first.Trim().TrimEnd('\\', '/'),
+            second.Trim().TrimEnd('\\', '/'),
+            StringComparison.OrdinalIgnoreCase);
+
+    private static string GetFolderName(string path)
+    {
+        var trimmedPath = path.Trim()
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+        var folderName = Path.GetFileName(trimmedPath);
+
+        return string.IsNullOrWhiteSpace(folderName)
+            ? path.Trim()
+            : folderName;
     }
 
     private async void OnRefreshStorageClicked(
@@ -788,6 +956,7 @@ public sealed partial class MainWindow : Window
             stopwatch.Stop();
             cancellationToken.ThrowIfCancellationRequested();
 
+            _latestFolderInspectionSnapshot = snapshot;
             UpdateLargeFolderResults(
                 snapshot,
                 stopwatch.Elapsed >= LargeFolderScanTimeBudget);
