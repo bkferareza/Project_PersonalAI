@@ -5,102 +5,142 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Machine.App"
     Title="Machine">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Grid
+        x:Name="MainContent"
+        Loaded="OnMainContentLoaded"
+        Margin="20,12,20,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
         <StackPanel
-            x:Name="MainContent"
-            HorizontalAlignment="Center"
-            Loaded="OnMainContentLoaded"
-            Margin="32"
-            MinWidth="360"
-            VerticalAlignment="Top"
+            Grid.Row="0"
             Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Ellipse
+                    x:Name="PresenceIndicator"
+                    AutomationProperties.AccessibilityView="Raw"
+                    Fill="Gray"
+                    Height="10"
+                    VerticalAlignment="Center"
+                    Width="10" />
+                <TextBlock
+                    x:Name="PresenceStateText"
+                    AutomationProperties.AutomationId="PresenceStateText"
+                    FontSize="18"
+                    FontWeight="SemiBold"
+                    Text="Status unavailable" />
+            </StackPanel>
             <TextBlock
-                FontSize="28"
-                FontWeight="SemiBold"
-                Text="Machine" />
-            <TextBlock
-                Margin="0,0,0,16"
-                Text="Windows intelligence layer" />
-            <TextBlock
-                FontWeight="SemiBold"
-                Text="Device name" />
-            <TextBlock
-                x:Name="DeviceNameText"
-                AutomationProperties.AutomationId="DeviceNameText"
-                Margin="0,0,0,8"
-                Text="Loading..."
+                x:Name="PresenceTelemetryText"
+                AutomationProperties.AutomationId="PresenceTelemetryText"
+                Text="CPU unavailable · Memory unavailable"
                 TextWrapping="Wrap" />
-            <TextBlock
-                FontWeight="SemiBold"
-                Text="Operating system" />
-            <TextBlock
-                x:Name="OperatingSystemText"
-                AutomationProperties.AutomationId="OperatingSystemText"
-                Margin="0,0,0,8"
-                Text="Loading..."
-                TextWrapping="Wrap" />
-            <TextBlock
-                FontWeight="SemiBold"
-                Text="Architecture" />
-            <TextBlock
-                x:Name="ArchitectureText"
-                AutomationProperties.AutomationId="ArchitectureText"
-                Text="Loading..."
-                TextWrapping="Wrap" />
-            <TextBlock
-                x:Name="LoadStatusText"
-                AutomationProperties.AutomationId="LoadStatusText"
-                Margin="0,8,0,0"
-                TextWrapping="Wrap" />
-            <TextBlock
-                FontWeight="SemiBold"
-                Margin="0,16,0,0"
-                Text="CPU usage" />
-            <TextBlock
-                x:Name="CpuUsageText"
-                AutomationProperties.AutomationId="CpuUsageText"
-                Margin="0,0,0,8"
-                Text="Loading..."
-                TextWrapping="Wrap" />
-            <TextBlock
-                FontWeight="SemiBold"
-                Text="Memory usage" />
-            <TextBlock
-                x:Name="MemoryUsageText"
-                AutomationProperties.AutomationId="MemoryUsageText"
-                Text="Loading..."
-                TextWrapping="Wrap" />
-            <TextBlock
-                x:Name="TelemetryStatusText"
-                AutomationProperties.AutomationId="TelemetryStatusText"
-                Margin="0,8,0,0"
-                TextWrapping="Wrap" />
-            <TextBlock
-                FontWeight="SemiBold"
-                Margin="0,16,0,0"
-                Text="Top processes" />
-            <ItemsControl
-                x:Name="TopProcessesList"
-                AutomationProperties.AutomationId="TopProcessesList">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="local:ProcessDisplayItem">
-                        <StackPanel Margin="0,4,0,4" Spacing="2">
-                            <TextBlock
-                                FontWeight="SemiBold"
-                                Text="{x:Bind Name}"
-                                TextWrapping="Wrap" />
-                            <TextBlock
-                                Text="{x:Bind Details}"
-                                TextWrapping="Wrap" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <TextBlock
-                x:Name="ProcessStatusText"
-                AutomationProperties.AutomationId="ProcessStatusText"
-                Margin="0,8,0,0"
-                TextWrapping="Wrap" />
+            <Button
+                x:Name="DetailsToggleButton"
+                AutomationProperties.AutomationId="DetailsToggleButton"
+                Click="OnDetailsToggleClicked"
+                Content="Show details"
+                HorizontalAlignment="Left" />
         </StackPanel>
-    </ScrollViewer>
+
+        <ScrollViewer
+            x:Name="DetailsPanel"
+            AutomationProperties.AutomationId="DetailsPanel"
+            Grid.Row="1"
+            HorizontalScrollBarVisibility="Disabled"
+            Margin="0,16,0,0"
+            VerticalScrollBarVisibility="Auto"
+            Visibility="Collapsed">
+            <StackPanel Spacing="8">
+                <TextBlock
+                    FontSize="28"
+                    FontWeight="SemiBold"
+                    Text="Machine" />
+                <TextBlock
+                    Margin="0,0,0,16"
+                    Text="Windows intelligence layer" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="Device name" />
+                <TextBlock
+                    x:Name="DeviceNameText"
+                    AutomationProperties.AutomationId="DeviceNameText"
+                    Margin="0,0,0,8"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="Operating system" />
+                <TextBlock
+                    x:Name="OperatingSystemText"
+                    AutomationProperties.AutomationId="OperatingSystemText"
+                    Margin="0,0,0,8"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="Architecture" />
+                <TextBlock
+                    x:Name="ArchitectureText"
+                    AutomationProperties.AutomationId="ArchitectureText"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    x:Name="LoadStatusText"
+                    AutomationProperties.AutomationId="LoadStatusText"
+                    Margin="0,8,0,0"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Margin="0,16,0,0"
+                    Text="CPU usage" />
+                <TextBlock
+                    x:Name="CpuUsageText"
+                    AutomationProperties.AutomationId="CpuUsageText"
+                    Margin="0,0,0,8"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="Memory usage" />
+                <TextBlock
+                    x:Name="MemoryUsageText"
+                    AutomationProperties.AutomationId="MemoryUsageText"
+                    Text="Loading..."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    x:Name="TelemetryStatusText"
+                    AutomationProperties.AutomationId="TelemetryStatusText"
+                    Margin="0,8,0,0"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Margin="0,16,0,0"
+                    Text="Top processes" />
+                <ItemsControl
+                    x:Name="TopProcessesList"
+                    AutomationProperties.AutomationId="TopProcessesList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="local:ProcessDisplayItem">
+                            <StackPanel Margin="0,4,0,4" Spacing="2">
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind Name}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Text="{x:Bind Details}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock
+                    x:Name="ProcessStatusText"
+                    AutomationProperties.AutomationId="ProcessStatusText"
+                    Margin="0,8,0,0"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
 </Window>

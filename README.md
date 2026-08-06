@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The native WinUI application displays verified machine identity, live CPU and memory telemetry, and read-only top-process activity.
+The WinUI application now provides a compact always-on-top machine presence that expands into the existing read-only diagnostics view.
 
 ## Product direction
 
@@ -16,4 +16,4 @@ Machine is a local-first Windows intelligence layer that observes, explains, and
 
 ## Next slice
 
-Build the first ambient desktop-presence prototype.
+Add read-only Ollama service and loaded-model status.

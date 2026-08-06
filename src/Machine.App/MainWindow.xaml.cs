@@ -1,11 +1,20 @@
 using System.Diagnostics;
 using Machine.Core;
+using Microsoft.UI;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
+using Windows.Graphics;
 
 namespace Machine.App;
 
 public sealed partial class MainWindow : Window
 {
+    private const int CompactWindowWidth = 400;
+    private const int CompactWindowHeight = 170;
+    private const int ExpandedWindowWidth = 520;
+    private const int ExpandedWindowHeight = 760;
+    private const int WorkAreaMargin = 16;
     private const int TopProcessCount = 5;
     private const string UnavailableValue = "Unavailable";
     private const double BytesPerMebibyte =
@@ -24,6 +33,7 @@ public sealed partial class MainWindow : Window
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
     private bool _contentLoadStarted;
+    private bool _detailsExpanded;
 
     public MainWindow(
         IMachineIdentityProvider identityProvider,
@@ -39,7 +49,34 @@ public sealed partial class MainWindow : Window
         _processProvider = processProvider;
 
         InitializeComponent();
+        Activated += OnWindowActivated;
         Closed += OnWindowClosed;
+    }
+
+    private void OnWindowActivated(
+        object sender,
+        WindowActivatedEventArgs args)
+    {
+        Activated -= OnWindowActivated;
+
+        try
+        {
+            if (AppWindow.Presenter is OverlappedPresenter presenter)
+            {
+                presenter.IsAlwaysOnTop = true;
+                presenter.IsMaximizable = false;
+                presenter.IsResizable = false;
+                presenter.IsMinimizable = true;
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+        }
+
+        ResizeAndPositionWindow(
+            CompactWindowWidth,
+            CompactWindowHeight);
     }
 
     private async void OnMainContentLoaded(
@@ -132,6 +169,21 @@ public sealed partial class MainWindow : Window
             MemoryUsageText.Text =
                 $"{usedMemory:F1} GB / {totalMemory:F1} GB";
             TelemetryStatusText.Text = string.Empty;
+
+            PresenceTelemetryText.Text =
+                $"CPU {snapshot.CpuUsagePercent:F1}% · " +
+                $"Memory {usedMemory:F1} / {totalMemory:F1} GB";
+
+            var memoryUsagePercent =
+                snapshot.TotalMemoryBytes == 0
+                    ? 100d
+                    : snapshot.UsedMemoryBytes /
+                        (double)snapshot.TotalMemoryBytes *
+                        100d;
+
+            UpdatePresenceState(
+                snapshot.CpuUsagePercent,
+                memoryUsagePercent);
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -146,6 +198,37 @@ public sealed partial class MainWindow : Window
             MemoryUsageText.Text = UnavailableValue;
             TelemetryStatusText.Text =
                 "Resource telemetry could not be loaded.";
+            PresenceStateText.Text = "Status unavailable";
+            PresenceTelemetryText.Text =
+                "CPU unavailable · Memory unavailable";
+            PresenceIndicator.Fill =
+                new SolidColorBrush(Colors.Gray);
+        }
+    }
+
+    private void UpdatePresenceState(
+        double cpuUsagePercent,
+        double memoryUsagePercent)
+    {
+        if (cpuUsagePercent >= 90d ||
+            memoryUsagePercent >= 90d)
+        {
+            PresenceStateText.Text = "Under pressure";
+            PresenceIndicator.Fill =
+                new SolidColorBrush(Colors.Red);
+        }
+        else if (cpuUsagePercent >= 70d ||
+                 memoryUsagePercent >= 80d)
+        {
+            PresenceStateText.Text = "Busy";
+            PresenceIndicator.Fill =
+                new SolidColorBrush(Colors.Orange);
+        }
+        else
+        {
+            PresenceStateText.Text = "Stable";
+            PresenceIndicator.Fill =
+                new SolidColorBrush(Colors.Green);
         }
     }
 
@@ -215,6 +298,122 @@ public sealed partial class MainWindow : Window
         }
 
         return $"{bytes} B";
+    }
+
+    private void OnDetailsToggleClicked(
+        object sender,
+        RoutedEventArgs e)
+    {
+        _detailsExpanded = !_detailsExpanded;
+
+        DetailsPanel.Visibility = _detailsExpanded
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        DetailsToggleButton.Content = _detailsExpanded
+            ? "Collapse"
+            : "Show details";
+
+        ResizeAndPositionWindow(
+            _detailsExpanded
+                ? ExpandedWindowWidth
+                : CompactWindowWidth,
+            _detailsExpanded
+                ? ExpandedWindowHeight
+                : CompactWindowHeight);
+    }
+
+    private void ResizeAndPositionWindow(
+        int requestedWidth,
+        int requestedHeight)
+    {
+        var rasterizationScale =
+            MainContent.XamlRoot?.RasterizationScale ?? 1d;
+        var requestedSize = new SizeInt32(
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    requestedWidth * rasterizationScale)),
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    requestedHeight * rasterizationScale)));
+
+        DisplayArea? displayArea;
+
+        try
+        {
+            displayArea = DisplayArea.GetFromWindowId(
+                AppWindow.Id,
+                DisplayAreaFallback.Nearest);
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            TryResizeWindow(requestedSize);
+            return;
+        }
+
+        if (displayArea is null)
+        {
+            TryResizeWindow(requestedSize);
+            return;
+        }
+
+        try
+        {
+            var workArea = displayArea.WorkArea;
+            if (workArea.Width <= 0 || workArea.Height <= 0)
+            {
+                TryResizeWindow(requestedSize);
+                return;
+            }
+
+            var maximumWidth = Math.Max(
+                1,
+                workArea.Width - 2 * WorkAreaMargin);
+            var maximumHeight = Math.Max(
+                1,
+                workArea.Height - 2 * WorkAreaMargin);
+            var targetSize = new SizeInt32(
+                Math.Min(requestedSize.Width, maximumWidth),
+                Math.Min(requestedSize.Height, maximumHeight));
+
+            AppWindow.Resize(targetSize);
+            var windowSize = AppWindow.Size;
+
+            var workAreaLeft =
+                displayArea.OuterBounds.X + workArea.X;
+            var workAreaTop =
+                displayArea.OuterBounds.Y + workArea.Y;
+            var positionX = Math.Max(
+                workAreaLeft,
+                workAreaLeft + workArea.Width -
+                    windowSize.Width - WorkAreaMargin);
+            var positionY = Math.Max(
+                workAreaTop,
+                workAreaTop + workArea.Height -
+                    windowSize.Height - WorkAreaMargin);
+
+            AppWindow.Move(new PointInt32(
+                positionX,
+                positionY));
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+        }
+    }
+
+    private void TryResizeWindow(SizeInt32 requestedSize)
+    {
+        try
+        {
+            AppWindow.Resize(requestedSize);
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+        }
     }
 
     private void OnWindowClosed(
