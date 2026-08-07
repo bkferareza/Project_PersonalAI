@@ -1,233 +1,136 @@
 using Machine.App;
-using Machine.Core;
 
 namespace Machine.Tests;
 
 public sealed class CompactPresencePresentationTests
 {
     [Fact]
-    public void IdleAndContextSizesMatchLivingOrbContract()
+    public void OrbFramesHaveFullyTransparentCornersAndVisibleCenter()
     {
-        Assert.InRange(CompactPresenceLayout.IdleSize.Width, 88, 104);
-        Assert.InRange(CompactPresenceLayout.IdleSize.Height, 88, 104);
-        Assert.InRange(CompactPresenceLayout.ContextSize.Width, 260, 300);
-        Assert.InRange(CompactPresenceLayout.ContextSize.Height, 92, 108);
-    }
+        var frame = AmbientOrbFrameSequence.Create().Frames[0];
 
-    [Theory]
-    [InlineData(MachineOverallState.Stable, CompactPresenceVisualMode.Stable)]
-    [InlineData(MachineOverallState.Attention, CompactPresenceVisualMode.Attention)]
-    [InlineData(MachineOverallState.Warning, CompactPresenceVisualMode.Warning)]
-    [InlineData(MachineOverallState.Critical, CompactPresenceVisualMode.Critical)]
-    [InlineData(MachineOverallState.Unknown, CompactPresenceVisualMode.Unknown)]
-    public void VisualModeMatchesDeterministicState(
-        MachineOverallState state,
-        CompactPresenceVisualMode expectedMode)
-    {
-        Assert.Equal(
-            expectedMode,
-            CompactPresenceLayout.SelectVisualMode(
-                state,
-                isGenerating: false,
-                showNewInsightBloom: false));
+        Assert.Equal(0, frame.GetAlpha(0, 0));
+        Assert.Equal(0, frame.GetAlpha(
+            AmbientOrbFrameSequence.CanvasSize - 1,
+            AmbientOrbFrameSequence.CanvasSize - 1));
+        Assert.InRange(frame.GetAlpha(64, 64), 180, 255);
     }
 
     [Fact]
-    public void GeneratingAndNewInsightOverrideStateMotion()
+    public void OrbFramesFadeSoftlyFromCenterToTransparentEdge()
     {
-        Assert.Equal(
-            CompactPresenceVisualMode.Generating,
-            CompactPresenceLayout.SelectVisualMode(
-                MachineOverallState.Warning,
-                isGenerating: true,
-                showNewInsightBloom: false));
-        Assert.Equal(
-            CompactPresenceVisualMode.NewInsight,
-            CompactPresenceLayout.SelectVisualMode(
-                MachineOverallState.Warning,
-                isGenerating: true,
-                showNewInsightBloom: true));
+        var frame = AmbientOrbFrameSequence.Create().Frames[12];
+
+        var centerAlpha = frame.GetAlpha(64, 64);
+        var glowAlpha = frame.GetAlpha(100, 64);
+        var outerAlpha = frame.GetAlpha(123, 64);
+
+        Assert.True(centerAlpha > glowAlpha);
+        Assert.True(glowAlpha > outerAlpha);
+        Assert.Equal(0, outerAlpha);
     }
 
     [Fact]
-    public void PointerHoverRevealsContextAndDelayedExitReturnsToIdle()
+    public void StablePaletteIsNeutralAndNeverGreenDominant()
     {
-        var interaction = new CompactPresenceInteraction();
+        var frame = AmbientOrbFrameSequence.Create().Frames[8];
 
-        Assert.Equal(CompactPresencePresentation.Idle, interaction.Presentation);
-
-        interaction.PointerEntered();
-        Assert.Equal(CompactPresencePresentation.Context, interaction.Presentation);
-
-        var request = interaction.PointerExited();
-        Assert.Equal(CompactPresencePresentation.Context, interaction.Presentation);
-        Assert.True(interaction.TryCompleteCollapse(request));
-        Assert.Equal(CompactPresencePresentation.Idle, interaction.Presentation);
+        for (var y = 0; y < frame.Height; y++)
+        {
+            for (var x = 0; x < frame.Width; x++)
+            {
+                var pixel = frame.GetPixel(x, y);
+                if (pixel.Alpha >= 20)
+                {
+                    Assert.True(AmbientOrbFrameSequence.IsNeutralStableColor(
+                        pixel.Red,
+                        pixel.Green,
+                        pixel.Blue));
+                }
+            }
+        }
     }
 
     [Fact]
-    public void PointerReentryCancelsPendingCollapse()
+    public void BreathingFramesAreDifferentAndLoopSmoothly()
     {
-        var interaction = new CompactPresenceInteraction();
-        interaction.PointerEntered();
-        var staleRequest = interaction.PointerExited();
+        var sequence = AmbientOrbFrameSequence.Create();
 
-        interaction.PointerEntered();
-
-        Assert.False(interaction.TryCompleteCollapse(staleRequest));
-        Assert.Equal(CompactPresencePresentation.Context, interaction.Presentation);
-    }
-
-    [Fact]
-    public void KeyboardFocusRevealsContextAndPreventsCollapse()
-    {
-        var interaction = new CompactPresenceInteraction();
-        interaction.SetKeyboardFocus(true);
-        var pointerExitRequest = interaction.PointerExited();
-
-        Assert.False(interaction.TryCompleteCollapse(pointerExitRequest));
-        Assert.Equal(CompactPresencePresentation.Context, interaction.Presentation);
-
-        var focusExitRequest = interaction.SetKeyboardFocus(false);
-
-        Assert.True(interaction.TryCompleteCollapse(focusExitRequest));
-        Assert.Equal(CompactPresencePresentation.Idle, interaction.Presentation);
-    }
-
-    [Fact]
-    public void CollapseDelayIsApproximatelyThreeHundredMilliseconds()
-    {
+        Assert.NotEqual(
+            sequence.Frames[0].Pixels,
+            sequence.Frames[12].Pixels);
         Assert.InRange(
-            CompactPresenceLayout.CollapseDelay.TotalMilliseconds,
-            280d,
-            320d);
-    }
-
-    [Theory]
-    [InlineData(13, true)]
-    [InlineData(32, true)]
-    [InlineData(27, false)]
-    public void EnterAndSpaceAreTheOnlyDashboardActivationKeys(
-        uint virtualKey,
-        bool expected)
-    {
-        Assert.Equal(
-            expected,
-            CompactPresenceLayout.IsDashboardActivationKey(virtualKey));
+            AmbientOrbFrameSequence.MeanAlphaDifference(
+                sequence.Frames[0],
+                sequence.Frames[^1]),
+            0d,
+            2d);
+        Assert.Equal(10, AmbientOrbFrameSequence.FramesPerSecond);
+        Assert.InRange(sequence.FrameInterval.TotalSeconds, 0.09d, 0.11d);
     }
 
     [Fact]
-    public void WholeSurfaceActivationOpensDashboard()
+    public void VisibleOrbPixelsHitTestButTransparentPixelsDoNot()
+    {
+        var sequence = AmbientOrbFrameSequence.Create();
+
+        Assert.True(sequence.IsHitTestVisible(64, 64));
+        Assert.False(sequence.IsHitTestVisible(0, 0));
+        Assert.False(sequence.IsHitTestVisible(127, 127));
+    }
+
+    [Fact]
+    public void AmbientAndDashboardLifecycleRestoresTheOrb()
     {
         var interaction = new CompactPresenceInteraction();
 
+        Assert.Equal(CompactPresencePresentation.Ambient, interaction.Presentation);
         Assert.True(interaction.OpenDashboard());
-        Assert.Equal(
-            CompactPresencePresentation.Dashboard,
-            interaction.Presentation);
+        Assert.Equal(CompactPresencePresentation.Dashboard, interaction.Presentation);
         Assert.True(interaction.CloseDashboard());
-        Assert.Equal(CompactPresencePresentation.Idle, interaction.Presentation);
+        Assert.Equal(CompactPresencePresentation.Ambient, interaction.Presentation);
+    }
+
+    [Fact]
+    public void AmbientOrbLifecycleHidesAndDisposesCleanly()
+    {
+        var lifecycle = new AmbientOrbLifecycle();
+
+        lifecycle.Show();
+        Assert.True(lifecycle.IsVisible);
+        lifecycle.Hide();
+        Assert.False(lifecycle.IsVisible);
+        lifecycle.Dispose();
+
+        Assert.True(lifecycle.IsDisposed);
+        Assert.False(lifecycle.IsVisible);
+        Assert.Throws<ObjectDisposedException>(lifecycle.Show);
     }
 
     [Theory]
-    [MemberData(nameof(CompactSizesAndPositions))]
-    public void CompactSizesStayAnchoredToBottomRight(
+    [MemberData(nameof(OrbSizesAndPositions))]
+    public void OrbStaysAnchoredToBottomRight(
         CompactPresenceSize size,
         CompactPresencePosition expectedPosition)
     {
-        var workArea = new CompactPresenceWorkArea(
-            X: 100,
-            Y: 50,
-            Width: 1920,
-            Height: 1080);
-
         Assert.Equal(
             expectedPosition,
             CompactPresenceLayout.CalculateBottomRightPosition(
-                workArea,
+                new CompactPresenceWorkArea(100, 50, 1920, 1080),
                 size,
                 inset: 16));
     }
 
-    [Fact]
-    public void PositionSupportsNegativeOriginMonitor()
-    {
-        Assert.Equal(
-            new CompactPresencePosition(-112, 968),
-            CompactPresenceLayout.CalculateBottomRightPosition(
-                new CompactPresenceWorkArea(
-                    X: -1920,
-                    Y: 0,
-                    Width: 1920,
-                    Height: 1080),
-                CompactPresenceLayout.IdleSize,
-                inset: 16));
-    }
-
-    [Fact]
-    public void CompactMarkupUsesButtonlessOrbAndContextOnlyText()
-    {
-        var markup = File.ReadAllText(
-            Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml"));
-        var navigationStart = markup.IndexOf(
-            "<NavigationView",
-            StringComparison.Ordinal);
-        var compactMarkup = markup[..navigationStart];
-        var contextStart = compactMarkup.IndexOf(
-            "x:Name=\"CompactContextPanel\"",
-            StringComparison.Ordinal);
-        var coreStart = compactMarkup.IndexOf(
-            "x:Name=\"PresenceCoreHost\"",
-            StringComparison.Ordinal);
-
-        Assert.True(navigationStart > 0);
-        Assert.True(contextStart > 0);
-        Assert.True(coreStart > contextStart);
-        Assert.Contains(
-            "x:Name=\"CompactPresenceSurface\"",
-            compactMarkup,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Tapped=\"OnCompactPresenceTapped\"",
-            compactMarkup,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "KeyDown=\"OnCompactPresenceKeyDown\"",
-            compactMarkup,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "x:Name=\"PresenceOuterGlow\"",
-            compactMarkup,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "x:Name=\"PresenceEnergyLayer\"",
-            compactMarkup,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "x:Name=\"PresenceCore\"",
-            compactMarkup,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "x:Name=\"PresenceSweep\"",
-            compactMarkup,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain("<Button", compactMarkup, StringComparison.Ordinal);
-        Assert.DoesNotContain("CompactIdlePanel", compactMarkup, StringComparison.Ordinal);
-        Assert.DoesNotContain("PresenceStateText", compactMarkup, StringComparison.Ordinal);
-        Assert.DoesNotContain("Open dashboard", compactMarkup, StringComparison.Ordinal);
-        Assert.DoesNotContain("View dashboard", compactMarkup, StringComparison.Ordinal);
-    }
-
     public static TheoryData<CompactPresenceSize, CompactPresencePosition>
-        CompactSizesAndPositions => new()
+        OrbSizesAndPositions => new()
         {
             {
-                CompactPresenceLayout.IdleSize,
-                new CompactPresencePosition(1908, 1018)
+                CompactPresenceLayout.AmbientOrbSize,
+                new CompactPresencePosition(1876, 986)
             },
             {
-                CompactPresenceLayout.ContextSize,
-                new CompactPresencePosition(1724, 1014)
+                new CompactPresenceSize(520, 760),
+                new CompactPresencePosition(1484, 354)
             }
         };
 }

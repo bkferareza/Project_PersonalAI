@@ -28,6 +28,9 @@
     <Compile
       Include="..\..\src\Machine.App\CompactPresencePresentation.cs"
       Link="CompactPresencePresentation.cs" />
+    <Compile
+      Include="..\..\src\Machine.App\AmbientOrbFrameSequence.cs"
+      Link="AmbientOrbFrameSequence.cs" />
     <None
       Include="..\..\src\Machine.App\MainWindow.xaml"
       Link="Fixtures\MainWindow.xaml"

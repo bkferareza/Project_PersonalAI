@@ -18,8 +18,6 @@ namespace Machine.App;
 
 public sealed partial class MainWindow : Window
 {
-    private const int CompactIdleShellHeight = 96;
-    private const int CompactContextShellHeight = 100;
     private const int ExpandedWindowWidth = 520;
     private const int ExpandedWindowHeight = 760;
     private const int WorkAreaMargin = 16;
@@ -65,9 +63,10 @@ public sealed partial class MainWindow : Window
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
     private readonly SystemBackdrop _dashboardBackdrop;
-    private readonly DesktopAcrylicBackdrop _compactBackdrop = new();
     private readonly DispatcherQueueTimer _compactCollapseTimer;
     private readonly UISettings _uiSettings = new();
+    private readonly NativeAmbientOrbWindow _ambientOrbWindow;
+    private readonly DispatcherQueueTimer _ambientOrbTimer;
     private CancellationTokenSource?
         _folderScanCancellationTokenSource;
     private MachineIdentity? _latestIdentity;
@@ -151,14 +150,17 @@ public sealed partial class MainWindow : Window
         _dashboardBackdrop = SystemBackdrop!;
         _compactCollapseTimer =
             MainContent.DispatcherQueue.CreateTimer();
-        _compactCollapseTimer.Interval =
-            CompactPresenceLayout.CollapseDelay;
+        _compactCollapseTimer.Interval = CompactPresenceLayout.CollapseDelay;
         _compactCollapseTimer.IsRepeating = false;
         _compactCollapseTimer.Tick += OnCompactCollapseTimerTick;
-        if (OperatingSystem.IsWindowsVersionAtLeast(
-            10,
-            0,
-            19041))
+        _ambientOrbWindow = new NativeAmbientOrbWindow(
+            OpenDashboardFromAmbientOrb);
+        _ambientOrbTimer =
+            MainContent.DispatcherQueue.CreateTimer();
+        _ambientOrbTimer.Interval = _ambientOrbWindow.FrameInterval;
+        _ambientOrbTimer.IsRepeating = true;
+        _ambientOrbTimer.Tick += OnAmbientOrbTimerTick;
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
         {
             _uiSettings.AnimationsEnabledChanged +=
                 OnSystemAnimationsEnabledChanged;
@@ -174,7 +176,6 @@ public sealed partial class MainWindow : Window
     {
         if (_windowPresentationConfigured)
         {
-            UpdateCompactKeyboardFocus();
             return;
         }
 
@@ -197,7 +198,6 @@ public sealed partial class MainWindow : Window
         }
 
         ApplyCompactPresentation(force: true);
-        ApplyPresenceVisualMode(force: true);
     }
 
     private async void OnMainContentLoaded(
@@ -369,46 +369,22 @@ public sealed partial class MainWindow : Window
         MachineOverallState overallState)
     {
         _latestOverallState = overallState;
-        var stateBrush = GetStateBrush(overallState);
-
-        PresenceContextStateText.Text = overallState.ToString();
-        PresenceOuterGlow.Fill = stateBrush;
-        PresenceEnergyLayer.Fill = stateBrush;
-        PresenceCoreGlow.Fill = stateBrush;
-        PresenceCoreRing.Stroke = stateBrush;
-        PresenceOrbit.Stroke = stateBrush;
-        ApplyPresenceVisualMode();
     }
 
     private static Brush GetStateBrush(
-        MachineOverallState overallState) =>
-        new SolidColorBrush(overallState switch
+        MachineOverallState overallState)
+    {
+        var resourceKey = overallState switch
         {
-            MachineOverallState.Stable =>
-                new global::Windows.UI.Color
-                {
-                    A = 255, R = 199, G = 241, B = 255
-                },
-            MachineOverallState.Attention =>
-                new global::Windows.UI.Color
-                {
-                    A = 255, R = 155, G = 183, B = 255
-                },
-            MachineOverallState.Warning =>
-                new global::Windows.UI.Color
-                {
-                    A = 255, R = 240, G = 180, B = 106
-                },
-            MachineOverallState.Critical =>
-                new global::Windows.UI.Color
-                {
-                    A = 255, R = 255, G = 118, B = 147
-                },
-            _ => new global::Windows.UI.Color
-            {
-                A = 255, R = 191, G = 203, B = 255
-            }
-        });
+            MachineOverallState.Stable => "SystemFillColorSuccessBrush",
+            MachineOverallState.Attention => "SystemFillColorCautionBrush",
+            MachineOverallState.Warning or MachineOverallState.Critical =>
+                "SystemFillColorCriticalBrush",
+            _ => "TextFillColorSecondaryBrush"
+        };
+
+        return (Brush)Application.Current.Resources[resourceKey];
+    }
 
     private void ReevaluateFindings(
         bool observeInsightTriggers = false)
@@ -731,7 +707,6 @@ public sealed partial class MainWindow : Window
         }
 
         _isExplanationRequestRunning = true;
-        ApplyPresenceVisualMode();
         UpdateExplainMachineStateButtonState();
         ExplainMachineStateButton.Content = "Refreshing...";
         MachineExplanationProgressRing.Visibility =
@@ -777,7 +752,6 @@ public sealed partial class MainWindow : Window
                     StringComparison.Ordinal))
             {
                 MachineExplanationText.Text = explanation.Text;
-                CompactInsightPreviewText.Text = explanation.Text;
                 var elapsedSeconds =
                     stopwatch.Elapsed.TotalSeconds.ToString(
                         "F1",
@@ -833,15 +807,6 @@ public sealed partial class MainWindow : Window
 
             if (!cancellationToken.IsCancellationRequested)
             {
-                if (insightAccepted)
-                {
-                    BeginNewInsightBloom();
-                }
-                else
-                {
-                    ApplyPresenceVisualMode();
-                }
-
                 ExplainMachineStateButton.Content =
                     "Refresh insight";
                 MachineExplanationProgressRing.IsActive = false;
@@ -2094,50 +2059,63 @@ public sealed partial class MainWindow : Window
         }
 
         _appliedCompactPresentation = presentation;
-        var showContext = presentation !=
-            CompactPresencePresentation.Idle;
         var isDashboardExpanded = presentation ==
             CompactPresencePresentation.Dashboard;
-
-        CompactContextPanel.Visibility = showContext
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        CompactContextPanel.Opacity = showContext ? 1d : 0d;
-        CompactShell.Height = showContext
-            ? CompactContextShellHeight
-            : CompactIdleShellHeight;
-        var isSurfaceInteractive =
-            CompactPresenceLayout.IsSurfaceInteractive(presentation);
-        CompactPresenceSurface.IsHitTestVisible =
-            isSurfaceInteractive;
-        CompactPresenceSurface.IsTabStop = isSurfaceInteractive;
-        AutomationProperties.SetAccessibilityView(
-            CompactPresenceSurface,
-            isSurfaceInteractive
-                ? AccessibilityView.Control
-                : AccessibilityView.Raw);
-        AutomationProperties.SetName(
-            CompactPresenceSurface,
-            isSurfaceInteractive
-                ? "Open Machine dashboard"
-                : string.Empty);
-
         UpdateWindowChrome(isDashboardExpanded);
 
-        var targetSize = presentation switch
+        if (isDashboardExpanded)
         {
-            CompactPresencePresentation.Dashboard =>
-                new CompactPresenceSize(
-                    ExpandedWindowWidth,
-                    ExpandedWindowHeight),
-            CompactPresencePresentation.Context =>
-                CompactPresenceLayout.ContextSize,
-            _ => CompactPresenceLayout.IdleSize
-        };
+            _ambientOrbTimer.Stop();
+            _ambientOrbWindow.Hide();
+            AppWindow.Show();
+            ResizeAndPositionWindow(
+                ExpandedWindowWidth,
+                ExpandedWindowHeight);
+            return;
+        }
 
-        ResizeAndPositionWindow(
-            targetSize.Width,
-            targetSize.Height);
+        ShowAmbientOrb();
+        AppWindow.Hide();
+    }
+
+    private void ShowAmbientOrb()
+    {
+        try
+        {
+            var displayArea = DisplayArea.GetFromWindowId(
+                AppWindow.Id,
+                DisplayAreaFallback.Nearest);
+            var workArea = displayArea.WorkArea;
+            var position = CompactPresenceLayout.CalculateBottomRightPosition(
+                new CompactPresenceWorkArea(
+                    displayArea.OuterBounds.X + workArea.X,
+                    displayArea.OuterBounds.Y + workArea.Y,
+                    workArea.Width,
+                    workArea.Height),
+                CompactPresenceLayout.AmbientOrbSize,
+                WorkAreaMargin);
+            _ambientOrbWindow.Show(position.X, position.Y);
+            _ambientOrbTimer.Start();
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+        }
+    }
+
+    private void OnAmbientOrbTimerTick(
+        DispatcherQueueTimer sender,
+        object args) => _ambientOrbWindow.AdvanceFrame();
+
+    private void OpenDashboardFromAmbientOrb()
+    {
+        if (_windowCancellationTokenSource.IsCancellationRequested ||
+            !_compactPresenceInteraction.OpenDashboard())
+        {
+            return;
+        }
+
+        SetDashboardExpanded(true);
     }
 
     private void BeginNewInsightBloom()
@@ -2458,7 +2436,7 @@ public sealed partial class MainWindow : Window
         {
             var targetBackdrop = isDashboardExpanded
                 ? _dashboardBackdrop
-                : _compactBackdrop;
+                : null;
             if (!ReferenceEquals(SystemBackdrop, targetBackdrop))
             {
                 SystemBackdrop = targetBackdrop;
@@ -2621,6 +2599,9 @@ public sealed partial class MainWindow : Window
         object sender,
         WindowEventArgs args)
     {
+        _ambientOrbTimer.Stop();
+        _ambientOrbTimer.Tick -= OnAmbientOrbTimerTick;
+        _ambientOrbWindow.Dispose();
         _compactCollapseTimer.Stop();
         _compactCollapseTimer.Tick -= OnCompactCollapseTimerTick;
         if (_isAnimationSettingsChangeSubscribed &&

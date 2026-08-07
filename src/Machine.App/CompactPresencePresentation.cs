@@ -1,10 +1,9 @@
-using Machine.Core;
-
 namespace Machine.App;
 
 public enum CompactPresencePresentation
 {
     Idle,
+    Ambient = Idle,
     Context,
     Dashboard
 }
@@ -36,8 +35,8 @@ public readonly record struct CompactPresencePosition(
 
 public static class CompactPresenceLayout
 {
-    public static readonly CompactPresenceSize IdleSize =
-        new(96, 96);
+    public static readonly CompactPresenceSize AmbientOrbSize =
+        new(128, 128);
 
     public static readonly CompactPresenceSize ContextSize =
         new(280, 100);
@@ -46,40 +45,28 @@ public static class CompactPresenceLayout
         TimeSpan.FromMilliseconds(300);
 
     public static CompactPresenceVisualMode SelectVisualMode(
-        MachineOverallState overallState,
+        Machine.Core.MachineOverallState overallState,
         bool isGenerating,
-        bool showNewInsightBloom)
-    {
-        if (showNewInsightBloom)
-        {
-            return CompactPresenceVisualMode.NewInsight;
-        }
-
-        if (isGenerating)
-        {
-            return CompactPresenceVisualMode.Generating;
-        }
-
-        return overallState switch
-        {
-            MachineOverallState.Stable =>
-                CompactPresenceVisualMode.Stable,
-            MachineOverallState.Attention =>
-                CompactPresenceVisualMode.Attention,
-            MachineOverallState.Warning =>
-                CompactPresenceVisualMode.Warning,
-            MachineOverallState.Critical =>
-                CompactPresenceVisualMode.Critical,
-            _ => CompactPresenceVisualMode.Unknown
-        };
-    }
+        bool showNewInsightBloom) =>
+        showNewInsightBloom
+            ? CompactPresenceVisualMode.NewInsight
+            : isGenerating
+                ? CompactPresenceVisualMode.Generating
+                : overallState switch
+                {
+                    Machine.Core.MachineOverallState.Stable => CompactPresenceVisualMode.Stable,
+                    Machine.Core.MachineOverallState.Attention => CompactPresenceVisualMode.Attention,
+                    Machine.Core.MachineOverallState.Warning => CompactPresenceVisualMode.Warning,
+                    Machine.Core.MachineOverallState.Critical => CompactPresenceVisualMode.Critical,
+                    _ => CompactPresenceVisualMode.Unknown
+                };
 
     public static bool IsSurfaceInteractive(
         CompactPresencePresentation presentation) =>
         presentation != CompactPresencePresentation.Dashboard;
 
-    public static bool IsDashboardActivationKey(
-        uint virtualKey) => virtualKey is 13 or 32;
+    public static bool IsDashboardActivationKey(uint virtualKey) =>
+        virtualKey is 13 or 32;
 
     public static CompactPresencePosition CalculateBottomRightPosition(
         CompactPresenceWorkArea workArea,
@@ -88,14 +75,12 @@ public static class CompactPresenceLayout
     {
         if (workArea.Width <= 0 || workArea.Height <= 0)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(workArea));
+            throw new ArgumentOutOfRangeException(nameof(workArea));
         }
 
         if (windowSize.Width <= 0 || windowSize.Height <= 0)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(windowSize));
+            throw new ArgumentOutOfRangeException(nameof(windowSize));
         }
 
         if (inset < 0)
@@ -106,12 +91,10 @@ public static class CompactPresenceLayout
         return new CompactPresencePosition(
             X: Math.Max(
                 workArea.X,
-                workArea.X + workArea.Width -
-                    windowSize.Width - inset),
+                workArea.X + workArea.Width - windowSize.Width - inset),
             Y: Math.Max(
                 workArea.Y,
-                workArea.Y + workArea.Height -
-                    windowSize.Height - inset));
+                workArea.Y + workArea.Height - windowSize.Height - inset));
     }
 }
 
@@ -128,7 +111,7 @@ public sealed class CompactPresenceInteraction
             ? CompactPresencePresentation.Dashboard
             : _isContextVisible
                 ? CompactPresencePresentation.Context
-                : CompactPresencePresentation.Idle;
+                : CompactPresencePresentation.Ambient;
 
     public void PointerEntered()
     {
@@ -147,7 +130,6 @@ public sealed class CompactPresenceInteraction
     {
         _hasKeyboardFocus = hasKeyboardFocus;
         _collapseRequestVersion++;
-
         if (hasKeyboardFocus)
         {
             _isContextVisible = true;
@@ -158,10 +140,8 @@ public sealed class CompactPresenceInteraction
 
     public bool TryCompleteCollapse(int requestVersion)
     {
-        if (requestVersion != _collapseRequestVersion ||
-            _isPointerOver ||
-            _hasKeyboardFocus ||
-            _isDashboardExpanded)
+        if (requestVersion != _collapseRequestVersion || _isPointerOver ||
+            _hasKeyboardFocus || _isDashboardExpanded)
         {
             return false;
         }
@@ -191,9 +171,35 @@ public sealed class CompactPresenceInteraction
         }
 
         _isDashboardExpanded = false;
-        _isContextVisible = _isPointerOver ||
-            _hasKeyboardFocus;
+        _isContextVisible = _isPointerOver || _hasKeyboardFocus;
         _collapseRequestVersion++;
         return true;
+    }
+}
+
+public sealed class AmbientOrbLifecycle : IDisposable
+{
+    public bool IsVisible { get; private set; }
+
+    public bool IsDisposed { get; private set; }
+
+    public void Show()
+    {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        IsVisible = true;
+    }
+
+    public void Hide()
+    {
+        if (!IsDisposed)
+        {
+            IsVisible = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        IsVisible = false;
+        IsDisposed = true;
     }
 }
