@@ -61,6 +61,27 @@ public sealed class MachineLearningInsightTests
             learnedContext: CreateContext()));
     }
 
+    [Fact]
+    public async Task EstablishedEvidencePermitsGroundedUsualBehaviorInsight()
+    {
+        const string insight =
+            "Karaniwan ang CPU ko ngayon.";
+        using var handler = new CapturingHandler(insight);
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://127.0.0.1:11434/")
+        };
+        var explainer = new OllamaMachineStateExplainer(client, "qwen3.5:4b");
+
+        var result = await explainer.ExplainAsync(CreateRequest() with
+        {
+            LearnedContext = CreateContext()
+        });
+
+        Assert.Equal(insight, result.Text);
+        Assert.Equal(MachineExplanationSource.LocalModel, result.Source);
+    }
+
     private static MachineStateExplanationRequest CreateRequest() => new(
         new MachineIdentity("private", "private", "x64"),
         new MachineResourceSnapshot(20, 100, 50, DateTimeOffset.UtcNow),
@@ -83,7 +104,7 @@ public sealed class MachineLearningInsightTests
         return document.RootElement.Clone();
     }
 
-    private sealed class CapturingHandler : HttpMessageHandler
+    private sealed class CapturingHandler(string? insight = null) : HttpMessageHandler
     {
         public JsonElement Json { get; private set; }
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -94,9 +115,14 @@ public sealed class MachineLearningInsightTests
             Json = document.RootElement.Clone();
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("""
-                    {"model":"qwen3.5:4b","message":{"content":"Stable ang verified condition ngayon."}}
-                    """, Encoding.UTF8, "application/json")
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    model = "qwen3.5:4b",
+                    message = new
+                    {
+                        content = insight ?? "Stable ang verified condition ngayon."
+                    }
+                }), Encoding.UTF8, "application/json")
             };
         }
     }
