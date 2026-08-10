@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The ambient Windows presence now idles as a dedicated 128×128 native layered window using per-pixel premultiplied-BGRA alpha through `UpdateLayeredWindow` and `ULW_ALPHA`. Its transparent corners reveal the desktop directly; only the cool white/cyan/blue-violet breathing energy core is visible. Forty-eight precomputed frames advance at 10 FPS over a 4.8-second loop, with an asymmetric energy body, soft transparent glow, and one faint broken arc. Only visible alpha pixels accept hover or click, and a click opens the unchanged dashboard; Back restores the orb at the existing DPI-aware bottom-right inset. The companion window is always-on-top, avoids dashboard chrome while idle, and disposes its native surface and animation timer during shutdown. Searchable inventories remain read-only. Deterministic findings stay authoritative, while short local insights are generated proactively after stabilized state or finding changes, recovery, or the first dashboard open for a verified context. Context fingerprints, a two-minute automatic cooldown, one-request concurrency, and safe deterministic fallback prevent duplicate or ungrounded output; process telemetry, raw inventories, startup names, commands, and paths are never sent to the model.
+The dedicated 128×128 native layered orb now precomputes and reuses transparent premultiplied-BGRA sequences for Stable, Attention, Warning, Critical, Unknown, Generating, and NewInsight. It reacts directly to authoritative findings and existing insight state: severity changes alter palette and pulse choreography, Generating adds a cool internal energy sweep, and NewInsight blooms once before returning to the current underlying state. Hover adds modest intensity without changing state, while reduced-motion mode renders one static state frame and stops the 10 FPS timer. The native surface remains per-pixel click-through outside visible alpha, opens the unchanged dashboard on click, and disposes its native surface and timer during shutdown. Searchable inventories remain read-only. Deterministic findings stay authoritative, while short local insights are generated proactively after stabilized state or finding changes, recovery, or the first dashboard open for a verified context. Context fingerprints, a two-minute automatic cooldown, one-request concurrency, and safe deterministic fallback prevent duplicate or ungrounded output; process telemetry, raw inventories, startup names, commands, and paths are never sent to the model.
 
 ## Product direction
 
@@ -28,4 +28,4 @@ If a debug session is interrupted before cleanup runs, use **Terminal > Run Task
 
 ## Next slice
 
-Complete the living-orb state and interaction choreography.
+Complete the remaining read-only Windows observability surface.

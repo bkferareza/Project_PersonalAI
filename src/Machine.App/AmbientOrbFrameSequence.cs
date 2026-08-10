@@ -3,45 +3,63 @@ namespace Machine.App;
 public sealed class AmbientOrbFrameSequence
 {
     public const int FramesPerSecond = 10;
-    public const int FrameCount = 48;
+    public const int FrameCount = 50;
     public const int CanvasSize = 128;
     private const byte HitTestAlphaThreshold = 20;
+    private static readonly IReadOnlyDictionary<SequenceKey, AmbientOrbFrameSequence>
+        Sequences = CreateSequences();
 
-    private AmbientOrbFrameSequence(AmbientOrbFrame[] frames)
+    private AmbientOrbFrameSequence(
+        CompactPresenceVisualMode mode,
+        bool isHovered,
+        bool isLooping,
+        AmbientOrbFrame[] frames)
     {
+        Mode = mode;
+        IsHovered = isHovered;
+        IsLooping = isLooping;
         Frames = frames;
     }
 
+    public CompactPresenceVisualMode Mode { get; }
+
+    public bool IsHovered { get; }
+
+    public bool IsLooping { get; }
+
     public IReadOnlyList<AmbientOrbFrame> Frames { get; }
 
-    public TimeSpan FrameInterval =>
-        TimeSpan.FromSeconds(1d / FramesPerSecond);
+    public TimeSpan FrameInterval => TimeSpan.FromSeconds(1d / FramesPerSecond);
 
-    public static AmbientOrbFrameSequence Create(bool isHovered = false)
+    public int StaticFrameIndex => Mode == CompactPresenceVisualMode.NewInsight
+        ? Frames.Count / 2
+        : 0;
+
+    public static AmbientOrbFrameSequence Create(
+        CompactPresenceVisualMode mode = CompactPresenceVisualMode.Stable,
+        bool isHovered = false) => Sequences[new SequenceKey(mode, isHovered)];
+
+    public AmbientOrbFrame GetFrame(int frameIndex, bool animationsEnabled)
     {
-        var frames = new AmbientOrbFrame[FrameCount];
-        var intensity = isHovered ? 1.14d : 1d;
-
-        for (var frameIndex = 0; frameIndex < frames.Length; frameIndex++)
+        if (!animationsEnabled)
         {
-            var phase = Math.Tau * frameIndex / frames.Length;
-            frames[frameIndex] = new AmbientOrbFrame(
-                CanvasSize,
-                CanvasSize,
-                RenderFrame(phase, intensity));
+            return Frames[StaticFrameIndex];
         }
 
-        return new AmbientOrbFrameSequence(frames);
+        return Frames[IsLooping
+            ? Math.Abs(frameIndex) % Frames.Count
+            : Math.Clamp(frameIndex, 0, Frames.Count - 1)];
     }
 
-    public bool IsHitTestVisible(int x, int y)
+    public bool IsHitTestVisible(int x, int y, int frameIndex = 0)
     {
         if (x < 0 || y < 0 || x >= CanvasSize || y >= CanvasSize)
         {
             return false;
         }
 
-        return Frames[0].GetAlpha(x, y) >= HitTestAlphaThreshold;
+        return GetFrame(frameIndex, animationsEnabled: true).GetAlpha(x, y) >=
+            HitTestAlphaThreshold;
     }
 
     public static bool IsNeutralStableColor(byte red, byte green, byte blue) =>
@@ -61,7 +79,6 @@ public sealed class AmbientOrbFrameSequence
 
         var total = 0d;
         var pixelCount = first.Width * first.Height;
-
         for (var y = 0; y < first.Height; y++)
         {
             for (var x = 0; x < first.Width; x++)
@@ -73,13 +90,89 @@ public sealed class AmbientOrbFrameSequence
         return total / pixelCount;
     }
 
-    private static byte[] RenderFrame(double phase, double intensity)
+    public static double MeanLuminance(AmbientOrbFrame frame)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        var total = 0d;
+        for (var y = 0; y < frame.Height; y++)
+        {
+            for (var x = 0; x < frame.Width; x++)
+            {
+                var pixel = frame.GetPixel(x, y);
+                total += 0.2126d * pixel.Red + 0.7152d * pixel.Green +
+                    0.0722d * pixel.Blue;
+            }
+        }
+
+        return total / (frame.Width * frame.Height);
+    }
+
+    public static double MeanAlpha(AmbientOrbFrame frame)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        var total = 0d;
+        for (var y = 0; y < frame.Height; y++)
+        {
+            for (var x = 0; x < frame.Width; x++)
+            {
+                total += frame.GetAlpha(x, y);
+            }
+        }
+
+        return total / (frame.Width * frame.Height);
+    }
+
+    private static IReadOnlyDictionary<SequenceKey, AmbientOrbFrameSequence>
+        CreateSequences()
+    {
+        var sequences = new Dictionary<SequenceKey, AmbientOrbFrameSequence>();
+        foreach (var mode in Enum.GetValues<CompactPresenceVisualMode>())
+        {
+            sequences.Add(new SequenceKey(mode, false), CreateSequence(mode, false));
+            sequences.Add(new SequenceKey(mode, true), CreateSequence(mode, true));
+        }
+
+        return sequences;
+    }
+
+    private static AmbientOrbFrameSequence CreateSequence(
+        CompactPresenceVisualMode mode,
+        bool isHovered)
+    {
+        var profile = GetProfile(mode);
+        var frames = new AmbientOrbFrame[profile.FrameCount];
+        for (var frameIndex = 0; frameIndex < frames.Length; frameIndex++)
+        {
+            var progress = frames.Length == 1
+                ? 0d
+                : frameIndex / (double)frames.Length;
+            frames[frameIndex] = new AmbientOrbFrame(
+                CanvasSize,
+                CanvasSize,
+                RenderFrame(profile, progress, isHovered));
+        }
+
+        return new AmbientOrbFrameSequence(
+            mode,
+            isHovered,
+            profile.IsLooping,
+            frames);
+    }
+
+    private static byte[] RenderFrame(
+        OrbProfile profile,
+        double progress,
+        bool isHovered)
     {
         var pixels = new byte[CanvasSize * CanvasSize * 4];
+        var phase = Math.Tau * progress;
         var breathing = 0.5d + 0.5d * Math.Sin(phase);
-        var driftX = 1.8d * Math.Sin(phase + 0.7d);
-        var driftY = 1.2d * Math.Sin(phase * 0.75d - 0.4d);
-        var coreScale = 1d + 0.055d * breathing;
+        var bloom = profile.IsBloom ? Math.Sin(Math.PI * progress) : 0d;
+        var intensity = (isHovered ? 1.14d : 1d) * (1d + 0.32d * bloom);
+        var scale = (isHovered ? 1.045d : 1d) *
+            (1d + profile.BreathScale * breathing + 0.12d * bloom);
+        var driftX = profile.Drift * Math.Sin(phase + 0.7d);
+        var driftY = profile.Drift * 0.68d * Math.Sin(phase * 0.75d - 0.4d);
 
         for (var y = 0; y < CanvasSize; y++)
         {
@@ -96,86 +189,54 @@ public sealed class AmbientOrbFrameSequence
                 var green = 0d;
                 var blue = 0d;
                 var alpha = 0d;
-
-                AddLayer(
-                    ref red,
-                    ref green,
-                    ref blue,
-                    ref alpha,
-                    0.31d * intensity * (0.86d + 0.14d * breathing) *
-                        Gaussian(dx - driftX, dy - driftY, 31d, 28d),
-                    83d,
-                    124d,
-                    241d);
-                AddLayer(
-                    ref red,
-                    ref green,
-                    ref blue,
-                    ref alpha,
-                    0.28d * intensity * Gaussian(
+                AddLayer(ref red, ref green, ref blue, ref alpha,
+                    profile.OuterAlpha * intensity * (0.86d + 0.14d * breathing) *
+                    Gaussian(dx - driftX, dy - driftY, 32d * scale, 28d * scale),
+                    profile.Outer);
+                AddLayer(ref red, ref green, ref blue, ref alpha,
+                    profile.EnergyAlpha * intensity * Gaussian(
                         dx + 8d - driftX,
                         dy - 4d - driftY,
-                        23d,
-                        16d),
-                    76d,
-                    219d,
-                    255d);
-                AddLayer(
-                    ref red,
-                    ref green,
-                    ref blue,
-                    ref alpha,
-                    0.35d * intensity * Gaussian(
+                        23d * scale,
+                        16d * scale),
+                    profile.Energy);
+                AddLayer(ref red, ref green, ref blue, ref alpha,
+                    profile.EnergyAlpha * 1.08d * intensity * Gaussian(
                         dx - 7d - driftX,
                         dy + 8d - driftY,
-                        18d,
-                        24d),
-                    108d,
-                    76d,
-                    222d);
-                AddLayer(
-                    ref red,
-                    ref green,
-                    ref blue,
-                    ref alpha,
-                    0.78d * intensity * Gaussian(
+                        18d * scale,
+                        24d * scale),
+                    profile.Accent);
+                AddLayer(ref red, ref green, ref blue, ref alpha,
+                    profile.CoreAlpha * intensity * Gaussian(
                         dx - driftX * 0.45d,
                         dy - driftY * 0.45d,
-                        13d * coreScale,
-                        12d * coreScale),
-                    156d,
-                    224d,
-                    255d);
-                AddLayer(
-                    ref red,
-                    ref green,
-                    ref blue,
-                    ref alpha,
-                    0.7d * intensity * Gaussian(
+                        13d * scale,
+                        12d * scale),
+                    profile.Core);
+                AddLayer(ref red, ref green, ref blue, ref alpha,
+                    profile.HotAlpha * intensity * Gaussian(
                         dx + 4d - driftX * 0.35d,
                         dy + 5d - driftY * 0.35d,
-                        7d * coreScale,
-                        6d * coreScale),
-                    244d,
-                    252d,
-                    255d);
+                        7d * scale,
+                        6d * scale),
+                    profile.Hot);
 
-                var radius = Math.Sqrt(dx * dx + dy * dy);
-                var angle = Math.Atan2(dy, dx);
-                if (radius is > 41d and < 45d && angle is > 2.45d and < 4.05d)
+                AddBrokenArc(ref red, ref green, ref blue, ref alpha,
+                    dx, dy, phase, profile, intensity);
+
+                if (profile.HasGeneratingSweep)
                 {
-                    var arcStrength = 0.16d * intensity *
-                        (1d - Math.Abs(radius - 43d) / 2d) *
-                        Math.Sin((angle - 2.45d) / 1.6d * Math.PI);
-                    AddLayer(
-                        ref red,
-                        ref green,
-                        ref blue,
-                        ref alpha,
-                        arcStrength,
-                        193d,
-                        238d,
-                        255d);
+                    var sweepAngle = phase * 1.7d - 0.8d;
+                    var sweepX = 18d * Math.Cos(sweepAngle);
+                    var sweepY = 12d * Math.Sin(sweepAngle);
+                    AddLayer(ref red, ref green, ref blue, ref alpha,
+                        0.38d * intensity * Gaussian(
+                            dx - sweepX,
+                            dy - sweepY,
+                            8d,
+                            4d),
+                        new OrbColor(156, 238, 255));
                 }
 
                 var offset = (y * CanvasSize + x) * 4;
@@ -189,21 +250,78 @@ public sealed class AmbientOrbFrameSequence
         return pixels;
     }
 
+    private static void AddBrokenArc(
+        ref double red,
+        ref double green,
+        ref double blue,
+        ref double alpha,
+        double dx,
+        double dy,
+        double phase,
+        OrbProfile profile,
+        double intensity)
+    {
+        var radius = Math.Sqrt(dx * dx + dy * dy);
+        var angle = Math.Atan2(dy, dx);
+        var shiftedAngle = angle + 0.22d * Math.Sin(phase);
+        if (radius is > 40d and < 45d &&
+            shiftedAngle is > 2.35d and < 4.18d)
+        {
+            var arcStrength = profile.ArcAlpha * intensity *
+                (1d - Math.Abs(radius - 42.5d) / 2.5d) *
+                Math.Sin((shiftedAngle - 2.35d) / 1.83d * Math.PI);
+            AddLayer(ref red, ref green, ref blue, ref alpha,
+                arcStrength, profile.Arc);
+        }
+    }
+
+    private static OrbProfile GetProfile(CompactPresenceVisualMode mode) => mode switch
+    {
+        CompactPresenceVisualMode.Attention => new(
+            38, true, 0.075d, 2.2d, 0.34d, 0.30d, 0.80d, 0.66d, 0.18d,
+            new(75, 135, 247), new(73, 208, 255), new(255, 187, 104),
+            new(166, 232, 255), new(248, 253, 255), new(199, 235, 255)),
+        CompactPresenceVisualMode.Warning => new(
+            28, true, 0.09d, 1.6d, 0.38d, 0.37d, 0.90d, 0.76d, 0.23d,
+            new(240, 112, 47), new(255, 151, 53), new(255, 190, 91),
+            new(255, 191, 108), new(255, 246, 220), new(255, 181, 88)),
+        CompactPresenceVisualMode.Critical => new(
+            20, true, 0.105d, 1.25d, 0.44d, 0.46d, 0.98d, 0.83d, 0.28d,
+            new(226, 66, 48), new(255, 84, 50), new(255, 139, 62),
+            new(255, 157, 92), new(255, 236, 210), new(255, 119, 71)),
+        CompactPresenceVisualMode.Unknown => new(
+            50, true, 0.025d, 0.8d, 0.17d, 0.15d, 0.43d, 0.34d, 0.08d,
+            new(87, 111, 142), new(100, 130, 157), new(117, 128, 145),
+            new(154, 171, 184), new(209, 220, 226), new(147, 167, 185)),
+        CompactPresenceVisualMode.Generating => new(
+            40, true, 0.06d, 1.8d, 0.33d, 0.31d, 0.78d, 0.65d, 0.17d,
+            new(73, 125, 240), new(69, 208, 255), new(104, 89, 226),
+            new(151, 226, 255), new(246, 253, 255), new(187, 235, 255),
+            HasGeneratingSweep: true),
+        CompactPresenceVisualMode.NewInsight => new(
+            10, false, 0d, 1.2d, 0.38d, 0.35d, 0.88d, 0.75d, 0.22d,
+            new(92, 125, 248), new(81, 222, 255), new(148, 101, 244),
+            new(188, 239, 255), new(255, 255, 255), new(211, 238, 255),
+            IsBloom: true),
+        _ => new(
+            FrameCount, true, 0.055d, 1.8d, 0.31d, 0.28d, 0.78d, 0.70d, 0.16d,
+            new(83, 124, 241), new(76, 219, 255), new(108, 76, 222),
+            new(156, 224, 255), new(244, 252, 255), new(193, 238, 255))
+    };
+
     private static void AddLayer(
         ref double red,
         ref double green,
         ref double blue,
         ref double alpha,
         double layerAlpha,
-        double layerRed,
-        double layerGreen,
-        double layerBlue)
+        OrbColor color)
     {
         var sourceAlpha = Math.Clamp(layerAlpha, 0d, 1d);
         var inverseAlpha = 1d - sourceAlpha;
-        red = layerRed / 255d * sourceAlpha + red * inverseAlpha;
-        green = layerGreen / 255d * sourceAlpha + green * inverseAlpha;
-        blue = layerBlue / 255d * sourceAlpha + blue * inverseAlpha;
+        red = color.Red / 255d * sourceAlpha + red * inverseAlpha;
+        green = color.Green / 255d * sourceAlpha + green * inverseAlpha;
+        blue = color.Blue / 255d * sourceAlpha + blue * inverseAlpha;
         alpha = sourceAlpha + alpha * inverseAlpha;
     }
 
@@ -211,13 +329,37 @@ public sealed class AmbientOrbFrameSequence
         double x,
         double y,
         double horizontalRadius,
-        double verticalRadius) =>
-        Math.Exp(-0.5d * (
+        double verticalRadius) => Math.Exp(-0.5d * (
             x * x / (horizontalRadius * horizontalRadius) +
             y * y / (verticalRadius * verticalRadius)));
 
     private static byte ToByte(double value) =>
         (byte)Math.Clamp(Math.Round(value), 0d, 255d);
+
+    private readonly record struct SequenceKey(
+        CompactPresenceVisualMode Mode,
+        bool IsHovered);
+
+    private readonly record struct OrbColor(byte Red, byte Green, byte Blue);
+
+    private sealed record OrbProfile(
+        int FrameCount,
+        bool IsLooping,
+        double BreathScale,
+        double Drift,
+        double OuterAlpha,
+        double EnergyAlpha,
+        double CoreAlpha,
+        double HotAlpha,
+        double ArcAlpha,
+        OrbColor Outer,
+        OrbColor Energy,
+        OrbColor Accent,
+        OrbColor Core,
+        OrbColor Hot,
+        OrbColor Arc,
+        bool HasGeneratingSweep = false,
+        bool IsBloom = false);
 }
 
 public sealed class AmbientOrbFrame
@@ -227,7 +369,6 @@ public sealed class AmbientOrbFrame
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
         ArgumentNullException.ThrowIfNull(pixels);
-
         if (pixels.Length != width * height * 4)
         {
             throw new ArgumentException("Pixels must be premultiplied BGRA.", nameof(pixels));
@@ -244,16 +385,11 @@ public sealed class AmbientOrbFrame
 
     public byte[] Pixels { get; }
 
-    public byte GetAlpha(int x, int y) =>
-        Pixels[(y * Width + x) * 4 + 3];
+    public byte GetAlpha(int x, int y) => Pixels[(y * Width + x) * 4 + 3];
 
     public (byte Blue, byte Green, byte Red, byte Alpha) GetPixel(int x, int y)
     {
         var offset = (y * Width + x) * 4;
-        return (
-            Pixels[offset],
-            Pixels[offset + 1],
-            Pixels[offset + 2],
-            Pixels[offset + 3]);
+        return (Pixels[offset], Pixels[offset + 1], Pixels[offset + 2], Pixels[offset + 3]);
     }
 }

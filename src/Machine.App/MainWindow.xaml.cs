@@ -2,15 +2,10 @@ using System.Diagnostics;
 using System.Globalization;
 using Machine.Core;
 using Microsoft.UI.Dispatching;
-using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation;
-using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Animation;
 using Windows.Graphics;
 using Windows.UI.ViewManagement;
 
@@ -63,7 +58,6 @@ public sealed partial class MainWindow : Window
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
     private readonly SystemBackdrop _dashboardBackdrop;
-    private readonly DispatcherQueueTimer _compactCollapseTimer;
     private readonly UISettings _uiSettings = new();
     private readonly NativeAmbientOrbWindow _ambientOrbWindow;
     private readonly DispatcherQueueTimer _ambientOrbTimer;
@@ -97,15 +91,12 @@ public sealed partial class MainWindow : Window
     private bool _isSoftwareInventoryRequestRunning;
     private bool _isPackagedSoftwareInventoryRequestRunning;
     private bool _isStartupInventoryRequestRunning;
-    private int _pendingCompactCollapseVersion;
     private MachineOverallState _latestOverallState =
         MachineOverallState.Unknown;
     private CompactPresencePresentation?
         _appliedCompactPresentation;
     private CompactPresenceVisualMode?
         _activePresenceVisualMode;
-    private Storyboard? _presenceMotionStoryboard;
-    private Storyboard? _newInsightBloomStoryboard;
     private bool _showNewInsightBloom;
     private bool _isAnimationSettingsChangeSubscribed;
 
@@ -148,18 +139,15 @@ public sealed partial class MainWindow : Window
 
         InitializeComponent();
         _dashboardBackdrop = SystemBackdrop!;
-        _compactCollapseTimer =
-            MainContent.DispatcherQueue.CreateTimer();
-        _compactCollapseTimer.Interval = CompactPresenceLayout.CollapseDelay;
-        _compactCollapseTimer.IsRepeating = false;
-        _compactCollapseTimer.Tick += OnCompactCollapseTimerTick;
         _ambientOrbWindow = new NativeAmbientOrbWindow(
             OpenDashboardFromAmbientOrb);
+        _ambientOrbWindow.NewInsightCompleted += OnNewInsightBloomCompleted;
         _ambientOrbTimer =
             MainContent.DispatcherQueue.CreateTimer();
         _ambientOrbTimer.Interval = _ambientOrbWindow.FrameInterval;
         _ambientOrbTimer.IsRepeating = true;
         _ambientOrbTimer.Tick += OnAmbientOrbTimerTick;
+        ApplyPresenceVisualMode(force: true);
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
         {
             _uiSettings.AnimationsEnabledChanged +=
@@ -324,20 +312,11 @@ public sealed partial class MainWindow : Window
                 snapshot.UsedMemoryBytes / BytesPerGibibyte;
             var totalMemory =
                 snapshot.TotalMemoryBytes / BytesPerGibibyte;
-            var memoryUsagePercent =
-                snapshot.TotalMemoryBytes == 0
-                    ? 0d
-                    : snapshot.UsedMemoryBytes /
-                        (double)snapshot.TotalMemoryBytes * 100d;
-
             MemoryUsageText.Text =
                 $"{usedMemory:F1} GB / {totalMemory:F1} GB";
             TelemetryStatusText.Text = string.Empty;
             TelemetryStatusText.Visibility = Visibility.Collapsed;
 
-            PresenceTelemetryText.Text =
-                $"{snapshot.CpuUsagePercent:F1}% CPU · " +
-                $"{memoryUsagePercent:F0}% memory";
             ReevaluateFindings(observeInsightTriggers: true);
             UpdateExplainMachineStateButtonState();
             TryRequestDashboardInsight();
@@ -355,8 +334,6 @@ public sealed partial class MainWindow : Window
             {
                 CpuUsageText.Text = UnavailableValue;
                 MemoryUsageText.Text = UnavailableValue;
-                PresenceTelemetryText.Text =
-                    "CPU unavailable · Memory unavailable";
             }
 
             TelemetryStatusText.Text =
@@ -369,6 +346,7 @@ public sealed partial class MainWindow : Window
         MachineOverallState overallState)
     {
         _latestOverallState = overallState;
+        ApplyPresenceVisualMode();
     }
 
     private static Brush GetStateBrush(
@@ -707,6 +685,7 @@ public sealed partial class MainWindow : Window
         }
 
         _isExplanationRequestRunning = true;
+        ApplyPresenceVisualMode();
         UpdateExplainMachineStateButtonState();
         ExplainMachineStateButton.Content = "Refreshing...";
         MachineExplanationProgressRing.Visibility =
@@ -767,6 +746,7 @@ public sealed partial class MainWindow : Window
                 MachineExplanationStatusText.Text = string.Empty;
                 _hasSuccessfulExplanation = true;
                 insightAccepted = true;
+                BeginNewInsightBloom();
             }
             else
             {
@@ -798,6 +778,7 @@ public sealed partial class MainWindow : Window
         {
             stopwatch.Stop();
             _isExplanationRequestRunning = false;
+            ApplyPresenceVisualMode();
 
             var followUp = _insightTriggerPolicy.CompleteRequest(
                 decision,
@@ -1859,152 +1840,6 @@ public sealed partial class MainWindow : Window
         return $"{bytes} B";
     }
 
-    private void OnCompactShellPointerEntered(
-        object sender,
-        PointerRoutedEventArgs e)
-    {
-        if (!SupportsHover(e))
-        {
-            return;
-        }
-
-        _compactCollapseTimer.Stop();
-        _compactPresenceInteraction.PointerEntered();
-        ApplyCompactPresentation();
-    }
-
-    private void OnCompactShellPointerExited(
-        object sender,
-        PointerRoutedEventArgs e)
-    {
-        if (!SupportsHover(e))
-        {
-            return;
-        }
-
-        ScheduleCompactCollapse(
-            _compactPresenceInteraction.PointerExited());
-    }
-
-    private static bool SupportsHover(
-        PointerRoutedEventArgs e) =>
-        e.Pointer.PointerDeviceType is
-            PointerDeviceType.Mouse or PointerDeviceType.Pen;
-
-    private void OnMainContentGotFocus(
-        object sender,
-        RoutedEventArgs e) =>
-        UpdateCompactKeyboardFocus();
-
-    private void OnMainContentLostFocus(
-        object sender,
-        RoutedEventArgs e) =>
-        MainContent.DispatcherQueue.TryEnqueue(
-            UpdateCompactKeyboardFocus);
-
-    private void UpdateCompactKeyboardFocus()
-    {
-        if (_windowCancellationTokenSource.IsCancellationRequested)
-        {
-            return;
-        }
-
-        var focusedControl = MainContent.XamlRoot is null
-            ? null
-            : FocusManager.GetFocusedElement(
-                MainContent.XamlRoot) as Control;
-        var keyboardFocusIsInside =
-            focusedControl?.FocusState == FocusState.Keyboard &&
-            IsInsideCompactShell(focusedControl);
-        var collapseVersion =
-            _compactPresenceInteraction.SetKeyboardFocus(
-                keyboardFocusIsInside);
-
-        if (keyboardFocusIsInside)
-        {
-            _compactCollapseTimer.Stop();
-            ApplyCompactPresentation();
-            return;
-        }
-
-        ScheduleCompactCollapse(collapseVersion);
-    }
-
-    private bool IsInsideCompactShell(
-        DependencyObject? element)
-    {
-        while (element is not null)
-        {
-            if (ReferenceEquals(element, CompactShell))
-            {
-                return true;
-            }
-
-            element = VisualTreeHelper.GetParent(element);
-        }
-
-        return false;
-    }
-
-    private void ScheduleCompactCollapse(int requestVersion)
-    {
-        if (_windowCancellationTokenSource.IsCancellationRequested ||
-            _detailsExpanded ||
-            _compactPresenceInteraction.Presentation !=
-                CompactPresencePresentation.Context)
-        {
-            return;
-        }
-
-        _pendingCompactCollapseVersion = requestVersion;
-        _compactCollapseTimer.Stop();
-        _compactCollapseTimer.Start();
-    }
-
-    private void OnCompactCollapseTimerTick(
-        DispatcherQueueTimer sender,
-        object args)
-    {
-        sender.Stop();
-
-        if (_compactPresenceInteraction.TryCompleteCollapse(
-            _pendingCompactCollapseVersion))
-        {
-            ApplyCompactPresentation();
-        }
-    }
-
-    private void OnCompactPresenceClicked(
-        object sender,
-        RoutedEventArgs e)
-    {
-        if (!_compactPresenceInteraction.OpenDashboard())
-        {
-            return;
-        }
-
-        SetDashboardExpanded(true);
-    }
-
-    private void OnCompactPresenceTapped(
-        object sender,
-        TappedRoutedEventArgs e) =>
-        OnCompactPresenceClicked(sender, e);
-
-    private void OnCompactPresenceKeyDown(
-        object sender,
-        KeyRoutedEventArgs e)
-    {
-        if (!CompactPresenceLayout.IsDashboardActivationKey(
-            (uint)e.Key))
-        {
-            return;
-        }
-
-        e.Handled = true;
-        OnCompactPresenceClicked(sender, e);
-    }
-
     private void OnDashboardBackRequested(
         NavigationView sender,
         NavigationViewBackRequestedEventArgs args)
@@ -2024,7 +1859,6 @@ public sealed partial class MainWindow : Window
         DetailsPanel.Visibility = _detailsExpanded
             ? Visibility.Visible
             : Visibility.Collapsed;
-        _compactCollapseTimer.Stop();
         ApplyCompactPresentation();
 
         if (_detailsExpanded)
@@ -2095,7 +1929,7 @@ public sealed partial class MainWindow : Window
                 CompactPresenceLayout.AmbientOrbSize,
                 WorkAreaMargin);
             _ambientOrbWindow.Show(position.X, position.Y);
-            _ambientOrbTimer.Start();
+            UpdateAmbientOrbAnimationTimer();
         }
         catch (Exception exception)
         {
@@ -2105,7 +1939,13 @@ public sealed partial class MainWindow : Window
 
     private void OnAmbientOrbTimerTick(
         DispatcherQueueTimer sender,
-        object args) => _ambientOrbWindow.AdvanceFrame();
+        object args)
+    {
+        if (!_ambientOrbWindow.AdvanceFrame())
+        {
+            sender.Stop();
+        }
+    }
 
     private void OpenDashboardFromAmbientOrb()
     {
@@ -2146,16 +1986,9 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        StopPresenceAnimations();
         _activePresenceVisualMode = mode;
-        PresencePulseTransform.ScaleX = 1d;
-        PresencePulseTransform.ScaleY = 1d;
-        PresenceOrbitTransform.Angle = 0d;
-        PresenceOrbit.Opacity = 0.34d;
-        PresenceOrbit.Visibility = Visibility.Visible;
-        PresenceSweepHost.Visibility = Visibility.Collapsed;
-        PresenceSweepTransform.X = -30d;
-        PresenceCoreGlow.Opacity = GetStaticGlowOpacity(mode);
+        _ambientOrbWindow.SetAnimationsEnabled(_uiSettings.AnimationsEnabled);
+        _ambientOrbWindow.SetVisualMode(mode);
 
         if (!_uiSettings.AnimationsEnabled)
         {
@@ -2169,257 +2002,31 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (mode == CompactPresenceVisualMode.NewInsight)
+        UpdateAmbientOrbAnimationTimer();
+    }
+
+    private void UpdateAmbientOrbAnimationTimer()
+    {
+        if (_ambientOrbWindow.ShouldAnimate)
         {
-            StartNewInsightBloom();
-            return;
+            _ambientOrbTimer.Start();
         }
-
-        if (mode == CompactPresenceVisualMode.Generating)
+        else
         {
-            StartGeneratingMotion();
-            return;
+            _ambientOrbTimer.Stop();
         }
+    }
 
-        var specification = mode switch
+    private void OnNewInsightBloomCompleted(object? sender, EventArgs args)
+    {
+        if (_windowCancellationTokenSource.IsCancellationRequested)
         {
-            CompactPresenceVisualMode.Stable =>
-                new PresenceMotionSpecification(
-                    TimeSpan.FromSeconds(3.4),
-                    TimeSpan.FromSeconds(14),
-                    0.16d,
-                    0.34d,
-                    0.98d,
-                    1.035d),
-            CompactPresenceVisualMode.Attention =>
-                new PresenceMotionSpecification(
-                    TimeSpan.FromSeconds(1.8),
-                    TimeSpan.FromSeconds(11),
-                    0.2d,
-                    0.45d,
-                    0.95d,
-                    1.07d),
-            CompactPresenceVisualMode.Warning =>
-                new PresenceMotionSpecification(
-                    TimeSpan.FromSeconds(1.3),
-                    TimeSpan.FromSeconds(9),
-                    0.24d,
-                    0.52d,
-                    0.94d,
-                    1.09d),
-            CompactPresenceVisualMode.Critical =>
-                new PresenceMotionSpecification(
-                    TimeSpan.FromSeconds(0.95),
-                    TimeSpan.FromSeconds(7),
-                    0.28d,
-                    0.62d,
-                    0.93d,
-                    1.11d),
-            _ => new PresenceMotionSpecification(
-                TimeSpan.FromSeconds(3.75),
-                TimeSpan.FromSeconds(16),
-                0.1d,
-                0.23d,
-                0.98d,
-                1.025d)
-        };
-
-        StartPresencePulse(specification);
-    }
-
-    private void StartPresencePulse(
-        PresenceMotionSpecification specification)
-    {
-        var storyboard = new Storyboard();
-        AddDoubleAnimation(
-            storyboard,
-            PresenceCoreGlow,
-            nameof(UIElement.Opacity),
-            specification.MinimumGlowOpacity,
-            specification.MaximumGlowOpacity,
-            specification.HalfCycleDuration,
-            autoReverse: true,
-            repeatForever: true);
-        AddDoubleAnimation(
-            storyboard,
-            PresencePulseTransform,
-            nameof(ScaleTransform.ScaleX),
-            specification.MinimumScale,
-            specification.MaximumScale,
-            specification.HalfCycleDuration,
-            autoReverse: true,
-            repeatForever: true);
-        AddDoubleAnimation(
-            storyboard,
-            PresenceOrbitTransform,
-            nameof(RotateTransform.Angle),
-            0d,
-            360d,
-            specification.RingDriftDuration,
-            autoReverse: false,
-            repeatForever: true);
-        AddDoubleAnimation(
-            storyboard,
-            PresencePulseTransform,
-            nameof(ScaleTransform.ScaleY),
-            specification.MinimumScale,
-            specification.MaximumScale,
-            specification.HalfCycleDuration,
-            autoReverse: true,
-            repeatForever: true);
-
-        _presenceMotionStoryboard = storyboard;
-        storyboard.Begin();
-    }
-
-    private void StartGeneratingMotion()
-    {
-        PresenceSweepHost.Visibility = Visibility.Visible;
-        PresenceOrbit.Opacity = 0.58d;
-
-        var storyboard = new Storyboard();
-        AddDoubleAnimation(
-            storyboard,
-            PresenceCoreGlow,
-            nameof(UIElement.Opacity),
-            0.18d,
-            0.42d,
-            TimeSpan.FromSeconds(1.6),
-            autoReverse: true,
-            repeatForever: true);
-        AddDoubleAnimation(
-            storyboard,
-            PresenceOrbitTransform,
-            nameof(RotateTransform.Angle),
-            0d,
-            360d,
-            TimeSpan.FromSeconds(6),
-            autoReverse: false,
-            repeatForever: true);
-        AddDoubleAnimation(
-            storyboard,
-            PresenceSweepTransform,
-            nameof(TranslateTransform.X),
-            -30d,
-            64d,
-            TimeSpan.FromSeconds(2.8),
-            autoReverse: false,
-            repeatForever: true);
-
-        _presenceMotionStoryboard = storyboard;
-        storyboard.Begin();
-    }
-
-    private void StartNewInsightBloom()
-    {
-        var storyboard = new Storyboard();
-        AddDoubleAnimation(
-            storyboard,
-            PresenceCoreGlow,
-            nameof(UIElement.Opacity),
-            0.2d,
-            0.72d,
-            TimeSpan.FromMilliseconds(360),
-            autoReverse: true,
-            repeatForever: false);
-        AddDoubleAnimation(
-            storyboard,
-            PresencePulseTransform,
-            nameof(ScaleTransform.ScaleX),
-            1d,
-            1.24d,
-            TimeSpan.FromMilliseconds(360),
-            autoReverse: true,
-            repeatForever: false);
-        AddDoubleAnimation(
-            storyboard,
-            PresencePulseTransform,
-            nameof(ScaleTransform.ScaleY),
-            1d,
-            1.24d,
-            TimeSpan.FromMilliseconds(360),
-            autoReverse: true,
-            repeatForever: false);
-
-        _newInsightBloomStoryboard = storyboard;
-        storyboard.Completed += OnNewInsightBloomCompleted;
-        storyboard.Begin();
-    }
-
-    private void OnNewInsightBloomCompleted(
-        object? sender,
-        object e)
-    {
-        if (_newInsightBloomStoryboard is not null)
-        {
-            _newInsightBloomStoryboard.Completed -=
-                OnNewInsightBloomCompleted;
-            _newInsightBloomStoryboard = null;
+            return;
         }
 
         _showNewInsightBloom = false;
         _activePresenceVisualMode = null;
         ApplyPresenceVisualMode(force: true);
-    }
-
-    private static void AddDoubleAnimation(
-        Storyboard storyboard,
-        DependencyObject target,
-        string targetProperty,
-        double from,
-        double to,
-        TimeSpan duration,
-        bool autoReverse,
-        bool repeatForever)
-    {
-        var animation = new DoubleAnimation
-        {
-            From = from,
-            To = to,
-            Duration = new Duration(duration),
-            AutoReverse = autoReverse,
-            EasingFunction = new SineEase
-            {
-                EasingMode = EasingMode.EaseInOut
-            }
-        };
-
-        if (repeatForever)
-        {
-            animation.RepeatBehavior = RepeatBehavior.Forever;
-        }
-
-        Storyboard.SetTarget(animation, target);
-        Storyboard.SetTargetProperty(
-            animation,
-            targetProperty);
-        storyboard.Children.Add(animation);
-    }
-
-    private static double GetStaticGlowOpacity(
-        CompactPresenceVisualMode mode) => mode switch
-        {
-            CompactPresenceVisualMode.Attention => 0.32d,
-            CompactPresenceVisualMode.Warning => 0.38d,
-            CompactPresenceVisualMode.Critical => 0.46d,
-            CompactPresenceVisualMode.Generating => 0.34d,
-            CompactPresenceVisualMode.NewInsight => 0.5d,
-            CompactPresenceVisualMode.Unknown => 0.15d,
-            _ => 0.24d
-        };
-
-    private void StopPresenceAnimations()
-    {
-        _presenceMotionStoryboard?.Stop();
-        _presenceMotionStoryboard = null;
-
-        if (_newInsightBloomStoryboard is not null)
-        {
-            _newInsightBloomStoryboard.Completed -=
-                OnNewInsightBloomCompleted;
-            _newInsightBloomStoryboard.Stop();
-            _newInsightBloomStoryboard = null;
-        }
     }
 
     private void OnSystemAnimationsEnabledChanged(
@@ -2601,9 +2208,8 @@ public sealed partial class MainWindow : Window
     {
         _ambientOrbTimer.Stop();
         _ambientOrbTimer.Tick -= OnAmbientOrbTimerTick;
+        _ambientOrbWindow.NewInsightCompleted -= OnNewInsightBloomCompleted;
         _ambientOrbWindow.Dispose();
-        _compactCollapseTimer.Stop();
-        _compactCollapseTimer.Tick -= OnCompactCollapseTimerTick;
         if (_isAnimationSettingsChangeSubscribed &&
             OperatingSystem.IsWindowsVersionAtLeast(
                 10,
@@ -2613,18 +2219,9 @@ public sealed partial class MainWindow : Window
             _uiSettings.AnimationsEnabledChanged -=
                 OnSystemAnimationsEnabledChanged;
         }
-        StopPresenceAnimations();
         _folderScanCancellationTokenSource?.Cancel();
         _windowCancellationTokenSource.Cancel();
     }
-
-    private sealed record PresenceMotionSpecification(
-        TimeSpan HalfCycleDuration,
-        TimeSpan RingDriftDuration,
-        double MinimumGlowOpacity,
-        double MaximumGlowOpacity,
-        double MinimumScale,
-        double MaximumScale);
 }
 
 public sealed record ProcessDisplayItem(

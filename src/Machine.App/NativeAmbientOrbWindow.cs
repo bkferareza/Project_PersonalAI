@@ -36,12 +36,12 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     private static readonly WindowProcedure WindowProcedureDelegate =
         DispatchWindowProcedure;
     private static ushort _windowClassAtom;
-    private readonly AmbientOrbFrameSequence _normalFrames =
-        AmbientOrbFrameSequence.Create();
-    private readonly AmbientOrbFrameSequence _hoverFrames =
-        AmbientOrbFrameSequence.Create(isHovered: true);
     private readonly AmbientOrbLifecycle _lifecycle = new();
     private readonly Action _onOrbClicked;
+    private AmbientOrbFrameSequence _normalFrames =
+        AmbientOrbFrameSequence.Create();
+    private AmbientOrbFrameSequence _hoverFrames =
+        AmbientOrbFrameSequence.Create(isHovered: true);
     private IntPtr _windowHandle;
     private IntPtr _deviceContext;
     private IntPtr _bitmap;
@@ -50,6 +50,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     private GCHandle _selfHandle;
     private int _frameIndex;
     private bool _isHovered;
+    private bool _animationsEnabled = true;
 
     public NativeAmbientOrbWindow(Action onOrbClicked)
     {
@@ -62,6 +63,44 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     public bool IsDisposed => _lifecycle.IsDisposed;
 
     public TimeSpan FrameInterval => _normalFrames.FrameInterval;
+
+    public CompactPresenceVisualMode VisualMode => _normalFrames.Mode;
+
+    public bool ShouldAnimate => IsVisible && _animationsEnabled;
+
+    public event EventHandler? NewInsightCompleted;
+
+    public void SetVisualMode(CompactPresenceVisualMode mode)
+    {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        if (VisualMode == mode)
+        {
+            return;
+        }
+
+        _normalFrames = AmbientOrbFrameSequence.Create(mode);
+        _hoverFrames = AmbientOrbFrameSequence.Create(mode, isHovered: true);
+        _frameIndex = 0;
+        if (IsVisible)
+        {
+            PresentCurrentFrame();
+        }
+    }
+
+    public void SetAnimationsEnabled(bool enabled)
+    {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        if (_animationsEnabled == enabled)
+        {
+            return;
+        }
+
+        _animationsEnabled = enabled;
+        if (IsVisible)
+        {
+            PresentCurrentFrame();
+        }
+    }
 
     public void Show(int x, int y)
     {
@@ -91,15 +130,29 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         ShowNativeWindow(_windowHandle, 0);
     }
 
-    public void AdvanceFrame()
+    public bool AdvanceFrame()
     {
-        if (!IsVisible || IsDisposed)
+        if (!ShouldAnimate || IsDisposed)
         {
-            return;
+            return false;
         }
 
-        _frameIndex = (_frameIndex + 1) % AmbientOrbFrameSequence.FrameCount;
+        if (_normalFrames.IsLooping)
+        {
+            _frameIndex = (_frameIndex + 1) % _normalFrames.Frames.Count;
+            PresentCurrentFrame();
+            return true;
+        }
+
+        _frameIndex = Math.Min(_frameIndex + 1, _normalFrames.Frames.Count - 1);
         PresentCurrentFrame();
+        if (_frameIndex < _normalFrames.Frames.Count - 1)
+        {
+            return true;
+        }
+
+        NewInsightCompleted?.Invoke(this, EventArgs.Empty);
+        return ShouldAnimate;
     }
 
     public void Dispose()
@@ -204,7 +257,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     private void PresentCurrentFrame()
     {
         var frames = _isHovered ? _hoverFrames : _normalFrames;
-        var frame = frames.Frames[_frameIndex];
+        var frame = frames.GetFrame(_frameIndex, _animationsEnabled);
         Marshal.Copy(frame.Pixels, 0, _pixelBuffer, frame.Pixels.Length);
 
         GetWindowRect(_windowHandle, out var windowRect);
@@ -268,7 +321,8 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             case WindowMessageLeftButtonUp:
                 if (_normalFrames.IsHitTestVisible(
                     SignedLowWord(lParam),
-                    SignedHighWord(lParam)))
+                    SignedHighWord(lParam),
+                    _frameIndex))
                 {
                     _onOrbClicked();
                 }
@@ -292,7 +346,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         var point = new Point(
             SignedLowWord(screenPoint) - rect.Left,
             SignedHighWord(screenPoint) - rect.Top);
-        return _normalFrames.IsHitTestVisible(point.X, point.Y);
+        return _normalFrames.IsHitTestVisible(point.X, point.Y, _frameIndex);
     }
 
     private static void EnsureWindowClass()
