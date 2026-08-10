@@ -7,6 +7,14 @@ public enum MachineLearningConfidence
     Established
 }
 
+public enum MachineLearningDataHealth
+{
+    Healthy,
+    NotYetPersisted,
+    RecoveredFromCorruptState,
+    PersistenceTemporarilyUnavailable
+}
+
 public sealed record MachineLearningObservation(
     DateTimeOffset Timestamp,
     double CpuUsagePercent,
@@ -27,6 +35,7 @@ public sealed record MachineLearningBaseline(
     double MemoryStandardDeviation,
     DateTimeOffset FirstObservedAt,
     DateTimeOffset LastObservedAt,
+    int ObservedDayCount,
     MachineLearningConfidence Confidence);
 
 public sealed record MachineLearningEpisode(
@@ -46,7 +55,27 @@ public sealed record MachineLearningDashboardSnapshot(
     TimeSpan ObservedDuration,
     MachineLearningObservation? CurrentObservation,
     MachineLearningBaseline? CurrentBaseline,
-    int RecentEpisodeCount);
+    int RecentEpisodeCount,
+    int RawObservationCount,
+    IReadOnlyList<MachineLearningBaseline> Baselines,
+    IReadOnlyList<MachineLearningEpisode> RecentEpisodes,
+    IReadOnlyList<MachineLearnedItem> LearnedItems,
+    MachineLearningDiagnostics Diagnostics,
+    DateTimeOffset? LastPersistedAt,
+    bool IsDirty,
+    MachineLearningDataHealth DataHealth);
+
+public sealed record MachineLearningDiagnostics(
+    long AcceptedObservationCount,
+    long ThrottledObservationCount,
+    long MissingPrerequisiteCount,
+    DateTimeOffset? LastAcceptedObservationAt);
+
+public sealed record MachineLearnedItem(
+    string Text,
+    long EvidenceCount,
+    MachineLearningConfidence? Confidence,
+    bool IsEarlyObservation);
 
 public sealed record MachineLearningEpisodeSummary(
     MachineUserActivityState ActivityState,

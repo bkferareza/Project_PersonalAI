@@ -33,6 +33,53 @@ public readonly record struct CompactPresencePosition(
     int X,
     int Y);
 
+public readonly record struct DashboardCaptionRegion(
+    int X,
+    int Y,
+    int Width,
+    int Height)
+{
+    public int Right => X + Width;
+}
+
+public static class DashboardChromeLayout
+{
+    public const bool HasBorder = false;
+    public const bool HasTitleBar = false;
+    public const uint EscapeVirtualKey = 27;
+
+    public static bool IsReturnToAmbientKey(uint virtualKey) =>
+        virtualKey == EscapeVirtualKey;
+
+    public static void InvokeClose(Action close)
+    {
+        ArgumentNullException.ThrowIfNull(close);
+        close();
+    }
+
+    public static DashboardCaptionRegion CalculateCaptionRegion(
+        double x,
+        double y,
+        double width,
+        double height,
+        double rasterizationScale)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y) ||
+            !double.IsFinite(width) || !double.IsFinite(height) ||
+            !double.IsFinite(rasterizationScale) ||
+            width < 0d || height < 0d || rasterizationScale <= 0d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width));
+        }
+
+        return new DashboardCaptionRegion(
+            (int)Math.Round(x * rasterizationScale),
+            (int)Math.Round(y * rasterizationScale),
+            Math.Max(0, (int)Math.Round(width * rasterizationScale)),
+            Math.Max(0, (int)Math.Round(height * rasterizationScale)));
+    }
+}
+
 public static class CompactPresenceLayout
 {
     public static readonly CompactPresenceSize AmbientOrbSize =
@@ -177,29 +224,75 @@ public sealed class CompactPresenceInteraction
     }
 }
 
+public enum AmbientOrbTimerTransition
+{
+    None,
+    Start,
+    Stop
+}
+
 public sealed class AmbientOrbLifecycle : IDisposable
 {
     public bool IsVisible { get; private set; }
 
     public bool IsDisposed { get; private set; }
 
-    public void Show()
+    public bool AnimationsEnabled { get; private set; } = true;
+
+    public bool IsTimerRunning { get; private set; }
+
+    public bool ShouldAnimate =>
+        IsVisible && AnimationsEnabled && !IsDisposed;
+
+    public void Show() => _ = ShowWithTimerTransition();
+
+    public AmbientOrbTimerTransition ShowWithTimerTransition()
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         IsVisible = true;
+        return UpdateTimerState();
     }
 
-    public void Hide()
+    public AmbientOrbTimerTransition Hide()
     {
         if (!IsDisposed)
         {
             IsVisible = false;
         }
+
+        return UpdateTimerState();
+    }
+
+    public AmbientOrbTimerTransition SetAnimationsEnabled(bool enabled)
+    {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        AnimationsEnabled = enabled;
+        return UpdateTimerState();
+    }
+
+    public void MarkTimerStartFailed()
+    {
+        IsTimerRunning = false;
     }
 
     public void Dispose()
     {
         IsVisible = false;
+        IsTimerRunning = false;
         IsDisposed = true;
+    }
+
+    private AmbientOrbTimerTransition UpdateTimerState()
+    {
+        var shouldRun = ShouldAnimate;
+        if (shouldRun == IsTimerRunning)
+        {
+            return AmbientOrbTimerTransition.None;
+        }
+
+        IsTimerRunning = shouldRun;
+        return shouldRun
+            ? AmbientOrbTimerTransition.Start
+            : AmbientOrbTimerTransition.Stop;
     }
 }

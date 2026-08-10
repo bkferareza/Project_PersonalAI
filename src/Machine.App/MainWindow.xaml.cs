@@ -2,9 +2,11 @@ using System.Diagnostics;
 using System.Globalization;
 using Machine.Core;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 using Windows.UI.ViewManagement;
@@ -63,7 +65,7 @@ public sealed partial class MainWindow : Window
     private readonly SystemBackdrop _dashboardBackdrop;
     private readonly UISettings _uiSettings = new();
     private readonly NativeAmbientOrbWindow _ambientOrbWindow;
-    private readonly DispatcherQueueTimer _ambientOrbTimer;
+    private InputNonClientPointerSource? _nonClientPointerSource;
     private CancellationTokenSource?
         _folderScanCancellationTokenSource;
     private MachineIdentity? _latestIdentity;
@@ -80,6 +82,7 @@ public sealed partial class MainWindow : Window
         _latestPackagedSoftwareInventorySnapshot;
     private MachineStartupInventorySnapshot?
         _latestStartupInventorySnapshot;
+    private OllamaStatusSnapshot? _latestOllamaStatusSnapshot;
     private MachineFindingsSnapshot _latestFindingsSnapshot =
         MachineFindingsEvaluator.Evaluate(new());
     private bool _contentLoadStarted;
@@ -102,6 +105,7 @@ public sealed partial class MainWindow : Window
         _activePresenceVisualMode;
     private bool _showNewInsightBloom;
     private bool _isAnimationSettingsChangeSubscribed;
+    private bool _isXamlRootChangeSubscribed;
 
     public MainWindow(
         IMachineIdentityProvider identityProvider,
@@ -154,11 +158,6 @@ public sealed partial class MainWindow : Window
         _ambientOrbWindow = new NativeAmbientOrbWindow(
             OpenDashboardFromAmbientOrb);
         _ambientOrbWindow.NewInsightCompleted += OnNewInsightBloomCompleted;
-        _ambientOrbTimer =
-            MainContent.DispatcherQueue.CreateTimer();
-        _ambientOrbTimer.Interval = _ambientOrbWindow.FrameInterval;
-        _ambientOrbTimer.IsRepeating = true;
-        _ambientOrbTimer.Tick += OnAmbientOrbTimerTick;
         ApplyPresenceVisualMode(force: true);
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
         {
@@ -188,8 +187,13 @@ public sealed partial class MainWindow : Window
                 presenter.IsMaximizable = false;
                 presenter.IsResizable = false;
                 presenter.IsMinimizable = true;
-                presenter.SetBorderAndTitleBar(false, false);
+                presenter.SetBorderAndTitleBar(
+                    DashboardChromeLayout.HasBorder,
+                    DashboardChromeLayout.HasTitleBar);
             }
+
+            _nonClientPointerSource =
+                InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
         }
         catch (Exception exception)
         {
@@ -197,6 +201,7 @@ public sealed partial class MainWindow : Window
         }
 
         ApplyCompactPresentation(force: true);
+        UpdateDashboardDragRegion();
     }
 
     private async void OnMainContentLoaded(
@@ -209,6 +214,12 @@ public sealed partial class MainWindow : Window
         }
 
         _contentLoadStarted = true;
+
+        if (MainContent.XamlRoot is not null)
+        {
+            MainContent.XamlRoot.Changed += OnDashboardXamlRootChanged;
+            _isXamlRootChangeSubscribed = true;
+        }
 
         await LoadIdentityAsync();
         await LoadLearningAsync();
@@ -323,7 +334,21 @@ public sealed partial class MainWindow : Window
             TelemetryStatusText.Visibility = Visibility.Collapsed;
 
             ReevaluateFindings();
-            await CaptureLearningObservationAsync(snapshot, cancellationToken);
+            var learningChanged = await CaptureLearningObservationAsync(
+                snapshot,
+                cancellationToken);
+            var previousLearningHealth = _learningService.DataHealth;
+            var previousLastPersistence = _learningService.LastPersistedAt;
+            var persisted = await _learningService.SaveIfDueAsync(
+                _learningStore,
+                DateTimeOffset.UtcNow,
+                cancellationToken: cancellationToken);
+            if (learningChanged || persisted ||
+                previousLearningHealth != _learningService.DataHealth ||
+                previousLastPersistence != _learningService.LastPersistedAt)
+            {
+                UpdateLearningDashboard();
+            }
             ObserveInsightTriggers();
             UpdateExplainMachineStateButtonState();
             TryRequestDashboardInsight();
@@ -336,6 +361,14 @@ public sealed partial class MainWindow : Window
         catch (Exception exception)
         {
             Debug.WriteLine(exception);
+
+            var learningChanged = _learningService.TryBeginObservationAttempt(
+                DateTimeOffset.UtcNow);
+            if (learningChanged)
+            {
+                _learningService.RecordMissingPrerequisite();
+                UpdateLearningDashboard();
+            }
 
             if (_latestResourceSnapshot is null)
             {
@@ -434,13 +467,23 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async Task CaptureLearningObservationAsync(
+    private async Task<bool> CaptureLearningObservationAsync(
         MachineResourceSnapshot resources,
         CancellationToken cancellationToken)
     {
-        if (!_learningService.CanObserveAt(resources.CapturedAt))
+        if (!_learningService.TryBeginObservationAttempt(
+            resources.CapturedAt))
         {
-            return;
+            return false;
+        }
+
+        if (!double.IsFinite(resources.CpuUsagePercent) ||
+            resources.TotalMemoryBytes <= 0 ||
+            resources.UsedMemoryBytes < 0 ||
+            resources.UsedMemoryBytes > resources.TotalMemoryBytes)
+        {
+            _learningService.RecordMissingPrerequisite();
+            return true;
         }
 
         MachineUserActivitySnapshot activity;
@@ -456,7 +499,14 @@ public sealed partial class MainWindow : Window
         catch (Exception exception)
         {
             Debug.WriteLine(exception);
-            return;
+            _learningService.RecordMissingPrerequisite();
+            return true;
+        }
+
+        if (!Enum.IsDefined(activity.State))
+        {
+            _learningService.RecordMissingPrerequisite();
+            return true;
         }
 
         var memoryPercent = resources.TotalMemoryBytes == 0
@@ -480,37 +530,219 @@ public sealed partial class MainWindow : Window
             freePercent,
             MachineInsightContextFingerprint.Create(_latestFindingsSnapshot));
 
-        if (_learningService.Observe(observation))
-        {
-            await _learningService.SaveIfDueAsync(
-                _learningStore,
-                DateTimeOffset.UtcNow,
-                cancellationToken: cancellationToken);
-            UpdateLearningDashboard();
-        }
+        return _learningService.Observe(observation);
     }
 
     private void UpdateLearningDashboard()
     {
         var snapshot = _learningService.GetDashboardSnapshot(
             DateTimeOffset.UtcNow);
-        LearningObservationText.Text = snapshot.ObservationCount == 0
-            ? "Calibrating · learning your normal machine behavior"
-            : $"{FormatDuration(snapshot.ObservedDuration)} observed · " +
-                $"{snapshot.ObservationCount:N0} samples";
         var current = snapshot.CurrentObservation;
-        LearningCurrentContextText.Text = current is null
+        var baseline = snapshot.CurrentBaseline;
+        var confidence = baseline?.Confidence ??
+            MachineLearningConfidence.Calibrating;
+
+        LearningConfidenceText.Text = confidence.ToString();
+        LearningObservedDurationText.Text =
+            $"{FormatDuration(snapshot.ObservedDuration)} observed";
+        LearningObservationText.Text =
+            FormatSampleCount(snapshot.ObservationCount);
+
+        LearningPageStatusText.Text = confidence.ToString();
+        LearningPageObservedText.Text =
+            FormatDuration(snapshot.ObservedDuration);
+        LearningPageRawObservationsText.Text =
+            $"{snapshot.RawObservationCount:N0} / " +
+            $"{MachineLearningService.MaximumObservationCount:N0}";
+        LearningPageRecentEpisodesText.Text =
+            $"{snapshot.RecentEpisodeCount:N0}";
+        LearningPageLastObservationText.Text = FormatLearningTimestamp(
+            snapshot.Diagnostics.LastAcceptedObservationAt,
+            "Not yet observed");
+        LearningPageLastPersistedText.Text = FormatLearningTimestamp(
+            snapshot.LastPersistedAt,
+            "Not yet persisted");
+        LearningPageCurrentContextText.Text = current is null
             ? "Waiting for verified telemetry"
             : $"{current.ActivityState} · " +
                 $"{current.Timestamp.ToLocalTime():h tt}";
-        var baseline = snapshot.CurrentBaseline;
-        LearningBaselineText.Text = baseline is null
-            ? "Calibrating · learning your normal machine behavior"
-            : $"CPU typically {baseline.CpuMean:F1}% · " +
-                $"Memory typically {baseline.MemoryMean:F1}%";
-        LearningConfidenceText.Text = baseline?.Confidence.ToString() ??
-            MachineLearningConfidence.Calibrating.ToString();
-        LearningEpisodesText.Text = $"{snapshot.RecentEpisodeCount:N0}";
+
+        LearningPageCurrentBucketText.Text = baseline is null
+            ? "Waiting"
+            : $"{FormatLearningHour(baseline.LocalHour)} · " +
+                $"{baseline.ActivityState}";
+        LearningPageCurrentSamplesText.Text =
+            $"{baseline?.SampleCount ?? 0:N0}";
+        LearningPageObservedDaysText.Text =
+            $"{baseline?.ObservedDayCount ?? 0:N0} / " +
+            $"{MachineLearningService.EstablishedObservedDayCount:N0}";
+        LearningPageConfidenceText.Text = confidence.ToString();
+
+        var orderedBaselines = snapshot.Baselines
+            .OrderBy(item => baseline is not null &&
+                item.LocalHour == baseline.LocalHour &&
+                item.ActivityState == baseline.ActivityState ? 0 : 1)
+            .ThenByDescending(item => item.LastObservedAt)
+            .ThenBy(item => item.LocalHour)
+            .ThenBy(item => item.ActivityState)
+            .Select(CreateLearningBaselineDisplayItem)
+            .ToArray();
+        LearningBaselinesList.ItemsSource = orderedBaselines;
+        LearningBaselinesEmptyText.Visibility = orderedBaselines.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        var learnedItems = snapshot.LearnedItems.Select(item =>
+            new LearnedItemDisplayItem(
+                item.IsEarlyObservation
+                    ? $"Early observation · {item.Confidence}"
+                    : item.Confidence == MachineLearningConfidence.Established
+                        ? "Established"
+                        : "Recorded aggregate",
+                item.Text,
+                $"Evidence · {FormatSampleCount(item.EvidenceCount)}"))
+            .ToArray();
+        LearnedItemsList.ItemsSource = learnedItems;
+        LearningItemsEmptyText.Visibility = learnedItems.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        var episodes = MachineLearningEpisodeProjector
+            .Project(snapshot.RecentEpisodes)
+            .Select(CreateLearningEpisodeDisplayItem)
+            .ToArray();
+        RecentLearningEpisodesList.ItemsSource = episodes;
+        LearningEpisodesEmptyText.Visibility = episodes.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        LearningDataHealthText.Text = FormatLearningDataHealth(
+            snapshot.DataHealth);
+        LearningAcceptedText.Text =
+            $"{snapshot.Diagnostics.AcceptedObservationCount:N0}";
+        LearningThrottledText.Text =
+            $"{snapshot.Diagnostics.ThrottledObservationCount:N0}";
+        LearningSkippedText.Text =
+            $"{snapshot.Diagnostics.MissingPrerequisiteCount:N0} missing prerequisites";
+        LearningLastAcceptedText.Text = FormatLearningTimestamp(
+            snapshot.Diagnostics.LastAcceptedObservationAt,
+            "Not yet observed");
+        LearningDirtyStateText.Text = snapshot.IsDirty
+            ? "Changes waiting for the next periodic save"
+            : "No pending changes";
+        UpdateLearningRuntimeStatus();
+    }
+
+    private static LearningBaselineDisplayItem
+        CreateLearningBaselineDisplayItem(MachineLearningBaseline baseline)
+    {
+        var valueLabel = baseline.Confidence ==
+            MachineLearningConfidence.Established
+                ? "Typical"
+                : "Observed average";
+        var first = baseline.FirstObservedAt.ToLocalTime();
+        var last = baseline.LastObservedAt.ToLocalTime();
+        var observedSpan = first.Date == last.Date
+            ? $"Observed {first:MMM d, yyyy}"
+            : $"Observed {first:MMM d, yyyy} → {last:MMM d, yyyy}";
+
+        return new LearningBaselineDisplayItem(
+            $"{FormatLearningHour(baseline.LocalHour)} · " +
+                $"{baseline.ActivityState}",
+            $"{FormatSampleCount(baseline.SampleCount)} · {baseline.Confidence} · " +
+                $"{baseline.ObservedDayCount:N0} observed " +
+                (baseline.ObservedDayCount == 1 ? "day" : "days"),
+            $"{valueLabel} {baseline.CpuMean:F1}%\n" +
+                $"± {baseline.CpuStandardDeviation:F1}%",
+            $"{valueLabel} {baseline.MemoryMean:F1}%\n" +
+                $"± {baseline.MemoryStandardDeviation:F1}%",
+            observedSpan);
+    }
+
+    private static LearningEpisodeDisplayItem
+        CreateLearningEpisodeDisplayItem(MachineLearningEpisode episode)
+    {
+        var start = episode.StartedAt.ToLocalTime();
+        var end = episode.EndedAt.ToLocalTime();
+        var timeRange = start.Date == end.Date
+            ? $"{start:HH:mm} → {end:HH:mm}"
+            : $"{start:MMM d HH:mm} → {end:MMM d HH:mm}";
+        var details = new List<string>();
+        if (!string.IsNullOrWhiteSpace(episode.Outcome))
+        {
+            details.Add(episode.Outcome);
+        }
+        if (episode.FindingKeys.Count > 0)
+        {
+            details.Add("Finding codes · " + string.Join(", ",
+                episode.FindingKeys.Take(3)));
+        }
+        if (details.Count == 0)
+        {
+            details.Add("No finding codes recorded");
+        }
+
+        return new LearningEpisodeDisplayItem(
+            $"{timeRange} · {FormatDuration(episode.EndedAt - episode.StartedAt)}",
+            $"{episode.ActivityState} · {episode.OverallState} · " +
+                FormatSampleCount(episode.SampleCount),
+            $"CPU avg {episode.AverageCpuUsagePercent:F1}% · " +
+                $"peak {episode.PeakCpuUsagePercent:F1}%",
+            $"Memory avg {episode.AverageMemoryUsagePercent:F1}%",
+            string.Join(" · ", details));
+    }
+
+    private static string FormatLearningHour(int hour)
+    {
+        var boundedHour = Math.Clamp(hour, 0, 23);
+        return new DateTime(2000, 1, 1, boundedHour, 0, 0)
+            .ToString("h tt", CultureInfo.CurrentCulture);
+    }
+
+    private static string FormatSampleCount(long count) =>
+        $"{count:N0} " + (count == 1 ? "sample" : "samples");
+
+    private static string FormatLearningTimestamp(
+        DateTimeOffset? timestamp,
+        string fallback) => timestamp is null
+            ? fallback
+            : timestamp.Value.ToLocalTime().ToString(
+                "HH:mm:ss",
+                CultureInfo.CurrentCulture);
+
+    private static string FormatLearningDataHealth(
+        MachineLearningDataHealth health) => health switch
+        {
+            MachineLearningDataHealth.Healthy => "Healthy",
+            MachineLearningDataHealth.NotYetPersisted => "Not yet persisted",
+            MachineLearningDataHealth.RecoveredFromCorruptState =>
+                "Recovered from corrupt state",
+            MachineLearningDataHealth.PersistenceTemporarilyUnavailable =>
+                "Persistence temporarily unavailable",
+            _ => "Not yet persisted"
+        };
+
+    private void UpdateLearningRuntimeStatus()
+    {
+        var snapshot = _latestOllamaStatusSnapshot;
+        if (snapshot is null)
+        {
+            LearningAiRuntimeText.Text = "Status unavailable";
+            LearningAiModelText.Text = "Loaded-model status unavailable";
+            return;
+        }
+
+        LearningAiRuntimeText.Text = snapshot.IsServiceAvailable
+            ? "Online"
+            : "Offline";
+        LearningAiModelText.Text = !snapshot.IsServiceAvailable ||
+            !snapshot.IsRunningModelStatusAvailable
+                ? "Loaded-model status unavailable"
+                : snapshot.RunningModels.Count == 0
+                    ? "No model loaded"
+                    : snapshot.RunningModels.Count == 1
+                        ? $"{snapshot.RunningModels[0].Name} loaded"
+                        : $"{snapshot.RunningModels.Count:N0} models loaded";
     }
 
     private static string FormatDuration(TimeSpan duration) =>
@@ -644,6 +876,7 @@ public sealed partial class MainWindow : Window
         catch (Exception exception)
         {
             Debug.WriteLine(exception);
+            _latestOllamaStatusSnapshot = null;
             ShowOllamaOffline();
         }
     }
@@ -651,6 +884,8 @@ public sealed partial class MainWindow : Window
     private void UpdateOllamaStatus(
         OllamaStatusSnapshot snapshot)
     {
+        _latestOllamaStatusSnapshot = snapshot;
+        UpdateLearningRuntimeStatus();
         if (!snapshot.IsServiceAvailable)
         {
             ShowOllamaOffline();
@@ -700,6 +935,7 @@ public sealed partial class MainWindow : Window
         OllamaVersionText.Text = UnavailableValue;
         ClearOllamaModels(
             "Loaded-model status is unavailable.");
+        UpdateLearningRuntimeStatus();
         UpdateExplainMachineStateButtonState();
     }
 
@@ -1967,12 +2203,33 @@ public sealed partial class MainWindow : Window
         NavigationView sender,
         NavigationViewBackRequestedEventArgs args)
     {
-        if (!_compactPresenceInteraction.CloseDashboard())
+        ReturnToAmbientPresence();
+    }
+
+    private void OnDashboardCloseClicked(object sender, RoutedEventArgs args) =>
+        DashboardChromeLayout.InvokeClose(Close);
+
+    private void OnMainContentKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (!_detailsExpanded ||
+            !DashboardChromeLayout.IsReturnToAmbientKey(
+                (uint)args.Key))
         {
             return;
         }
 
+        args.Handled = ReturnToAmbientPresence();
+    }
+
+    private bool ReturnToAmbientPresence()
+    {
+        if (!_compactPresenceInteraction.CloseDashboard())
+        {
+            return false;
+        }
+
         SetDashboardExpanded(false);
+        return true;
     }
 
     private void SetDashboardExpanded(bool isExpanded)
@@ -1982,7 +2239,11 @@ public sealed partial class MainWindow : Window
         DetailsPanel.Visibility = _detailsExpanded
             ? Visibility.Visible
             : Visibility.Collapsed;
+        DashboardChrome.Visibility = _detailsExpanded
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         ApplyCompactPresentation();
+        UpdateDashboardDragRegion();
 
         if (_detailsExpanded)
         {
@@ -2022,12 +2283,14 @@ public sealed partial class MainWindow : Window
 
         if (isDashboardExpanded)
         {
-            _ambientOrbTimer.Stop();
             _ambientOrbWindow.Hide();
             AppWindow.Show();
             ResizeAndPositionWindow(
                 ExpandedWindowWidth,
                 ExpandedWindowHeight);
+            MainContent.DispatcherQueue.TryEnqueue(
+                DispatcherQueuePriority.Low,
+                UpdateDashboardDragRegion);
             return;
         }
 
@@ -2052,21 +2315,10 @@ public sealed partial class MainWindow : Window
                 CompactPresenceLayout.AmbientOrbSize,
                 WorkAreaMargin);
             _ambientOrbWindow.Show(position.X, position.Y);
-            UpdateAmbientOrbAnimationTimer();
         }
         catch (Exception exception)
         {
             Debug.WriteLine(exception);
-        }
-    }
-
-    private void OnAmbientOrbTimerTick(
-        DispatcherQueueTimer sender,
-        object args)
-    {
-        if (!_ambientOrbWindow.AdvanceFrame())
-        {
-            sender.Stop();
         }
     }
 
@@ -2125,19 +2377,6 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        UpdateAmbientOrbAnimationTimer();
-    }
-
-    private void UpdateAmbientOrbAnimationTimer()
-    {
-        if (_ambientOrbWindow.ShouldAnimate)
-        {
-            _ambientOrbTimer.Start();
-        }
-        else
-        {
-            _ambientOrbTimer.Stop();
-        }
     }
 
     private void OnNewInsightBloomCompleted(object? sender, EventArgs args)
@@ -2175,9 +2414,58 @@ public sealed partial class MainWindow : Window
             if (AppWindow.Presenter is OverlappedPresenter presenter)
             {
                 presenter.SetBorderAndTitleBar(
-                    isDashboardExpanded,
-                    isDashboardExpanded);
+                    DashboardChromeLayout.HasBorder,
+                    DashboardChromeLayout.HasTitleBar);
             }
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+        }
+    }
+
+    private void OnDashboardDragRegionSizeChanged(
+        object sender,
+        SizeChangedEventArgs args) => UpdateDashboardDragRegion();
+
+    private void OnDashboardXamlRootChanged(
+        XamlRoot sender,
+        XamlRootChangedEventArgs args) => UpdateDashboardDragRegion();
+
+    private void UpdateDashboardDragRegion()
+    {
+        if (_nonClientPointerSource is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!_detailsExpanded ||
+                DashboardDragRegion.ActualWidth <= 0d ||
+                DashboardDragRegion.ActualHeight <= 0d)
+            {
+                _nonClientPointerSource.ClearRegionRects(
+                    NonClientRegionKind.Caption);
+                return;
+            }
+
+            var offset = DashboardDragRegion
+                .TransformToVisual(MainContent)
+                .TransformPoint(new global::Windows.Foundation.Point(0d, 0d));
+            var region = DashboardChromeLayout.CalculateCaptionRegion(
+                offset.X,
+                offset.Y,
+                DashboardDragRegion.ActualWidth,
+                DashboardDragRegion.ActualHeight,
+                MainContent.XamlRoot?.RasterizationScale ?? 1d);
+            _nonClientPointerSource.SetRegionRects(
+                NonClientRegionKind.Caption,
+                [new RectInt32(
+                    region.X,
+                    region.Y,
+                    region.Width,
+                    region.Height)]);
         }
         catch (Exception exception)
         {
@@ -2205,6 +2493,9 @@ public sealed partial class MainWindow : Window
         OverviewPage.Visibility = tag == "overview"
             ? Visibility.Visible
             : Visibility.Collapsed;
+        LearningPage.Visibility = tag == "learning"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         StoragePage.Visibility = tag == "storage"
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -2217,6 +2508,11 @@ public sealed partial class MainWindow : Window
         RuntimePage.Visibility = tag == "runtime"
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+        if (tag == "learning")
+        {
+            UpdateLearningDashboard();
+        }
     }
 
     private void ResizeAndPositionWindow(
@@ -2327,10 +2623,13 @@ public sealed partial class MainWindow : Window
 
     internal void StopForApplicationShutdown()
     {
-        _ambientOrbTimer.Stop();
-        _ambientOrbTimer.Tick -= OnAmbientOrbTimerTick;
         _ambientOrbWindow.NewInsightCompleted -= OnNewInsightBloomCompleted;
         _ambientOrbWindow.Dispose();
+        if (_isXamlRootChangeSubscribed && MainContent.XamlRoot is not null)
+        {
+            MainContent.XamlRoot.Changed -= OnDashboardXamlRootChanged;
+            _isXamlRootChangeSubscribed = false;
+        }
         if (_isAnimationSettingsChangeSubscribed &&
             OperatingSystem.IsWindowsVersionAtLeast(
                 10,
@@ -2352,6 +2651,25 @@ public sealed record ProcessDisplayItem(
 public sealed record MachineFindingDisplayItem(
     string Header,
     string Detail);
+
+public sealed record LearningBaselineDisplayItem(
+    string Header,
+    string Evidence,
+    string CpuValue,
+    string MemoryValue,
+    string ObservedSpan);
+
+public sealed record LearnedItemDisplayItem(
+    string Label,
+    string Text,
+    string Evidence);
+
+public sealed record LearningEpisodeDisplayItem(
+    string Header,
+    string Context,
+    string CpuDetails,
+    string MemoryDetails,
+    string OutcomeAndFindings);
 
 public sealed record OllamaModelDisplayItem(
     string Name,

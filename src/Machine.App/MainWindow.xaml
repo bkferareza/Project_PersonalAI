@@ -11,6 +11,7 @@
     <Grid
         x:Name="MainContent"
         Background="Transparent"
+        KeyDown="OnMainContentKeyDown"
         Loaded="OnMainContentLoaded">
         <Grid.Resources>
             <Style x:Key="DashboardCardStyle" TargetType="Border">
@@ -46,11 +47,45 @@
                     Value="{ThemeResource TextFillColorSecondaryBrush}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
+            <Style x:Key="DashboardCloseButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Width" Value="32" />
+            </Style>
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+
+        <Grid
+            x:Name="DashboardChrome"
+            Grid.Row="0"
+            Height="34"
+            Margin="8,3,8,0"
+            Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Grid
+                x:Name="DashboardDragRegion"
+                Background="Transparent"
+                SizeChanged="OnDashboardDragRegionSizeChanged" />
+            <Button
+                x:Name="DashboardCloseButton"
+                AutomationProperties.AutomationId="DashboardCloseButton"
+                AutomationProperties.Name="Close Machine"
+                Click="OnDashboardCloseClicked"
+                Grid.Column="1"
+                Style="{StaticResource DashboardCloseButtonStyle}"
+                ToolTipService.ToolTip="Close Machine">
+                <FontIcon FontSize="11" Glyph="&#xE8BB;" />
+            </Button>
+        </Grid>
 
         <NavigationView
             x:Name="DetailsPanel"
@@ -77,6 +112,15 @@
                     Tag="overview">
                     <NavigationViewItem.Icon>
                         <SymbolIcon Symbol="Home" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    x:Name="LearningNavigationItem"
+                    AutomationProperties.AutomationId="LearningNavigationItem"
+                    Content="Learning"
+                    Tag="learning">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Library" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
@@ -227,44 +271,25 @@
                                     Style="{StaticResource SectionTitleStyle}"
                                     Text="Learning" />
                                 <TextBlock
+                                    x:Name="LearningConfidenceText"
+                                    AutomationProperties.AutomationId="LearningConfidenceText"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Text="Calibrating" />
+                                <TextBlock
+                                    x:Name="LearningObservedDurationText"
+                                    AutomationProperties.AutomationId="LearningObservedDurationText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="0m observed" />
+                                <TextBlock
                                     x:Name="LearningObservationText"
                                     AutomationProperties.AutomationId="LearningObservationText"
                                     Style="{StaticResource SecondaryTextStyle}"
-                                    Text="Calibrating · learning your normal machine behavior" />
+                                    Text="0 samples" />
                                 <TextBlock
-                                    FontWeight="SemiBold"
-                                    Text="Current context" />
-                                <TextBlock
-                                    x:Name="LearningCurrentContextText"
-                                    AutomationProperties.AutomationId="LearningCurrentContextText"
+                                    Margin="0,3,0,0"
                                     Style="{StaticResource SecondaryTextStyle}"
-                                    Text="Waiting for verified telemetry" />
-                                <TextBlock
-                                    FontWeight="SemiBold"
-                                    Text="Learned baseline" />
-                                <TextBlock
-                                    x:Name="LearningBaselineText"
-                                    AutomationProperties.AutomationId="LearningBaselineText"
-                                    Style="{StaticResource SecondaryTextStyle}"
-                                    Text="Calibrating · learning your normal machine behavior" />
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock
-                                        x:Name="LearningConfidenceText"
-                                        AutomationProperties.AutomationId="LearningConfidenceText"
-                                        Style="{StaticResource SecondaryTextStyle}"
-                                        Text="Calibrating" />
-                                    <TextBlock
-                                        Style="{StaticResource SecondaryTextStyle}"
-                                        Text="·" />
-                                    <TextBlock
-                                        Style="{StaticResource SecondaryTextStyle}"
-                                        Text="Recent episodes" />
-                                    <TextBlock
-                                        x:Name="LearningEpisodesText"
-                                        AutomationProperties.AutomationId="LearningEpisodesText"
-                                        Style="{StaticResource SecondaryTextStyle}"
-                                        Text="0" />
-                                </StackPanel>
+                                    Text="See Learning page for details." />
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource DashboardCardStyle}">
@@ -351,6 +376,279 @@
                                         Grid.Column="2"
                                         HorizontalAlignment="Right"
                                         IsEnabled="False" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer
+                    x:Name="LearningPage"
+                    AutomationProperties.AutomationId="LearningPage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="12,4,12,16" Spacing="10">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                Style="{StaticResource PageTitleStyle}"
+                                Text="Learning" />
+                            <TextBlock
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Verified local behavioral evidence" />
+                        </StackPanel>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="10">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Learning status" />
+                                <Grid ColumnSpacing="14" RowSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="STATUS" />
+                                        <TextBlock
+                                            x:Name="LearningPageStatusText"
+                                            AutomationProperties.AutomationId="LearningPageStatusText"
+                                            FontWeight="SemiBold"
+                                            Text="Calibrating" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="OBSERVED" />
+                                        <TextBlock
+                                            x:Name="LearningPageObservedText"
+                                            AutomationProperties.AutomationId="LearningPageObservedText"
+                                            Text="0m" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Spacing="2">
+                                        <TextBlock
+                                            Style="{StaticResource MetricLabelStyle}"
+                                            Text="RAW OBSERVATIONS IN MEMORY"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningPageRawObservationsText"
+                                            AutomationProperties.AutomationId="LearningPageRawObservationsText"
+                                            Text="0 / 2,880" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="RECENT EPISODES" />
+                                        <TextBlock
+                                            x:Name="LearningPageRecentEpisodesText"
+                                            AutomationProperties.AutomationId="LearningPageRecentEpisodesText"
+                                            Text="0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="2" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LAST OBSERVATION" />
+                                        <TextBlock
+                                            x:Name="LearningPageLastObservationText"
+                                            AutomationProperties.AutomationId="LearningPageLastObservationText"
+                                            Text="Not yet observed" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="2" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LAST PERSISTED" />
+                                        <TextBlock
+                                            x:Name="LearningPageLastPersistedText"
+                                            AutomationProperties.AutomationId="LearningPageLastPersistedText"
+                                            Text="Not yet persisted" />
+                                    </StackPanel>
+                                </Grid>
+                                <StackPanel Spacing="2">
+                                    <TextBlock FontWeight="SemiBold" Text="Current context" />
+                                    <TextBlock
+                                        x:Name="LearningPageCurrentContextText"
+                                        AutomationProperties.AutomationId="LearningPageCurrentContextText"
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Waiting for verified telemetry" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Calibration progress" />
+                                <Grid ColumnSpacing="14" RowSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="CURRENT BUCKET" />
+                                        <TextBlock x:Name="LearningPageCurrentBucketText" Text="Waiting" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="SAMPLES" />
+                                        <TextBlock x:Name="LearningPageCurrentSamplesText" Text="0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="OBSERVED DAYS" />
+                                        <TextBlock x:Name="LearningPageObservedDaysText" Text="0 / 7" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="CONFIDENCE" />
+                                        <TextBlock x:Name="LearningPageConfidenceText" Text="Calibrating" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock
+                                    x:Name="LearningPageConfidenceRulesText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Provisional requires 12 samples. Established requires 168 samples across 7 observed days." />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Learned baselines" />
+                                <TextBlock
+                                    x:Name="LearningBaselinesEmptyText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="No baseline samples yet." />
+                                <ListView
+                                    x:Name="LearningBaselinesList"
+                                    AutomationProperties.AutomationId="LearningBaselinesList"
+                                    MaxHeight="360"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                    SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:LearningBaselineDisplayItem">
+                                            <StackPanel Margin="0,5" Spacing="3">
+                                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Header}" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Evidence}" />
+                                                <Grid ColumnSpacing="12" Margin="0,3,0,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Spacing="1">
+                                                        <TextBlock FontWeight="SemiBold" Text="CPU" />
+                                                        <TextBlock Text="{x:Bind CpuValue}" TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="1" Spacing="1">
+                                                        <TextBlock FontWeight="SemiBold" Text="Memory" />
+                                                        <TextBlock Text="{x:Bind MemoryValue}" TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                </Grid>
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind ObservedSpan}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Learned items" />
+                                <TextBlock
+                                    x:Name="LearningItemsEmptyText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Provisional learned items will appear after enough verified evidence accumulates." />
+                                <ListView
+                                    x:Name="LearnedItemsList"
+                                    AutomationProperties.AutomationId="LearnedItemsList"
+                                    MaxHeight="300"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                    SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:LearnedItemDisplayItem">
+                                            <StackPanel Margin="0,5" Spacing="2">
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    FontWeight="SemiBold"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{x:Bind Label}" />
+                                                <TextBlock Text="{x:Bind Text}" TextWrapping="Wrap" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Evidence}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Recent episodes" />
+                                <TextBlock
+                                    x:Name="LearningEpisodesEmptyText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="No completed aggregate episodes yet." />
+                                <ListView
+                                    x:Name="RecentLearningEpisodesList"
+                                    AutomationProperties.AutomationId="RecentLearningEpisodesList"
+                                    MaxHeight="420"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                    SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:LearningEpisodeDisplayItem">
+                                            <StackPanel Margin="0,5" Spacing="2">
+                                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Header}" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Context}" />
+                                                <TextBlock Margin="0,2,0,0" Text="{x:Bind CpuDetails}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{x:Bind MemoryDetails}" TextWrapping="Wrap" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind OutcomeAndFindings}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Learning diagnostics" />
+                                <Grid ColumnSpacing="14" RowSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock FontWeight="SemiBold" Text="Learning data" />
+                                    <TextBlock x:Name="LearningDataHealthText" Grid.Column="1" Text="Not yet persisted" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="1" FontWeight="SemiBold" Text="Accepted this session" />
+                                    <TextBlock x:Name="LearningAcceptedText" Grid.Column="1" Grid.Row="1" Text="0" />
+                                    <TextBlock Grid.Row="2" FontWeight="SemiBold" Text="Throttled this session" />
+                                    <TextBlock x:Name="LearningThrottledText" Grid.Column="1" Grid.Row="2" Text="0" />
+                                    <TextBlock Grid.Row="3" FontWeight="SemiBold" Text="Skipped this session" />
+                                    <TextBlock x:Name="LearningSkippedText" Grid.Column="1" Grid.Row="3" Text="0" />
+                                    <TextBlock Grid.Row="4" FontWeight="SemiBold" Text="Last accepted" />
+                                    <TextBlock x:Name="LearningLastAcceptedText" Grid.Column="1" Grid.Row="4" Text="Not yet observed" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="5" FontWeight="SemiBold" Text="Persistence" />
+                                    <TextBlock x:Name="LearningDirtyStateText" Grid.Column="1" Grid.Row="5" Text="No pending changes" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="6" FontWeight="SemiBold" Text="AI runtime" />
+                                    <TextBlock x:Name="LearningAiRuntimeText" Grid.Column="1" Grid.Row="6" Text="Checking" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="7" FontWeight="SemiBold" Text="Model" />
+                                    <TextBlock x:Name="LearningAiModelText" Grid.Column="1" Grid.Row="7" Text="Checking" TextWrapping="Wrap" />
                                 </Grid>
                             </StackPanel>
                         </Border>

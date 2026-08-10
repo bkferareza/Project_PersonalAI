@@ -8,9 +8,15 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The dedicated 96×96 native layered orb retains its accepted ambient visuals and cheap reduced-motion behavior. Machine now probes local Ollama at startup; it reuses a healthy service or starts its own local `ollama serve` only when the executable is already installed, then waits for `/api/version`. It never downloads Ollama or a model, pulls a model, or loads `qwen3.5:4b` until a justified insight needs inference. A Machine-owned runtime is stopped at application shutdown; a pre-existing runtime is never terminated.
+Machine now opens as a fixed, frameless Mica dashboard with no native title bar or outer border. Its minimal integrated top region supports DPI-aware dragging through the Windows App SDK non-client-region API, a subtle close action, Back navigation, and Esc return to ambient presence. Overview, Learning, Storage, Software, Startup, and Runtime remain in the existing dashboard navigation.
 
-Telemetry records a compact local learning observation at most every 30 seconds from verified CPU, memory, Active/Idle input state, deterministic findings, and available system-volume capacity. Raw observations are bounded to 2,880 in memory and never persist. Welford baselines are maintained separately by local hour and Active/Idle state, progressing from Calibrating to Provisional after 12 samples and Established only after 168 samples spanning at least seven days. Context changes form bounded aggregate episodes. Only baseline aggregates and the latest 200 episodes are versioned and atomically persisted under Machine's local application data; corrupt data is ignored safely. Established learned context can enrich an already-authorized local insight, while deterministic findings remain authoritative and learned values never create severity, anomaly, cause, or action claims.
+The dedicated 96×96 native layered orb retains its accepted transparent visuals and five-second Stable breathing cycle. Its native window now owns cadence with a bounded `WM_TIMER`, so animation continues while the WinUI dashboard HWND is hidden; visibility, reduced-motion, mode changes, and disposal start or stop exactly one timer without hover affecting breathing phase.
+
+Telemetry records a compact local learning observation at most every 30 seconds from verified CPU, memory, Active/Idle input state, deterministic findings, and available system-volume capacity, regardless of dashboard visibility. Raw observations are bounded to 2,880 in memory and never persist. Welford baselines remain independent by local hour and Active/Idle state, progressing from Calibrating to Provisional after 12 samples and Established only after 168 samples across at least seven distinct observed local days. Hour, date, and activity changes close deterministic aggregate episodes.
+
+The dedicated Learning page exposes current calibration, observed duration, journal capacity, scheduler counters, baseline evidence, deterministic learned items, the latest 50 of up to 200 persisted episodes, persistence health, and verified Ollama/model residency. Dirty learned state is saved atomically on a 10-minute periodic interval, retained across restart, retried with backoff after failure, and saved once more during bounded shutdown. Corrupt persisted state is ignored safely and reported read-only for the session. Established learned context can enrich an already-authorized local insight, while learned values never create severity, anomaly, cause, intent, recommendation, or action claims.
+
+Machine probes local Ollama at startup; it reuses a healthy service or starts its own local `ollama serve` only when the executable is already installed, then waits for `/api/version`. It never downloads Ollama or a model, pulls a model, or loads `qwen3.5:4b` until a justified insight needs inference. Ordinary deterministic learning performs no model call. A Machine-owned runtime is stopped at application shutdown; a pre-existing runtime is never terminated.
 
 ## Product direction
 
@@ -30,4 +36,4 @@ If a debug session is interrupted before cleanup runs, use **Terminal > Run Task
 
 ## Next slice
 
-Complete read-only Windows observability v1 and feed new verified signals into local learning.
+Complete the remaining read-only Windows observability v1 and feed verified signals into local learning.

@@ -163,6 +163,9 @@ public sealed class CompactPresencePresentationTests
             2d);
         Assert.Equal(10, AmbientOrbFrameSequence.FramesPerSecond);
         Assert.InRange(sequence.FrameInterval.TotalSeconds, 0.09d, 0.11d);
+        Assert.Equal(
+            TimeSpan.FromSeconds(5),
+            sequence.FrameInterval * sequence.Frames.Count);
     }
 
     [Fact]
@@ -293,6 +296,90 @@ public sealed class CompactPresencePresentationTests
         Assert.True(lifecycle.IsDisposed);
         Assert.False(lifecycle.IsVisible);
         Assert.Throws<ObjectDisposedException>(lifecycle.Show);
+    }
+
+    [Fact]
+    public void NativeAnimationLifecycleStartsVisibleWithoutHoverAndNeverDuplicates()
+    {
+        var lifecycle = new AmbientOrbLifecycle();
+
+        Assert.Equal(
+            AmbientOrbTimerTransition.Start,
+            lifecycle.ShowWithTimerTransition());
+        Assert.True(lifecycle.ShouldAnimate);
+        Assert.True(lifecycle.IsTimerRunning);
+        Assert.Equal(
+            AmbientOrbTimerTransition.None,
+            lifecycle.ShowWithTimerTransition());
+
+        Assert.Equal(
+            AmbientOrbTimerTransition.Stop,
+            lifecycle.SetAnimationsEnabled(false));
+        Assert.False(lifecycle.ShouldAnimate);
+        Assert.False(lifecycle.IsTimerRunning);
+        Assert.Equal(
+            AmbientOrbTimerTransition.None,
+            lifecycle.SetAnimationsEnabled(false));
+
+        Assert.Equal(
+            AmbientOrbTimerTransition.Start,
+            lifecycle.SetAnimationsEnabled(true));
+        Assert.Equal(
+            AmbientOrbTimerTransition.Stop,
+            lifecycle.Hide());
+        Assert.False(lifecycle.IsTimerRunning);
+    }
+
+    [Fact]
+    public void DashboardPresentationIsFramelessAndEscapeReturnsToAmbient()
+    {
+        Assert.False(DashboardChromeLayout.HasBorder);
+        Assert.False(DashboardChromeLayout.HasTitleBar);
+        Assert.True(DashboardChromeLayout.IsReturnToAmbientKey(27));
+        Assert.False(DashboardChromeLayout.IsReturnToAmbientKey(13));
+
+        var interaction = new CompactPresenceInteraction();
+        interaction.OpenDashboard();
+        Assert.True(interaction.CloseDashboard());
+        Assert.Equal(CompactPresencePresentation.Ambient,
+            interaction.Presentation);
+    }
+
+    [Fact]
+    public void DashboardCaptionRegionIsDpiAwareAndExcludesCloseControl()
+    {
+        var region = DashboardChromeLayout.CalculateCaptionRegion(
+            x: 8,
+            y: 3,
+            width: 472,
+            height: 28,
+            rasterizationScale: 1.5d);
+
+        Assert.Equal(new DashboardCaptionRegion(12, 4, 708, 42), region);
+        Assert.True(region.Right <= 480 * 1.5d);
+    }
+
+    [Fact]
+    public void DashboardCloseCommandInvokesBoundedCloseAction()
+    {
+        var closeCount = 0;
+
+        DashboardChromeLayout.InvokeClose(() => closeCount++);
+
+        Assert.Equal(1, closeCount);
+    }
+
+    [Fact]
+    public void DashboardXamlExposesIntegratedChromeAndLearningAutomationIds()
+    {
+        var xaml = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "MainWindow.xaml"));
+
+        Assert.Contains("AutomationProperties.AutomationId=\"DashboardCloseButton\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"LearningNavigationItem\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"LearningPage\"", xaml);
+        Assert.DoesNotContain("Maximize", xaml, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

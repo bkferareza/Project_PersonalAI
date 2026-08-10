@@ -9,3 +9,17 @@ public interface IMachineLearningStore
         MachineLearningPersistedState state,
         CancellationToken cancellationToken = default);
 }
+
+public enum MachineLearningStoreLoadStatus
+{
+    NotAttempted,
+    NotFound,
+    Loaded,
+    Corrupt,
+    Unavailable
+}
+
+public interface IMachineLearningStoreDiagnostics
+{
+    MachineLearningStoreLoadStatus LastLoadStatus { get; }
+}

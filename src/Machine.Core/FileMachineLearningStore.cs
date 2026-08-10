@@ -2,7 +2,9 @@ using System.Text.Json;
 
 namespace Machine.Core;
 
-public sealed class FileMachineLearningStore : IMachineLearningStore
+public sealed class FileMachineLearningStore :
+    IMachineLearningStore,
+    IMachineLearningStoreDiagnostics
 {
     private const string FileName = "learning-state.json";
     private readonly string _filePath;
@@ -20,6 +22,8 @@ public sealed class FileMachineLearningStore : IMachineLearningStore
         _filePath = Path.Combine(directory, FileName);
     }
 
+    public MachineLearningStoreLoadStatus LastLoadStatus { get; private set; }
+
     public async Task<MachineLearningPersistedState?> LoadAsync(
         CancellationToken cancellationToken = default)
     {
@@ -27,16 +31,27 @@ public sealed class FileMachineLearningStore : IMachineLearningStore
         {
             if (!File.Exists(_filePath))
             {
+                LastLoadStatus = MachineLearningStoreLoadStatus.NotFound;
                 return null;
             }
             await using var stream = File.OpenRead(_filePath);
-            return await JsonSerializer.DeserializeAsync<
+            var state = await JsonSerializer.DeserializeAsync<
                 MachineLearningPersistedState>(stream, _jsonOptions,
                 cancellationToken).ConfigureAwait(false);
+            LastLoadStatus = state is null
+                ? MachineLearningStoreLoadStatus.Corrupt
+                : MachineLearningStoreLoadStatus.Loaded;
+            return state;
+        }
+        catch (JsonException)
+        {
+            LastLoadStatus = MachineLearningStoreLoadStatus.Corrupt;
+            return null;
         }
         catch (Exception exception) when (
-            exception is IOException or JsonException or UnauthorizedAccessException)
+            exception is IOException or UnauthorizedAccessException)
         {
+            LastLoadStatus = MachineLearningStoreLoadStatus.Unavailable;
             return null;
         }
     }

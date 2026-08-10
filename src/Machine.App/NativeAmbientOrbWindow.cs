@@ -23,6 +23,8 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     private const int WindowMessageMouseActivate = 0x0021;
     private const int WindowMessageNonClientHitTest = 0x0084;
     private const int WindowMessageEraseBackground = 0x0014;
+    private const int WindowMessageTimer = 0x0113;
+    private const uint AnimationTimerId = 1;
     private const int HitTestTransparent = -1;
     private const int HitTestClient = 1;
     private const int MouseActivateNoActivate = 3;
@@ -48,9 +50,9 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     private IntPtr _previousBitmap;
     private IntPtr _pixelBuffer;
     private GCHandle _selfHandle;
+    private UIntPtr _animationTimerHandle;
     private int _frameIndex;
     private bool _isHovered;
-    private bool _animationsEnabled = true;
 
     public NativeAmbientOrbWindow(Action onOrbClicked)
     {
@@ -66,7 +68,16 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
 
     public CompactPresenceVisualMode VisualMode => _normalFrames.Mode;
 
-    public bool ShouldAnimate => IsVisible && _animationsEnabled;
+    public bool ShouldAnimate => _lifecycle.ShouldAnimate;
+
+    public bool IsAnimationTimerRunning =>
+        _animationTimerHandle != UIntPtr.Zero && _lifecycle.IsTimerRunning;
+
+    public int FrameIndex => _frameIndex;
+
+    public long PresentedFrameCount { get; private set; }
+
+    public DateTimeOffset? LastFramePresentedAt { get; private set; }
 
     public event EventHandler? NewInsightCompleted;
 
@@ -90,12 +101,13 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     public void SetAnimationsEnabled(bool enabled)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
-        if (_animationsEnabled == enabled)
+        if (_lifecycle.AnimationsEnabled == enabled)
         {
             return;
         }
 
-        _animationsEnabled = enabled;
+        var timerTransition = _lifecycle.SetAnimationsEnabled(enabled);
+        ApplyTimerTransition(timerTransition);
         if (IsVisible)
         {
             PresentCurrentFrame();
@@ -106,7 +118,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         EnsureWindow();
-        _lifecycle.Show();
+        var timerTransition = _lifecycle.ShowWithTimerTransition();
         _frameIndex = 0;
         SetWindowPos(
             _windowHandle,
@@ -117,6 +129,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             AmbientOrbFrameSequence.CanvasSize,
             ShowNoActivate | ShowWindow);
         PresentCurrentFrame();
+        ApplyTimerTransition(timerTransition);
     }
 
     public void Hide()
@@ -126,7 +139,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             return;
         }
 
-        _lifecycle.Hide();
+        ApplyTimerTransition(_lifecycle.Hide());
         ShowNativeWindow(_windowHandle, 0);
     }
 
@@ -162,6 +175,8 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             return;
         }
 
+        ApplyTimerTransition(_lifecycle.Hide());
+        StopAnimationTimer();
         _lifecycle.Dispose();
 
         if (_windowHandle != IntPtr.Zero)
@@ -257,7 +272,9 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     private void PresentCurrentFrame()
     {
         var frames = _isHovered ? _hoverFrames : _normalFrames;
-        var frame = frames.GetFrame(_frameIndex, _animationsEnabled);
+        var frame = frames.GetFrame(
+            _frameIndex,
+            _lifecycle.AnimationsEnabled);
         Marshal.Copy(frame.Pixels, 0, _pixelBuffer, frame.Pixels.Length);
 
         GetWindowRect(_windowHandle, out var windowRect);
@@ -270,7 +287,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             SourceConstantAlpha = 255,
             AlphaFormat = AlphaFormatSourceAlpha
         };
-        UpdateLayeredWindow(
+        if (UpdateLayeredWindow(
             _windowHandle,
             IntPtr.Zero,
             ref destination,
@@ -279,7 +296,59 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             ref source,
             0,
             ref blend,
-            UpdateLayeredWindowAlpha);
+            UpdateLayeredWindowAlpha))
+        {
+            PresentedFrameCount++;
+            LastFramePresentedAt = DateTimeOffset.UtcNow;
+        }
+    }
+
+    private void ApplyTimerTransition(
+        AmbientOrbTimerTransition transition)
+    {
+        switch (transition)
+        {
+            case AmbientOrbTimerTransition.Start:
+                StartAnimationTimer();
+                break;
+            case AmbientOrbTimerTransition.Stop:
+                StopAnimationTimer();
+                break;
+        }
+    }
+
+    private void StartAnimationTimer()
+    {
+        if (_animationTimerHandle != UIntPtr.Zero ||
+            _windowHandle == IntPtr.Zero ||
+            !ShouldAnimate)
+        {
+            return;
+        }
+
+        var intervalMilliseconds = Math.Max(
+            1u,
+            (uint)Math.Round(FrameInterval.TotalMilliseconds));
+        _animationTimerHandle = SetTimer(
+            _windowHandle,
+            new UIntPtr(AnimationTimerId),
+            intervalMilliseconds,
+            IntPtr.Zero);
+        if (_animationTimerHandle == UIntPtr.Zero)
+        {
+            _lifecycle.MarkTimerStartFailed();
+        }
+    }
+
+    private void StopAnimationTimer()
+    {
+        if (_animationTimerHandle == UIntPtr.Zero)
+        {
+            return;
+        }
+
+        KillTimer(_windowHandle, _animationTimerHandle);
+        _animationTimerHandle = UIntPtr.Zero;
     }
 
     private void SetHovered(bool isHovered)
@@ -332,7 +401,16 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
                 return new IntPtr(MouseActivateNoActivate);
             case WindowMessageEraseBackground:
                 return new IntPtr(1);
+            case WindowMessageTimer:
+                if (unchecked((ulong)wParam.ToInt64()) ==
+                    _animationTimerHandle.ToUInt64())
+                {
+                    AdvanceFrame();
+                    return IntPtr.Zero;
+                }
+                break;
             case WindowMessageNonClientDestroy:
+                StopAnimationTimer();
                 SetWindowData(handle, IntPtr.Zero);
                 break;
         }
@@ -597,6 +675,18 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool TrackMouseEvent(ref TrackMouseEventInfo trackingInfo);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern UIntPtr SetTimer(
+        IntPtr handle,
+        UIntPtr timerId,
+        uint intervalMilliseconds,
+        IntPtr timerProcedure);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool KillTimer(
+        IntPtr handle,
+        UIntPtr timerId);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr handle, out Rect rect);

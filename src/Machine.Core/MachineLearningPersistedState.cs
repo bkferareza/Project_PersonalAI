@@ -6,7 +6,10 @@ public sealed record MachineLearningPersistedState(
     IReadOnlyList<MachineLearningEpisode> Episodes,
     long ObservationCount,
     DateTimeOffset? FirstObservedAt,
-    DateTimeOffset? LastObservedAt);
+    DateTimeOffset? LastObservedAt,
+    DateTimeOffset? PersistedAt = null,
+    long ObservedDurationTicks = 0,
+    MachineLearningEpisode? ActiveEpisode = null);
 
 public sealed record MachineLearningBaselineState(
     int LocalHour,
@@ -17,4 +20,5 @@ public sealed record MachineLearningBaselineState(
     double MemoryMean,
     double MemoryM2,
     DateTimeOffset FirstObservedAt,
-    DateTimeOffset LastObservedAt);
+    DateTimeOffset LastObservedAt,
+    IReadOnlyList<DateOnly>? ObservedLocalDates = null);
