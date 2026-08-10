@@ -35,6 +35,7 @@ public sealed partial class OllamaMachineStateExplainer
         Never invent additional findings or reinterpret partial data as complete.
         Use only supplied deterministic findings and overall_state for severity or pressure language.
         Never judge severity or pressure from raw metric values.
+        You may use words such as usual, normal for me, or typically only when learned_context is supplied with Established confidence. Those comparisons must be limited to its supplied CPU or memory values and must never be called an anomaly or a problem.
         Do not mention being an AI, language model, or Ollama.
 
         Respond in natural conversational Filipino Taglish.
@@ -142,7 +143,8 @@ public sealed partial class OllamaMachineStateExplainer
                 processNames,
                 request.Findings,
                 request.Storage,
-                request.Resources))
+                request.Resources,
+                request.LearnedContext))
         {
             return CreateFallbackExplanation(request.Findings);
         }
@@ -182,7 +184,8 @@ public sealed partial class OllamaMachineStateExplainer
             Storage: CreateStoragePayload(request.Storage),
             Software: CreateSoftwarePayload(request.Software),
             Startup: CreateStartupPayload(request.Startup),
-            Findings: CreateFindingsPayload(request.Findings));
+            Findings: CreateFindingsPayload(request.Findings),
+            LearnedContext: CreateLearnedContextPayload(request.LearnedContext));
 
         var payloadJson = JsonSerializer.Serialize(
             payload,
@@ -275,6 +278,36 @@ public sealed partial class OllamaMachineStateExplainer
             Findings: findings);
     }
 
+    private static LearnedContextPayload? CreateLearnedContextPayload(
+        MachineLearnedContext? context)
+    {
+        if (context is null ||
+            context.Confidence != MachineLearningConfidence.Established)
+        {
+            return null;
+        }
+
+        return new LearnedContextPayload(
+            ActivityState: context.ActivityState.ToString(),
+            LocalHour: context.LocalHour,
+            Confidence: context.Confidence.ToString(),
+            SampleCount: context.SampleCount,
+            CpuMean: context.CpuMean,
+            CpuStandardDeviation: context.CpuStandardDeviation,
+            MemoryMean: context.MemoryMean,
+            MemoryStandardDeviation: context.MemoryStandardDeviation,
+            RecentEpisodes: context.RecentEpisodes.Take(3).Select(episode =>
+                new LearnedEpisodePayload(
+                    episode.ActivityState.ToString(),
+                    episode.OverallState.ToString(),
+                    episode.SampleCount,
+                    episode.AverageCpuUsagePercent,
+                    episode.PeakCpuUsagePercent,
+                    episode.AverageMemoryUsagePercent,
+                    episode.FindingKeys.Take(8).ToArray(),
+                    episode.Outcome)).ToArray());
+    }
+
     private sealed record ChatRequest(
         [property: JsonPropertyName("model")]
         string Model,
@@ -329,7 +362,47 @@ public sealed partial class OllamaMachineStateExplainer
         [property: JsonPropertyName("startup")]
         StartupSnapshotPayload? Startup,
         [property: JsonPropertyName("findings")]
-        FindingsSnapshotPayload? Findings);
+        FindingsSnapshotPayload? Findings,
+        [property: JsonPropertyName("learned_context")]
+        LearnedContextPayload? LearnedContext);
+
+    private sealed record LearnedContextPayload(
+        [property: JsonPropertyName("activity_state")]
+        string ActivityState,
+        [property: JsonPropertyName("local_hour")]
+        int LocalHour,
+        [property: JsonPropertyName("confidence")]
+        string Confidence,
+        [property: JsonPropertyName("sample_count")]
+        long SampleCount,
+        [property: JsonPropertyName("cpu_mean")]
+        double CpuMean,
+        [property: JsonPropertyName("cpu_standard_deviation")]
+        double CpuStandardDeviation,
+        [property: JsonPropertyName("memory_mean")]
+        double MemoryMean,
+        [property: JsonPropertyName("memory_standard_deviation")]
+        double MemoryStandardDeviation,
+        [property: JsonPropertyName("recent_episodes")]
+        LearnedEpisodePayload[] RecentEpisodes);
+
+    private sealed record LearnedEpisodePayload(
+        [property: JsonPropertyName("activity_state")]
+        string ActivityState,
+        [property: JsonPropertyName("overall_state")]
+        string OverallState,
+        [property: JsonPropertyName("sample_count")]
+        int SampleCount,
+        [property: JsonPropertyName("average_cpu_usage_percent")]
+        double AverageCpuUsagePercent,
+        [property: JsonPropertyName("peak_cpu_usage_percent")]
+        double PeakCpuUsagePercent,
+        [property: JsonPropertyName("average_memory_usage_percent")]
+        double AverageMemoryUsagePercent,
+        [property: JsonPropertyName("finding_keys")]
+        IReadOnlyList<string> FindingKeys,
+        [property: JsonPropertyName("outcome")]
+        string? Outcome);
 
     private sealed record StorageSnapshotPayload(
         [property: JsonPropertyName("system_volume_root")]

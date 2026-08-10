@@ -7,4 +7,5 @@ public sealed record MachineStateExplanationRequest(
     MachineStorageExplanationContext? Storage = null,
     MachineSoftwareExplanationContext? Software = null,
     MachineStartupExplanationContext? Startup = null,
-    MachineFindingsSnapshot? Findings = null);
+    MachineFindingsSnapshot? Findings = null,
+    MachineLearnedContext? LearnedContext = null);

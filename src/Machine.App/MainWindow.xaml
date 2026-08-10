@@ -222,6 +222,52 @@
                             Style="{StaticResource SecondaryTextStyle}"
                             Visibility="Collapsed" />
                         <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="5">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Learning" />
+                                <TextBlock
+                                    x:Name="LearningObservationText"
+                                    AutomationProperties.AutomationId="LearningObservationText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Calibrating · learning your normal machine behavior" />
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="Current context" />
+                                <TextBlock
+                                    x:Name="LearningCurrentContextText"
+                                    AutomationProperties.AutomationId="LearningCurrentContextText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Waiting for verified telemetry" />
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="Learned baseline" />
+                                <TextBlock
+                                    x:Name="LearningBaselineText"
+                                    AutomationProperties.AutomationId="LearningBaselineText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Calibrating · learning your normal machine behavior" />
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock
+                                        x:Name="LearningConfidenceText"
+                                        AutomationProperties.AutomationId="LearningConfidenceText"
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Calibrating" />
+                                    <TextBlock
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="·" />
+                                    <TextBlock
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Recent episodes" />
+                                    <TextBlock
+                                        x:Name="LearningEpisodesText"
+                                        AutomationProperties.AutomationId="LearningEpisodesText"
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="0" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"

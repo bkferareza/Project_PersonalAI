@@ -51,6 +51,9 @@ public sealed partial class MainWindow : Window
         _packagedSoftwareInventoryProvider;
     private readonly IMachineStartupInventoryProvider
         _startupInventoryProvider;
+    private readonly IMachineUserActivityProvider _userActivityProvider;
+    private readonly MachineLearningService _learningService;
+    private readonly IMachineLearningStore _learningStore;
     private readonly MachineInsightTriggerPolicy
         _insightTriggerPolicy = new();
     private readonly CompactPresenceInteraction
@@ -111,7 +114,10 @@ public sealed partial class MainWindow : Window
         IMachineSoftwareInventoryProvider softwareInventoryProvider,
         IMachinePackagedSoftwareInventoryProvider
             packagedSoftwareInventoryProvider,
-        IMachineStartupInventoryProvider startupInventoryProvider)
+        IMachineStartupInventoryProvider startupInventoryProvider,
+        IMachineUserActivityProvider userActivityProvider,
+        MachineLearningService learningService,
+        IMachineLearningStore learningStore)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
         ArgumentNullException.ThrowIfNull(resourceProvider);
@@ -124,6 +130,9 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(
             packagedSoftwareInventoryProvider);
         ArgumentNullException.ThrowIfNull(startupInventoryProvider);
+        ArgumentNullException.ThrowIfNull(userActivityProvider);
+        ArgumentNullException.ThrowIfNull(learningService);
+        ArgumentNullException.ThrowIfNull(learningStore);
 
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
@@ -136,6 +145,9 @@ public sealed partial class MainWindow : Window
         _packagedSoftwareInventoryProvider =
             packagedSoftwareInventoryProvider;
         _startupInventoryProvider = startupInventoryProvider;
+        _userActivityProvider = userActivityProvider;
+        _learningService = learningService;
+        _learningStore = learningStore;
 
         InitializeComponent();
         _dashboardBackdrop = SystemBackdrop!;
@@ -202,6 +214,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await LoadIdentityAsync();
+            await LoadLearningAsync();
 
             var cancellationToken =
                 _windowCancellationTokenSource.Token;
@@ -317,7 +330,9 @@ public sealed partial class MainWindow : Window
             TelemetryStatusText.Text = string.Empty;
             TelemetryStatusText.Visibility = Visibility.Collapsed;
 
-            ReevaluateFindings(observeInsightTriggers: true);
+            ReevaluateFindings();
+            await CaptureLearningObservationAsync(snapshot, cancellationToken);
+            ObserveInsightTriggers();
             UpdateExplainMachineStateButtonState();
             TryRequestDashboardInsight();
         }
@@ -395,6 +410,121 @@ public sealed partial class MainWindow : Window
 
         StartInsightGeneration(decision);
     }
+
+    private void ObserveInsightTriggers()
+    {
+        var decision = _insightTriggerPolicy.ObserveTelemetry(
+            _latestFindingsSnapshot,
+            DateTimeOffset.UtcNow,
+            IsInsightContextAvailable(),
+            allowAutomaticGeneration: _initialContextHydrationCompleted);
+        StartInsightGeneration(decision);
+    }
+
+    private async Task LoadLearningAsync()
+    {
+        try
+        {
+            await _learningService.LoadAsync(
+                _learningStore,
+                _windowCancellationTokenSource.Token);
+            UpdateLearningDashboard();
+        }
+        catch (OperationCanceledException)
+            when (_windowCancellationTokenSource.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            UpdateLearningDashboard();
+        }
+    }
+
+    private async Task CaptureLearningObservationAsync(
+        MachineResourceSnapshot resources,
+        CancellationToken cancellationToken)
+    {
+        if (!_learningService.CanObserveAt(resources.CapturedAt))
+        {
+            return;
+        }
+
+        MachineUserActivitySnapshot activity;
+        try
+        {
+            activity = await _userActivityProvider.GetAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            return;
+        }
+
+        var memoryPercent = resources.TotalMemoryBytes == 0
+            ? 0d
+            : resources.UsedMemoryBytes / (double)resources.TotalMemoryBytes * 100d;
+        var systemVolume = _latestStorageSnapshot?.Volumes
+            .FirstOrDefault(volume => volume.IsSystemVolume);
+        double? freePercent = systemVolume is null ||
+            systemVolume.TotalSizeBytes <= 0
+                ? null
+                : systemVolume.AvailableFreeSpaceBytes /
+                    (double)systemVolume.TotalSizeBytes * 100d;
+        var observation = new MachineLearningObservation(
+            resources.CapturedAt,
+            resources.CpuUsagePercent,
+            memoryPercent,
+            activity.State,
+            _latestFindingsSnapshot.OverallState,
+            _latestFindingsSnapshot.Findings.Select(finding =>
+                $"{finding.Code}:{finding.Severity}").ToArray(),
+            freePercent,
+            MachineInsightContextFingerprint.Create(_latestFindingsSnapshot));
+
+        if (_learningService.Observe(observation))
+        {
+            await _learningService.SaveIfDueAsync(
+                _learningStore,
+                DateTimeOffset.UtcNow,
+                cancellationToken: cancellationToken);
+            UpdateLearningDashboard();
+        }
+    }
+
+    private void UpdateLearningDashboard()
+    {
+        var snapshot = _learningService.GetDashboardSnapshot(
+            DateTimeOffset.UtcNow);
+        LearningObservationText.Text = snapshot.ObservationCount == 0
+            ? "Calibrating · learning your normal machine behavior"
+            : $"{FormatDuration(snapshot.ObservedDuration)} observed · " +
+                $"{snapshot.ObservationCount:N0} samples";
+        var current = snapshot.CurrentObservation;
+        LearningCurrentContextText.Text = current is null
+            ? "Waiting for verified telemetry"
+            : $"{current.ActivityState} · " +
+                $"{current.Timestamp.ToLocalTime():h tt}";
+        var baseline = snapshot.CurrentBaseline;
+        LearningBaselineText.Text = baseline is null
+            ? "Calibrating · learning your normal machine behavior"
+            : $"CPU typically {baseline.CpuMean:F1}% · " +
+                $"Memory typically {baseline.MemoryMean:F1}%";
+        LearningConfidenceText.Text = baseline?.Confidence.ToString() ??
+            MachineLearningConfidence.Calibrating.ToString();
+        LearningEpisodesText.Text = $"{snapshot.RecentEpisodeCount:N0}";
+    }
+
+    private static string FormatDuration(TimeSpan duration) =>
+        duration.TotalHours >= 1d
+            ? $"{(int)duration.TotalHours}h {duration.Minutes}m"
+            : $"{Math.Max(0, duration.Minutes)}m";
 
     private void UpdateCurrentFindings(
         MachineFindingsSnapshot snapshot)
@@ -711,7 +841,8 @@ public sealed partial class MainWindow : Window
                     packagedSoftwareInventorySnapshot),
                 Startup: CreateStartupExplanationContext(
                     startupInventorySnapshot),
-                Findings: findingsSnapshot);
+                Findings: findingsSnapshot,
+                LearnedContext: _learningService.GetLearnedContext());
             var explanation =
                 await _machineStateExplainer.ExplainAsync(
                     request,
@@ -2221,6 +2352,17 @@ public sealed partial class MainWindow : Window
         }
         _folderScanCancellationTokenSource?.Cancel();
         _windowCancellationTokenSource.Cancel();
+        try
+        {
+            _learningService.SaveIfDueAsync(
+                _learningStore,
+                DateTimeOffset.UtcNow,
+                force: true).GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+        }
     }
 }
 

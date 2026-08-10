@@ -8,7 +8,9 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-The dedicated 96×96 native layered orb now precomputes and reuses transparent premultiplied-BGRA sequences for Stable, Attention, Warning, Critical, Unknown, Generating, and NewInsight. Stable is an airy cool-white/cyan/blue-violet presence with a five-second idle breath; hover adds only a small intensity lift without changing state, while reduced-motion mode renders one static state frame and stops the 10 FPS timer. The native surface remains per-pixel click-through outside visible alpha, opens the unchanged dashboard on click, and disposes its native surface and timer during shutdown. Searchable inventories remain read-only. Deterministic findings stay authoritative, while short local insights are generated proactively after stabilized state or finding changes, recovery, or the first dashboard open for a verified context. Context fingerprints, a two-minute automatic cooldown, one-request concurrency, and safe deterministic fallback prevent duplicate or ungrounded output; process telemetry, raw inventories, startup names, commands, and paths are never sent to the model.
+The dedicated 96×96 native layered orb retains its accepted ambient visuals and cheap reduced-motion behavior. Machine now probes local Ollama at startup; it reuses a healthy service or starts its own local `ollama serve` only when the executable is already installed, then waits for `/api/version`. It never downloads Ollama or a model, pulls a model, or loads `qwen3.5:4b` until a justified insight needs inference. A Machine-owned runtime is stopped at application shutdown; a pre-existing runtime is never terminated.
+
+Telemetry records a compact local learning observation at most every 30 seconds from verified CPU, memory, Active/Idle input state, deterministic findings, and available system-volume capacity. Raw observations are bounded to 2,880 in memory and never persist. Welford baselines are maintained separately by local hour and Active/Idle state, progressing from Calibrating to Provisional after 12 samples and Established only after 168 samples spanning at least seven days. Context changes form bounded aggregate episodes. Only baseline aggregates and the latest 200 episodes are versioned and atomically persisted under Machine's local application data; corrupt data is ignored safely. Established learned context can enrich an already-authorized local insight, while deterministic findings remain authoritative and learned values never create severity, anomaly, cause, or action claims.
 
 ## Product direction
 
@@ -28,4 +30,4 @@ If a debug session is interrupted before cleanup runs, use **Terminal > Run Task
 
 ## Next slice
 
-Complete the remaining read-only Windows observability surface.
+Complete read-only Windows observability v1 and feed new verified signals into local learning.

@@ -214,12 +214,18 @@ public static class MachineExplanationValidator
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(100));
 
+    private static readonly Regex PersonalizedComparisonLanguage = new(
+        @"\b(?:usual|normal\s+for\s+me|typically|karaniwan)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
     public static bool IsValid(
         string? text,
         IReadOnlyList<string> currentProcessNames,
         MachineFindingsSnapshot? findings,
         MachineStorageExplanationContext? storage = null,
-        MachineResourceSnapshot? resources = null)
+        MachineResourceSnapshot? resources = null,
+        MachineLearnedContext? learnedContext = null)
     {
         ArgumentNullException.ThrowIfNull(currentProcessNames);
 
@@ -235,7 +241,8 @@ public static class MachineExplanationValidator
             ContradictsVerifiedContext(text, findings) ||
             ConflatesMemoryAndStorage(text) ||
             InventsFolderScanResult(text, storage) ||
-            ContainsIncorrectResourcePercentage(text, resources))
+            ContainsIncorrectResourcePercentage(text, resources) ||
+            ContainsUnsupportedPersonalizedComparison(text, learnedContext))
         {
             return false;
         }
@@ -261,6 +268,14 @@ public static class MachineExplanationValidator
 
         return !ContainsCausalLanguage(textWithoutVerifiedDetails);
     }
+
+    private static bool ContainsUnsupportedPersonalizedComparison(
+        string text,
+        MachineLearnedContext? learnedContext) =>
+        PersonalizedComparisonLanguage.IsMatch(text) &&
+        (learnedContext is null ||
+         learnedContext.Confidence != MachineLearningConfidence.Established ||
+         learnedContext.SampleCount <= 0);
 
     private static bool ContradictsVerifiedContext(
         string text,

@@ -10,6 +10,8 @@ public partial class App : Application
     private Window? _window;
     private HttpClient? _ollamaHttpClient;
     private HttpClient? _ollamaInferenceHttpClient;
+    private IOllamaRuntimeBootstrapper? _ollamaRuntimeBootstrapper;
+    private readonly CancellationTokenSource _appCancellationTokenSource = new();
 
     public App()
     {
@@ -35,6 +37,10 @@ public partial class App : Application
                 new WindowsMachinePackagedSoftwareInventoryProvider();
         IMachineStartupInventoryProvider startupInventoryProvider =
             new WindowsMachineStartupInventoryProvider();
+        IMachineUserActivityProvider userActivityProvider =
+            new WindowsMachineUserActivityProvider();
+        var learningService = new MachineLearningService();
+        IMachineLearningStore learningStore = new FileMachineLearningStore();
         var ollamaHttpClient = new HttpClient
         {
             BaseAddress = new Uri(
@@ -45,6 +51,8 @@ public partial class App : Application
         _ollamaHttpClient = ollamaHttpClient;
         IOllamaStatusProvider ollamaStatusProvider =
             new OllamaStatusProvider(ollamaHttpClient);
+        _ollamaRuntimeBootstrapper = new OllamaRuntimeBootstrapper(
+            ollamaHttpClient);
         var inferenceHttpClient = new HttpClient
         {
             BaseAddress = new Uri(
@@ -68,12 +76,36 @@ public partial class App : Application
             folderInspectionProvider,
             softwareInventoryProvider,
             packagedSoftwareInventoryProvider,
-            startupInventoryProvider);
+            startupInventoryProvider,
+            userActivityProvider,
+            learningService,
+            learningStore);
         _window.Closed += OnWindowClosed;
         _window.Activate();
+        _ = BootstrapOllamaAsync();
     }
 
-    private void OnWindowClosed(
+    private async Task BootstrapOllamaAsync()
+    {
+        try
+        {
+            if (_ollamaRuntimeBootstrapper is not null)
+            {
+                await _ollamaRuntimeBootstrapper.EnsureAvailableAsync(
+                    _appCancellationTokenSource.Token);
+            }
+        }
+        catch (OperationCanceledException)
+            when (_appCancellationTokenSource.IsCancellationRequested)
+        {
+        }
+        catch
+        {
+            // The regular Ollama status flow reports an unavailable runtime.
+        }
+    }
+
+    private async void OnWindowClosed(
         object sender,
         WindowEventArgs args)
     {
@@ -83,9 +115,16 @@ public partial class App : Application
             _window = null;
         }
 
+        _appCancellationTokenSource.Cancel();
+        if (_ollamaRuntimeBootstrapper is not null)
+        {
+            await _ollamaRuntimeBootstrapper.DisposeAsync();
+            _ollamaRuntimeBootstrapper = null;
+        }
         _ollamaHttpClient?.Dispose();
         _ollamaHttpClient = null;
         _ollamaInferenceHttpClient?.Dispose();
         _ollamaInferenceHttpClient = null;
+        _appCancellationTokenSource.Dispose();
     }
 }
