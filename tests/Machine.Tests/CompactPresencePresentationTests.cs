@@ -13,7 +13,9 @@ public sealed class CompactPresencePresentationTests
         Assert.Equal(0, frame.GetAlpha(
             AmbientOrbFrameSequence.CanvasSize - 1,
             AmbientOrbFrameSequence.CanvasSize - 1));
-        Assert.InRange(frame.GetAlpha(64, 64), 180, 255);
+        Assert.InRange(frame.GetAlpha(
+            AmbientOrbFrameSequence.CanvasSize / 2,
+            AmbientOrbFrameSequence.CanvasSize / 2), 120, 255);
     }
 
     [Theory]
@@ -35,8 +37,12 @@ public sealed class CompactPresencePresentationTests
             Assert.Equal(AmbientOrbFrameSequence.CanvasSize, frame.Width);
             Assert.Equal(AmbientOrbFrameSequence.CanvasSize, frame.Height);
             Assert.Equal(0, frame.GetAlpha(0, 0));
-            Assert.Equal(0, frame.GetAlpha(127, 127));
-            Assert.True(frame.GetAlpha(64, 64) >= 20);
+            Assert.Equal(0, frame.GetAlpha(
+                AmbientOrbFrameSequence.CanvasSize - 1,
+                AmbientOrbFrameSequence.CanvasSize - 1));
+            Assert.True(frame.GetAlpha(
+                AmbientOrbFrameSequence.CanvasSize / 2,
+                AmbientOrbFrameSequence.CanvasSize / 2) >= 20);
         }
     }
 
@@ -45,13 +51,29 @@ public sealed class CompactPresencePresentationTests
     {
         var frame = AmbientOrbFrameSequence.Create().Frames[12];
 
-        var centerAlpha = frame.GetAlpha(64, 64);
-        var glowAlpha = frame.GetAlpha(100, 64);
-        var outerAlpha = frame.GetAlpha(123, 64);
+        var center = AmbientOrbFrameSequence.CanvasSize / 2;
+        var centerAlpha = frame.GetAlpha(center, center);
+        var glowAlpha = frame.GetAlpha(center + 24, center);
+        var outerAlpha = frame.GetAlpha(
+            AmbientOrbFrameSequence.CanvasSize - 5,
+            center);
 
         Assert.True(centerAlpha > glowAlpha);
         Assert.True(glowAlpha > outerAlpha);
         Assert.Equal(0, outerAlpha);
+    }
+
+    [Fact]
+    public void StableVisibleFootprintIsSmallWithATransparentSurround()
+    {
+        var frame = AmbientOrbFrameSequence.Create().Frames[12];
+        var body = GetVisibleBounds(frame, minimumAlpha: 20);
+        var halo = GetVisibleBounds(frame, minimumAlpha: 2);
+
+        Assert.InRange(body.Width, 42, 50);
+        Assert.InRange(body.Height, 42, 50);
+        Assert.InRange(halo.Width, 60, 68);
+        Assert.InRange(halo.Height, 60, 68);
     }
 
     [Fact]
@@ -119,13 +141,20 @@ public sealed class CompactPresencePresentationTests
     }
 
     [Fact]
-    public void BreathingFramesAreDifferentAndLoopSmoothly()
+    public void StableBreathingIsMaterialAndLoopSmoothly()
     {
         var sequence = AmbientOrbFrameSequence.Create();
 
-        Assert.NotEqual(
-            sequence.Frames[0].Pixels,
-            sequence.Frames[12].Pixels);
+        var minimum = sequence.Frames[0];
+        var maximum = sequence.Frames[sequence.Frames.Count / 4];
+        var settled = sequence.Frames[sequence.Frames.Count / 2];
+
+        Assert.True(AmbientOrbFrameSequence.MeanAlphaDifference(
+            minimum, maximum) > 2d);
+        Assert.True(AmbientOrbFrameSequence.MeanLuminance(maximum) >
+            AmbientOrbFrameSequence.MeanLuminance(minimum) * 1.12d);
+        Assert.True(AmbientOrbFrameSequence.MeanAlphaDifference(
+            maximum, settled) > 2d);
         Assert.InRange(
             AmbientOrbFrameSequence.MeanAlphaDifference(
                 sequence.Frames[0],
@@ -141,9 +170,9 @@ public sealed class CompactPresencePresentationTests
     {
         var sequence = AmbientOrbFrameSequence.Create();
 
-        Assert.True(sequence.IsHitTestVisible(64, 64));
+        Assert.True(sequence.IsHitTestVisible(48, 48));
         Assert.False(sequence.IsHitTestVisible(0, 0));
-        Assert.False(sequence.IsHitTestVisible(127, 127));
+        Assert.False(sequence.IsHitTestVisible(95, 95));
     }
 
     [Fact]
@@ -177,18 +206,23 @@ public sealed class CompactPresencePresentationTests
     }
 
     [Fact]
-    public void HoverPreservesModeAndIncreasesVisualIntensity()
+    public void HoverPreservesModeAndIsSofterThanIdleBreathing()
     {
-        var normal = AmbientOrbFrameSequence.Create(
-            CompactPresenceVisualMode.Warning);
+        var normal = AmbientOrbFrameSequence.Create();
         var hovered = AmbientOrbFrameSequence.Create(
-            CompactPresenceVisualMode.Warning,
+            CompactPresenceVisualMode.Stable,
             isHovered: true);
 
         Assert.Equal(normal.Mode, hovered.Mode);
         Assert.True(hovered.IsHovered);
-        Assert.True(AmbientOrbFrameSequence.MeanLuminance(hovered.Frames[0]) >
-            AmbientOrbFrameSequence.MeanLuminance(normal.Frames[0]));
+        var hoverIncrease = AmbientOrbFrameSequence.MeanLuminance(
+            hovered.Frames[0]) - AmbientOrbFrameSequence.MeanLuminance(
+            normal.Frames[0]);
+        var breathingIncrease = AmbientOrbFrameSequence.MeanLuminance(
+            normal.Frames[normal.Frames.Count / 4]) -
+            AmbientOrbFrameSequence.MeanLuminance(normal.Frames[0]);
+        Assert.True(hoverIncrease > 0d);
+        Assert.True(hoverIncrease < breathingIncrease);
     }
 
     [Theory]
@@ -201,7 +235,7 @@ public sealed class CompactPresencePresentationTests
     {
         var sequence = AmbientOrbFrameSequence.Create(mode);
 
-        Assert.True(sequence.IsHitTestVisible(64, 64));
+        Assert.True(sequence.IsHitTestVisible(48, 48));
         Assert.False(sequence.IsHitTestVisible(0, 0));
     }
 
@@ -272,7 +306,7 @@ public sealed class CompactPresencePresentationTests
             CompactPresenceLayout.CalculateBottomRightPosition(
                 new CompactPresenceWorkArea(100, 50, 1920, 1080),
                 size,
-                inset: 16));
+                inset: 24));
     }
 
     public static TheoryData<CompactPresenceSize, CompactPresencePosition>
@@ -280,13 +314,42 @@ public sealed class CompactPresencePresentationTests
         {
             {
                 CompactPresenceLayout.AmbientOrbSize,
-                new CompactPresencePosition(1876, 986)
+                new CompactPresencePosition(1900, 1010)
             },
             {
                 new CompactPresenceSize(520, 760),
-                new CompactPresencePosition(1484, 354)
+                new CompactPresencePosition(1476, 346)
             }
         };
+
+    private static (int Width, int Height) GetVisibleBounds(
+        AmbientOrbFrame frame,
+        byte minimumAlpha)
+    {
+        var minimumX = frame.Width;
+        var minimumY = frame.Height;
+        var maximumX = -1;
+        var maximumY = -1;
+        for (var y = 0; y < frame.Height; y++)
+        {
+            for (var x = 0; x < frame.Width; x++)
+            {
+                if (frame.GetAlpha(x, y) < minimumAlpha)
+                {
+                    continue;
+                }
+
+                minimumX = Math.Min(minimumX, x);
+                minimumY = Math.Min(minimumY, y);
+                maximumX = Math.Max(maximumX, x);
+                maximumY = Math.Max(maximumY, y);
+            }
+        }
+
+        Assert.True(maximumX >= minimumX);
+        Assert.True(maximumY >= minimumY);
+        return (maximumX - minimumX + 1, maximumY - minimumY + 1);
+    }
 
     private static (double Red, double Green, double Blue) MeanColor(
         AmbientOrbFrame frame)

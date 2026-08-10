@@ -36,7 +36,7 @@ public readonly record struct CompactPresencePosition(
 public static class CompactPresenceLayout
 {
     public static readonly CompactPresenceSize AmbientOrbSize =
-        new(128, 128);
+        new(AmbientOrbFrameSequence.CanvasSize, AmbientOrbFrameSequence.CanvasSize);
 
     public static readonly CompactPresenceSize ContextSize =
         new(280, 100);

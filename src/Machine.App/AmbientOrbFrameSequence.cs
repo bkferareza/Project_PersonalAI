@@ -4,7 +4,7 @@ public sealed class AmbientOrbFrameSequence
 {
     public const int FramesPerSecond = 10;
     public const int FrameCount = 50;
-    public const int CanvasSize = 128;
+    public const int CanvasSize = 96;
     private const byte HitTestAlphaThreshold = 20;
     private static readonly IReadOnlyDictionary<SequenceKey, AmbientOrbFrameSequence>
         Sequences = CreateSequences();
@@ -166,10 +166,11 @@ public sealed class AmbientOrbFrameSequence
     {
         var pixels = new byte[CanvasSize * CanvasSize * 4];
         var phase = Math.Tau * progress;
-        var breathing = 0.5d + 0.5d * Math.Sin(phase);
+        var breathing = 0.5d - 0.5d * Math.Cos(phase);
         var bloom = profile.IsBloom ? Math.Sin(Math.PI * progress) : 0d;
-        var intensity = (isHovered ? 1.14d : 1d) * (1d + 0.32d * bloom);
-        var scale = (isHovered ? 1.045d : 1d) *
+        var intensity = (isHovered ? 1.08d : 1d) *
+            (1d + profile.BreathIntensity * breathing + 0.32d * bloom);
+        var scale = (isHovered ? 1.01d : 1d) *
             (1d + profile.BreathScale * breathing + 0.12d * bloom);
         var driftX = profile.Drift * Math.Sin(phase + 0.7d);
         var driftY = profile.Drift * 0.68d * Math.Sin(phase * 0.75d - 0.4d);
@@ -178,9 +179,9 @@ public sealed class AmbientOrbFrameSequence
         {
             for (var x = 0; x < CanvasSize; x++)
             {
-                var dx = x - 64d;
-                var dy = y - 64d;
-                if (dx * dx + dy * dy > 58d * 58d)
+                var dx = x - CanvasSize / 2d;
+                var dy = y - CanvasSize / 2d;
+                if (dx * dx + dy * dy > 33d * 33d)
                 {
                     continue;
                 }
@@ -190,36 +191,36 @@ public sealed class AmbientOrbFrameSequence
                 var blue = 0d;
                 var alpha = 0d;
                 AddLayer(ref red, ref green, ref blue, ref alpha,
-                    profile.OuterAlpha * intensity * (0.86d + 0.14d * breathing) *
-                    Gaussian(dx - driftX, dy - driftY, 32d * scale, 28d * scale),
+                    profile.OuterAlpha * intensity * Gaussian(
+                        dx - driftX, dy - driftY, 16d * scale, 14d * scale),
                     profile.Outer);
                 AddLayer(ref red, ref green, ref blue, ref alpha,
                     profile.EnergyAlpha * intensity * Gaussian(
-                        dx + 8d - driftX,
-                        dy - 4d - driftY,
-                        23d * scale,
-                        16d * scale),
+                        dx + 5d - driftX,
+                        dy - 2d - driftY,
+                        11d * scale,
+                        8d * scale),
                     profile.Energy);
                 AddLayer(ref red, ref green, ref blue, ref alpha,
-                    profile.EnergyAlpha * 1.08d * intensity * Gaussian(
-                        dx - 7d - driftX,
-                        dy + 8d - driftY,
-                        18d * scale,
-                        24d * scale),
+                    profile.EnergyAlpha * 1.05d * intensity * Gaussian(
+                        dx - 5d - driftX,
+                        dy + 5d - driftY,
+                        9d * scale,
+                        12d * scale),
                     profile.Accent);
                 AddLayer(ref red, ref green, ref blue, ref alpha,
                     profile.CoreAlpha * intensity * Gaussian(
                         dx - driftX * 0.45d,
                         dy - driftY * 0.45d,
-                        13d * scale,
-                        12d * scale),
+                        8.5d * scale,
+                        8d * scale),
                     profile.Core);
                 AddLayer(ref red, ref green, ref blue, ref alpha,
                     profile.HotAlpha * intensity * Gaussian(
-                        dx + 4d - driftX * 0.35d,
-                        dy + 5d - driftY * 0.35d,
-                        7d * scale,
-                        6d * scale),
+                        dx + 2.5d - driftX * 0.35d,
+                        dy + 3d - driftY * 0.35d,
+                        4.5d * scale,
+                        4d * scale),
                     profile.Hot);
 
                 AddBrokenArc(ref red, ref green, ref blue, ref alpha,
@@ -261,14 +262,19 @@ public sealed class AmbientOrbFrameSequence
         OrbProfile profile,
         double intensity)
     {
+        if (profile.ArcAlpha <= 0d)
+        {
+            return;
+        }
+
         var radius = Math.Sqrt(dx * dx + dy * dy);
         var angle = Math.Atan2(dy, dx);
         var shiftedAngle = angle + 0.22d * Math.Sin(phase);
-        if (radius is > 40d and < 45d &&
+        if (radius is > 25d and < 28d &&
             shiftedAngle is > 2.35d and < 4.18d)
         {
             var arcStrength = profile.ArcAlpha * intensity *
-                (1d - Math.Abs(radius - 42.5d) / 2.5d) *
+                (1d - Math.Abs(radius - 26.5d) / 1.5d) *
                 Math.Sin((shiftedAngle - 2.35d) / 1.83d * Math.PI);
             AddLayer(ref red, ref green, ref blue, ref alpha,
                 arcStrength, profile.Arc);
@@ -278,33 +284,33 @@ public sealed class AmbientOrbFrameSequence
     private static OrbProfile GetProfile(CompactPresenceVisualMode mode) => mode switch
     {
         CompactPresenceVisualMode.Attention => new(
-            38, true, 0.075d, 2.2d, 0.34d, 0.30d, 0.80d, 0.66d, 0.18d,
+            38, true, 0.10d, 0.12d, 1.5d, 0.16d, 0.17d, 0.50d, 0.43d, 0.05d,
             new(75, 135, 247), new(73, 208, 255), new(255, 187, 104),
             new(166, 232, 255), new(248, 253, 255), new(199, 235, 255)),
         CompactPresenceVisualMode.Warning => new(
-            28, true, 0.09d, 1.6d, 0.38d, 0.37d, 0.90d, 0.76d, 0.23d,
+            28, true, 0.11d, 0.13d, 1.2d, 0.19d, 0.22d, 0.62d, 0.55d, 0.07d,
             new(240, 112, 47), new(255, 151, 53), new(255, 190, 91),
             new(255, 191, 108), new(255, 246, 220), new(255, 181, 88)),
         CompactPresenceVisualMode.Critical => new(
-            20, true, 0.105d, 1.25d, 0.44d, 0.46d, 0.98d, 0.83d, 0.28d,
+            20, true, 0.12d, 0.14d, 1d, 0.23d, 0.26d, 0.68d, 0.59d, 0.08d,
             new(226, 66, 48), new(255, 84, 50), new(255, 139, 62),
             new(255, 157, 92), new(255, 236, 210), new(255, 119, 71)),
         CompactPresenceVisualMode.Unknown => new(
-            50, true, 0.025d, 0.8d, 0.17d, 0.15d, 0.43d, 0.34d, 0.08d,
+            50, true, 0.05d, 0.06d, 0.6d, 0.08d, 0.08d, 0.25d, 0.22d, 0.02d,
             new(87, 111, 142), new(100, 130, 157), new(117, 128, 145),
             new(154, 171, 184), new(209, 220, 226), new(147, 167, 185)),
         CompactPresenceVisualMode.Generating => new(
-            40, true, 0.06d, 1.8d, 0.33d, 0.31d, 0.78d, 0.65d, 0.17d,
+            40, true, 0.10d, 0.12d, 1.4d, 0.16d, 0.17d, 0.48d, 0.40d, 0.05d,
             new(73, 125, 240), new(69, 208, 255), new(104, 89, 226),
             new(151, 226, 255), new(246, 253, 255), new(187, 235, 255),
             HasGeneratingSweep: true),
         CompactPresenceVisualMode.NewInsight => new(
-            10, false, 0d, 1.2d, 0.38d, 0.35d, 0.88d, 0.75d, 0.22d,
+            10, false, 0d, 0d, 1d, 0.19d, 0.22d, 0.62d, 0.54d, 0.07d,
             new(92, 125, 248), new(81, 222, 255), new(148, 101, 244),
             new(188, 239, 255), new(255, 255, 255), new(211, 238, 255),
             IsBloom: true),
         _ => new(
-            FrameCount, true, 0.055d, 1.8d, 0.31d, 0.28d, 0.78d, 0.70d, 0.16d,
+            FrameCount, true, 0.14d, 0.15d, 1.2d, 0.11d, 0.14d, 0.45d, 0.38d, 0d,
             new(83, 124, 241), new(76, 219, 255), new(108, 76, 222),
             new(156, 224, 255), new(244, 252, 255), new(193, 238, 255))
     };
@@ -346,6 +352,7 @@ public sealed class AmbientOrbFrameSequence
         int FrameCount,
         bool IsLooping,
         double BreathScale,
+        double BreathIntensity,
         double Drift,
         double OuterAlpha,
         double EnergyAlpha,

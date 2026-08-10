@@ -15,7 +15,7 @@ public sealed partial class MainWindow : Window
 {
     private const int ExpandedWindowWidth = 520;
     private const int ExpandedWindowHeight = 760;
-    private const int WorkAreaMargin = 16;
+    private const int WorkAreaMargin = 24;
     private const int TopProcessCount = 5;
     private const int LargeFolderResultCount = 10;
     private const int ExplanationLargeFolderCount = 3;
