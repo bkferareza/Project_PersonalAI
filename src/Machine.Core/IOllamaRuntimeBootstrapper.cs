@@ -4,6 +4,8 @@ public interface IOllamaRuntimeBootstrapper : IAsyncDisposable
 {
     Task<OllamaRuntimeBootstrapResult> EnsureAvailableAsync(
         CancellationToken cancellationToken = default);
+
+    Task ShutdownAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed record OllamaRuntimeBootstrapResult(

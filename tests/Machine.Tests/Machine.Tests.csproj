@@ -31,6 +31,9 @@
     <Compile
       Include="..\..\src\Machine.App\AmbientOrbFrameSequence.cs"
       Link="AmbientOrbFrameSequence.cs" />
+    <Compile
+      Include="..\..\src\Machine.App\MachineShutdownCoordinator.cs"
+      Link="MachineShutdownCoordinator.cs" />
     <None
       Include="..\..\src\Machine.App\MainWindow.xaml"
       Link="Fixtures\MainWindow.xaml"

@@ -167,7 +167,6 @@ public sealed partial class MainWindow : Window
             _isAnimationSettingsChangeSubscribed = true;
         }
         Activated += OnWindowActivated;
-        Closed += OnWindowClosed;
     }
 
     private void OnWindowActivated(
@@ -211,54 +210,47 @@ public sealed partial class MainWindow : Window
 
         _contentLoadStarted = true;
 
-        try
+        await LoadIdentityAsync();
+        await LoadLearningAsync();
+
+        var cancellationToken =
+            _windowCancellationTokenSource.Token;
+
+        var telemetryLoop =
+            RunTelemetryLoopAsync(cancellationToken);
+        var processLoop =
+            RunProcessLoopAsync(cancellationToken);
+        var ollamaStatusLoop =
+            RunOllamaStatusLoopAsync(cancellationToken);
+
+        await Task.WhenAll(
+            LoadStorageAsync(
+                isManualRefresh: false,
+                cancellationToken: cancellationToken),
+            LoadSoftwareInventoryAsync(
+                isManualRefresh: false,
+                cancellationToken: cancellationToken),
+            LoadPackagedSoftwareInventoryAsync(
+                isManualRefresh: false,
+                cancellationToken: cancellationToken),
+            LoadStartupInventoryAsync(
+                isManualRefresh: false,
+                cancellationToken: cancellationToken));
+
+        if (cancellationToken.IsCancellationRequested)
         {
-            await LoadIdentityAsync();
-            await LoadLearningAsync();
-
-            var cancellationToken =
-                _windowCancellationTokenSource.Token;
-
-            var telemetryLoop =
-                RunTelemetryLoopAsync(cancellationToken);
-            var processLoop =
-                RunProcessLoopAsync(cancellationToken);
-            var ollamaStatusLoop =
-                RunOllamaStatusLoopAsync(cancellationToken);
-
-            await Task.WhenAll(
-                LoadStorageAsync(
-                    isManualRefresh: false,
-                    cancellationToken: cancellationToken),
-                LoadSoftwareInventoryAsync(
-                    isManualRefresh: false,
-                    cancellationToken: cancellationToken),
-                LoadPackagedSoftwareInventoryAsync(
-                    isManualRefresh: false,
-                    cancellationToken: cancellationToken),
-                LoadStartupInventoryAsync(
-                    isManualRefresh: false,
-                    cancellationToken: cancellationToken));
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
-            _insightTriggerPolicy.EstablishBaseline(
-                _latestFindingsSnapshot);
-            _initialContextHydrationCompleted = true;
-            TryRequestDashboardInsight();
-
-            await Task.WhenAll(
-                telemetryLoop,
-                processLoop,
-                ollamaStatusLoop);
+            return;
         }
-        finally
-        {
-            _windowCancellationTokenSource.Dispose();
-        }
+
+        _insightTriggerPolicy.EstablishBaseline(
+            _latestFindingsSnapshot);
+        _initialContextHydrationCompleted = true;
+        TryRequestDashboardInsight();
+
+        await Task.WhenAll(
+            telemetryLoop,
+            processLoop,
+            ollamaStatusLoop);
     }
 
     private async Task LoadIdentityAsync()
@@ -2333,9 +2325,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnWindowClosed(
-        object sender,
-        WindowEventArgs args)
+    internal void StopForApplicationShutdown()
     {
         _ambientOrbTimer.Stop();
         _ambientOrbTimer.Tick -= OnAmbientOrbTimerTick;
@@ -2352,17 +2342,6 @@ public sealed partial class MainWindow : Window
         }
         _folderScanCancellationTokenSource?.Cancel();
         _windowCancellationTokenSource.Cancel();
-        try
-        {
-            _learningService.SaveIfDueAsync(
-                _learningStore,
-                DateTimeOffset.UtcNow,
-                force: true).GetAwaiter().GetResult();
-        }
-        catch (Exception exception)
-        {
-            Debug.WriteLine(exception);
-        }
     }
 }
 

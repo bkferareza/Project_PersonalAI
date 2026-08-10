@@ -12,6 +12,7 @@ public partial class App : Application
     private HttpClient? _ollamaInferenceHttpClient;
     private IOllamaRuntimeBootstrapper? _ollamaRuntimeBootstrapper;
     private readonly CancellationTokenSource _appCancellationTokenSource = new();
+    private MachineShutdownCoordinator? _shutdownCoordinator;
 
     public App()
     {
@@ -51,8 +52,9 @@ public partial class App : Application
         _ollamaHttpClient = ollamaHttpClient;
         IOllamaStatusProvider ollamaStatusProvider =
             new OllamaStatusProvider(ollamaHttpClient);
-        _ollamaRuntimeBootstrapper = new OllamaRuntimeBootstrapper(
+        var runtimeBootstrapper = new OllamaRuntimeBootstrapper(
             ollamaHttpClient);
+        _ollamaRuntimeBootstrapper = runtimeBootstrapper;
         var inferenceHttpClient = new HttpClient
         {
             BaseAddress = new Uri(
@@ -66,7 +68,7 @@ public partial class App : Application
                 inferenceHttpClient,
                 "qwen3.5:4b");
 
-        _window = new MainWindow(
+        var window = new MainWindow(
             identityProvider,
             resourceProvider,
             processProvider,
@@ -80,8 +82,16 @@ public partial class App : Application
             userActivityProvider,
             learningService,
             learningStore);
-        _window.Closed += OnWindowClosed;
-        _window.Activate();
+        _window = window;
+        _shutdownCoordinator = new MachineShutdownCoordinator(
+            learningService,
+            learningStore,
+            runtimeBootstrapper,
+            _appCancellationTokenSource,
+            window.StopForApplicationShutdown,
+            DisposeHttpResources);
+        window.Closed += OnWindowClosed;
+        window.Activate();
         _ = BootstrapOllamaAsync();
     }
 
@@ -105,7 +115,7 @@ public partial class App : Application
         }
     }
 
-    private async void OnWindowClosed(
+    private void OnWindowClosed(
         object sender,
         WindowEventArgs args)
     {
@@ -115,16 +125,32 @@ public partial class App : Application
             _window = null;
         }
 
-        _appCancellationTokenSource.Cancel();
-        if (_ollamaRuntimeBootstrapper is not null)
+        var shutdownTask = _shutdownCoordinator?.BeginShutdown();
+        if (shutdownTask is not null)
         {
-            await _ollamaRuntimeBootstrapper.DisposeAsync();
-            _ollamaRuntimeBootstrapper = null;
+            _ = ObserveShutdownAsync(shutdownTask);
         }
+    }
+
+    private async Task ObserveShutdownAsync(Task shutdownTask)
+    {
+        try
+        {
+            await shutdownTask;
+        }
+        catch (Exception exception)
+        {
+            // Shutdown failures must never escape an event callback.
+            System.Diagnostics.Debug.WriteLine(exception);
+        }
+    }
+
+    private void DisposeHttpResources()
+    {
         _ollamaHttpClient?.Dispose();
         _ollamaHttpClient = null;
         _ollamaInferenceHttpClient?.Dispose();
         _ollamaInferenceHttpClient = null;
-        _appCancellationTokenSource.Dispose();
+        _ollamaRuntimeBootstrapper = null;
     }
 }

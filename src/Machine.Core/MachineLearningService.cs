@@ -17,6 +17,7 @@ public sealed class MachineLearningService
     private readonly Queue<MachineLearningObservation> _journal = new();
     private readonly Queue<MachineLearningEpisode> _episodes = new();
     private readonly Dictionary<BaselineKey, OnlineBaseline> _baselines = new();
+    private readonly SemaphoreSlim _persistenceGate = new(1, 1);
     private ActiveEpisode? _activeEpisode;
     private DateTimeOffset? _lastObservationAt;
     private DateTimeOffset? _firstObservedAt;
@@ -186,11 +187,47 @@ public sealed class MachineLearningService
             return false;
         }
 
-        await store.SaveAsync(CreatePersistedState(), cancellationToken)
+        var state = CreatePersistedState();
+        return await SaveSnapshotAsync(store, state, now, cancellationToken)
             .ConfigureAwait(false);
-        _lastPersistedAt = now;
-        _isDirty = false;
-        return true;
+    }
+
+    public async Task<bool> SaveFinalSnapshotAsync(
+        IMachineLearningStore store,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (!_isDirty)
+        {
+            return false;
+        }
+
+        var state = CreatePersistedState();
+        return await SaveSnapshotAsync(store, state, now, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<bool> SaveSnapshotAsync(
+        IMachineLearningStore store,
+        MachineLearningPersistedState state,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await _persistenceGate.WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            await store.SaveAsync(state, cancellationToken)
+                .ConfigureAwait(false);
+            _lastPersistedAt = now;
+            _isDirty = false;
+            return true;
+        }
+        finally
+        {
+            _persistenceGate.Release();
+        }
     }
 
     private MachineLearningBaseline? GetBaseline(

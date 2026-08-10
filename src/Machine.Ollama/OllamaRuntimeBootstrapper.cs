@@ -33,7 +33,7 @@ public sealed class OllamaRuntimeBootstrapper : IOllamaRuntimeBootstrapper
     private readonly TimeSpan _readinessTimeout;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private IOllamaRuntimeProcess? _ownedProcess;
-    private bool _disposed;
+    private bool _shutdownStarted;
 
     public OllamaRuntimeBootstrapper(HttpClient httpClient)
         : this(new OllamaRuntimeHealthProbe(httpClient),
@@ -65,10 +65,10 @@ public sealed class OllamaRuntimeBootstrapper : IOllamaRuntimeBootstrapper
     public async Task<OllamaRuntimeBootstrapResult> EnsureAvailableAsync(
         CancellationToken cancellationToken = default)
     {
-        ThrowIfDisposed();
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            ThrowIfShutdownStarted();
             if (await _healthProbe.IsHealthyAsync(cancellationToken)
                     .ConfigureAwait(false))
             {
@@ -101,19 +101,56 @@ public sealed class OllamaRuntimeBootstrapper : IOllamaRuntimeBootstrapper
         }
     }
 
-    public ValueTask DisposeAsync()
+    public async Task ShutdownAsync(
+        CancellationToken cancellationToken = default)
     {
-        if (_disposed)
+        IOllamaRuntimeProcess? ownedProcess;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return ValueTask.CompletedTask;
+            if (_shutdownStarted)
+            {
+                return;
+            }
+
+            _shutdownStarted = true;
+            ownedProcess = _ownedProcess;
+            _ownedProcess = null;
+        }
+        finally
+        {
+            _gate.Release();
         }
 
-        _disposed = true;
-        _ownedProcess?.Stop();
-        _ownedProcess?.Dispose();
-        _ownedProcess = null;
-        _gate.Dispose();
-        return ValueTask.CompletedTask;
+        if (ownedProcess is not null)
+        {
+            await Task.Run(() =>
+            {
+                try
+                {
+                    ownedProcess.Stop();
+                }
+                finally
+                {
+                    ownedProcess.Dispose();
+                }
+            }, CancellationToken.None).WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        using var timeout = new CancellationTokenSource(
+            TimeSpan.FromSeconds(2));
+        try
+        {
+            await ShutdownAsync(timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (timeout.IsCancellationRequested)
+        {
+        }
     }
 
     private async Task<OllamaRuntimeBootstrapResult> PollForReadinessAsync(
@@ -139,9 +176,9 @@ public sealed class OllamaRuntimeBootstrapper : IOllamaRuntimeBootstrapper
             false, true, executableWasFound);
     }
 
-    private void ThrowIfDisposed()
+    private void ThrowIfShutdownStarted()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(_shutdownStarted, this);
     }
 }
 
@@ -230,9 +267,16 @@ internal sealed class OllamaRuntimeProcess(Process process)
     public bool HasExited => process.HasExited;
     public void Stop()
     {
-        if (!process.HasExited)
+        try
         {
-            process.Kill(entireProcessTree: true);
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // The owned process exited between inspection and termination.
         }
     }
     public void Dispose() => process.Dispose();
