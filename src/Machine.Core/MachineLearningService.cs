@@ -6,7 +6,8 @@ public sealed class MachineLearningService
 {
     public const int MaximumObservationCount = 2_880;
     public const int MaximumEpisodeCount = 200;
-    public const int PersistenceSchemaVersion = 1;
+    public const int PersistenceSchemaVersion = 2;
+    public const int LegacyPersistenceSchemaVersion = 1;
     public const int ProvisionalSampleCount = 12;
     public const int EstablishedSampleCount = 168;
     public const int EstablishedObservedDayCount = 7;
@@ -192,7 +193,10 @@ public sealed class MachineLearningService
                     episode.PeakCpuUsagePercent,
                     episode.AverageMemoryUsagePercent,
                     episode.FindingKeys,
-                    episode.Outcome)).ToArray());
+                    episode.Outcome)).ToArray(),
+            baseline.DominantNetworkActivityClass,
+            baseline.DominantNetworkActivityCount,
+            baseline.NetworkObservationCount);
     }
 
     public async Task LoadAsync(
@@ -221,7 +225,8 @@ public sealed class MachineLearningService
             return;
         }
 
-        if (state.SchemaVersion != PersistenceSchemaVersion ||
+        if (state.SchemaVersion is not PersistenceSchemaVersion and
+                not LegacyPersistenceSchemaVersion ||
             state.Baselines is null ||
             state.Episodes is null)
         {
@@ -242,6 +247,7 @@ public sealed class MachineLearningService
                 !double.IsFinite(persisted.CpuM2) ||
                 !double.IsFinite(persisted.MemoryMean) ||
                 !double.IsFinite(persisted.MemoryM2) ||
+                !HasValidNetworkCounts(persisted) ||
                 persisted.LastObservedAt < persisted.FirstObservedAt)
             {
                 ignoredInvalidState = true;
@@ -473,6 +479,34 @@ public sealed class MachineLearningService
         double.IsFinite(episode.AverageMemoryUsagePercent) &&
         episode.FindingKeys is not null;
 
+    private static bool HasValidNetworkCounts(
+        MachineLearningBaselineState state)
+    {
+        if (state.NetworkQuietSampleCount < 0 ||
+            state.NetworkLightSampleCount < 0 ||
+            state.NetworkActiveSampleCount < 0 ||
+            state.NetworkUnavailableSampleCount < 0)
+        {
+            return false;
+        }
+
+        var total = 0L;
+        foreach (var count in new[]
+        {
+            state.NetworkQuietSampleCount,
+            state.NetworkLightSampleCount,
+            state.NetworkActiveSampleCount,
+            state.NetworkUnavailableSampleCount
+        })
+        {
+            total = total > long.MaxValue - count
+                ? long.MaxValue
+                : total + count;
+        }
+
+        return total <= state.SampleCount;
+    }
+
     private static long AddDurationTicks(long current, long additional) =>
         current >= TimeSpan.MaxValue.Ticks - additional
             ? TimeSpan.MaxValue.Ticks
@@ -507,6 +541,11 @@ public sealed class MachineLearningService
             CpuM2 = state.CpuM2;
             MemoryMean = state.MemoryMean;
             MemoryM2 = state.MemoryM2;
+            NetworkQuietSampleCount = state.NetworkQuietSampleCount;
+            NetworkLightSampleCount = state.NetworkLightSampleCount;
+            NetworkActiveSampleCount = state.NetworkActiveSampleCount;
+            NetworkUnavailableSampleCount =
+                state.NetworkUnavailableSampleCount;
             FirstObservedAt = state.FirstObservedAt;
             LastObservedAt = state.LastObservedAt;
 
@@ -527,6 +566,10 @@ public sealed class MachineLearningService
         public double CpuM2 { get; private set; }
         public double MemoryMean { get; private set; }
         public double MemoryM2 { get; private set; }
+        public long NetworkQuietSampleCount { get; private set; }
+        public long NetworkLightSampleCount { get; private set; }
+        public long NetworkActiveSampleCount { get; private set; }
+        public long NetworkUnavailableSampleCount { get; private set; }
         public DateTimeOffset FirstObservedAt { get; }
         public DateTimeOffset LastObservedAt { get; private set; }
 
@@ -540,6 +583,21 @@ public sealed class MachineLearningService
             MemoryMean += memoryDelta / Count;
             MemoryM2 += memoryDelta *
                 (observation.MemoryUsagePercent - MemoryMean);
+            switch (observation.NetworkActivityClass)
+            {
+                case MachineNetworkActivityClass.Quiet:
+                    NetworkQuietSampleCount++;
+                    break;
+                case MachineNetworkActivityClass.Light:
+                    NetworkLightSampleCount++;
+                    break;
+                case MachineNetworkActivityClass.Active:
+                    NetworkActiveSampleCount++;
+                    break;
+                default:
+                    NetworkUnavailableSampleCount++;
+                    break;
+            }
             LastObservedAt = observation.Timestamp;
             _observedLocalDates.Add(ToLocalDate(observation.Timestamp));
         }
@@ -555,7 +613,11 @@ public sealed class MachineLearningService
             FirstObservedAt,
             LastObservedAt,
             _observedLocalDates.Count,
-            GetConfidence(Count, _observedLocalDates.Count));
+            GetConfidence(Count, _observedLocalDates.Count),
+            NetworkQuietSampleCount,
+            NetworkLightSampleCount,
+            NetworkActiveSampleCount,
+            NetworkUnavailableSampleCount);
 
         public MachineLearningBaselineState ToState(BaselineKey key) => new(
             key.Hour,
@@ -567,7 +629,11 @@ public sealed class MachineLearningService
             MemoryM2,
             FirstObservedAt,
             LastObservedAt,
-            _observedLocalDates.Order().ToArray());
+            _observedLocalDates.Order().ToArray(),
+            NetworkQuietSampleCount,
+            NetworkLightSampleCount,
+            NetworkActiveSampleCount,
+            NetworkUnavailableSampleCount);
 
         private static DateOnly ToLocalDate(DateTimeOffset timestamp) =>
             DateOnly.FromDateTime(timestamp.ToLocalTime().DateTime);

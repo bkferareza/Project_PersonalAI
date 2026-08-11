@@ -124,6 +124,15 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
+                    x:Name="NetworkNavigationItem"
+                    AutomationProperties.AutomationId="NetworkNavigationItem"
+                    Content="Network"
+                    Tag="network">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE774;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
                     AutomationProperties.AutomationId="StorageNavigationItem"
                     Content="Storage"
                     Tag="storage">
@@ -260,6 +269,47 @@
                                 </StackPanel>
                             </Border>
                         </Grid>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="5">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Network" />
+                                <TextBlock
+                                    x:Name="OverviewNetworkActivityText"
+                                    AutomationProperties.AutomationId="OverviewNetworkActivityText"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Text="Unavailable" />
+                                <Grid ColumnSpacing="14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        x:Name="OverviewNetworkReceiveText"
+                                        Text="Unavailable"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        x:Name="OverviewNetworkSendText"
+                                        Grid.Column="1"
+                                        Text="Unavailable"
+                                        TextWrapping="Wrap" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="OverviewNetworkInterfaceText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Interface status unavailable" />
+                                <TextBlock
+                                    x:Name="OverviewSessionUptimeText"
+                                    Margin="0,3,0,0"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Session uptime unavailable" />
+                                <TextBlock
+                                    x:Name="OverviewSessionActivityText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Input state unavailable" />
+                            </StackPanel>
+                        </Border>
                         <TextBlock
                             x:Name="TelemetryStatusText"
                             AutomationProperties.AutomationId="TelemetryStatusText"
@@ -543,6 +593,10 @@
                                                         <TextBlock Text="{x:Bind MemoryValue}" TextWrapping="Wrap" />
                                                     </StackPanel>
                                                 </Grid>
+                                                <StackPanel Margin="0,3,0,0" Spacing="1">
+                                                    <TextBlock FontWeight="SemiBold" Text="Network" />
+                                                    <TextBlock Text="{x:Bind NetworkValue}" TextWrapping="Wrap" />
+                                                </StackPanel>
                                                 <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind ObservedSpan}" />
                                             </StackPanel>
                                         </DataTemplate>
@@ -650,6 +704,153 @@
                                     <TextBlock Grid.Row="7" FontWeight="SemiBold" Text="Model" />
                                     <TextBlock x:Name="LearningAiModelText" Grid.Column="1" Grid.Row="7" Text="Checking" TextWrapping="Wrap" />
                                 </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer
+                    x:Name="NetworkPage"
+                    AutomationProperties.AutomationId="NetworkPage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="12,0,12,16" Spacing="10">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                Style="{StaticResource PageTitleStyle}"
+                                Text="Network" />
+                            <TextBlock
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Read-only local interface activity" />
+                        </StackPanel>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Current activity" />
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="RECEIVE" />
+                                        <TextBlock
+                                            x:Name="NetworkReceiveRateText"
+                                            AutomationProperties.AutomationId="NetworkReceiveRateText"
+                                            FontSize="18"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="SEND" />
+                                        <TextBlock
+                                            x:Name="NetworkSendRateText"
+                                            AutomationProperties.AutomationId="NetworkSendRateText"
+                                            FontSize="18"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="ACTIVITY" />
+                                        <TextBlock
+                                            x:Name="NetworkActivityClassText"
+                                            AutomationProperties.AutomationId="NetworkActivityClassText"
+                                            FontSize="18"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Interfaces" />
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Active local adapters only. No addresses, endpoints, or packet data." />
+                                <TextBlock
+                                    x:Name="NetworkInterfacesEmptyText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="No active non-loopback interfaces detected." />
+                                <ItemsControl
+                                    x:Name="NetworkInterfacesList"
+                                    AutomationProperties.AutomationId="NetworkInterfacesList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:NetworkInterfaceDisplayItem">
+                                            <StackPanel Margin="0,5" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Name}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind StatusAndType}" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind Description}" />
+                                                <TextBlock
+                                                    Margin="0,2,0,0"
+                                                    Text="{x:Bind LinkDetails}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind ReceivedDetails}" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind SentDetails}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock
+                                    x:Name="NetworkStatusText"
+                                    AutomationProperties.AutomationId="NetworkStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Loading..." />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Session context" />
+                                <Grid ColumnSpacing="12" RowSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="WINDOWS UPTIME" />
+                                        <TextBlock x:Name="SessionSystemUptimeText" Text="Unavailable" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="MACHINE UPTIME" />
+                                        <TextBlock x:Name="SessionMachineUptimeText" Text="Unavailable" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="INPUT STATE" />
+                                        <TextBlock x:Name="SessionInputStateText" Text="Unavailable" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="IDLE DURATION" />
+                                        <TextBlock x:Name="SessionIdleDurationText" Text="Unavailable" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Idle means no user input for at least five minutes. No absence or productivity inference." />
                             </StackPanel>
                         </Border>
                     </StackPanel>

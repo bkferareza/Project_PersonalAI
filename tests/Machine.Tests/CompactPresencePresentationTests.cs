@@ -360,6 +360,25 @@ public sealed class CompactPresencePresentationTests
     }
 
     [Fact]
+    public void DashboardUsesSmallDwmCornerClipToAvoidMicaDiagonalSeam()
+    {
+        Assert.Equal(33,
+            DashboardChromeLayout.DwmWindowCornerPreferenceAttribute);
+        Assert.Equal(3,
+            DashboardChromeLayout.DwmRoundSmallCornerPreference);
+        Assert.False(DashboardChromeLayout.HasBorder);
+        Assert.False(DashboardChromeLayout.HasTitleBar);
+
+        var xaml = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "MainWindow.xaml"));
+        Assert.Contains("<MicaBackdrop Kind=\"BaseAlt\"", xaml);
+        Assert.Contains("Background=\"Transparent\"", xaml);
+        Assert.DoesNotContain("OpaqueOverlay", xaml,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DashboardCloseCommandInvokesBoundedCloseAction()
     {
         var closeCount = 0;
@@ -379,6 +398,8 @@ public sealed class CompactPresencePresentationTests
         Assert.Contains("AutomationProperties.AutomationId=\"DashboardCloseButton\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"LearningNavigationItem\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"LearningPage\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"NetworkNavigationItem\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"NetworkPage\"", xaml);
         Assert.DoesNotContain("Maximize", xaml, StringComparison.OrdinalIgnoreCase);
     }
 

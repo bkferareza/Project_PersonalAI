@@ -8,4 +8,6 @@ public sealed record MachineStateExplanationRequest(
     MachineSoftwareExplanationContext? Software = null,
     MachineStartupExplanationContext? Startup = null,
     MachineFindingsSnapshot? Findings = null,
-    MachineLearnedContext? LearnedContext = null);
+    MachineLearnedContext? LearnedContext = null,
+    MachineNetworkInsightContext? Network = null,
+    MachineSessionInsightContext? Session = null);

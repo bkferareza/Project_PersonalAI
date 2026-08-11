@@ -131,6 +131,14 @@ public sealed class MachineLearningServiceTests
                 StringComparison.Ordinal);
             Assert.DoesNotContain("SystemVolumeFreePercent", persistedJson,
                 StringComparison.Ordinal);
+            Assert.DoesNotContain("Interface", persistedJson,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("IPAddress", persistedJson,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("MacAddress", persistedJson,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("RemoteEndpoint", persistedJson,
+                StringComparison.OrdinalIgnoreCase);
 
             var restored = new MachineLearningService();
             await restored.LoadAsync(store);
@@ -348,6 +356,174 @@ public sealed class MachineLearningServiceTests
     }
 
     [Fact]
+    public void NetworkClassIsStoredAndDominanceRequiresEnoughEvidence()
+    {
+        var service = new MachineLearningService();
+        var start = CreateLocalTime(2026, 8, 11, 6, 0, 0);
+        for (var index = 0; index < 12; index++)
+        {
+            var networkClass = index < 8
+                ? MachineNetworkActivityClass.Quiet
+                : MachineNetworkActivityClass.Light;
+            service.Observe(CreateObservation(
+                start.AddSeconds(index * 30),
+                activity: MachineUserActivityState.Idle,
+                networkActivityClass: networkClass,
+                receiveBytesPerSecond: 1_000,
+                sendBytesPerSecond: 500));
+        }
+
+        var snapshot = service.GetDashboardSnapshot(start.AddMinutes(6));
+        var baseline = Assert.Single(snapshot.Baselines);
+        Assert.Equal(MachineNetworkActivityClass.Light,
+            snapshot.CurrentObservation!.NetworkActivityClass);
+        Assert.Equal(1_000,
+            snapshot.CurrentObservation.ReceiveBytesPerSecond);
+        Assert.Equal(8, baseline.NetworkQuietSampleCount);
+        Assert.Equal(4, baseline.NetworkLightSampleCount);
+        Assert.Equal(12, baseline.NetworkObservationCount);
+        Assert.Equal(MachineNetworkActivityClass.Quiet,
+            baseline.DominantNetworkActivityClass);
+        Assert.Equal(8, baseline.DominantNetworkActivityCount);
+
+        var learnedNetworkItem = Assert.Single(
+            snapshot.LearnedItems,
+            item => item.Text.Contains(
+                "network activity",
+                StringComparison.Ordinal));
+        Assert.Equal(12, learnedNetworkItem.EvidenceCount);
+        Assert.Contains(
+            "8 of 12 Idle observations at 6 AM had Quiet network activity.",
+            learnedNetworkItem.Text,
+            StringComparison.Ordinal);
+
+        var calibrating = new MachineLearningService();
+        for (var index = 0; index < 12; index++)
+        {
+            calibrating.Observe(CreateObservation(
+                start.AddSeconds(index * 30),
+                networkActivityClass: index == 11
+                    ? MachineNetworkActivityClass.Unavailable
+                    : MachineNetworkActivityClass.Quiet));
+        }
+        var calibratingBaseline = Assert.Single(calibrating.Baselines);
+        Assert.Equal(11, calibratingBaseline.NetworkObservationCount);
+        Assert.Null(calibratingBaseline.DominantNetworkActivityClass);
+        Assert.DoesNotContain(
+            calibrating.GetDashboardSnapshot(start).LearnedItems,
+            item => item.Text.Contains(
+                "network activity",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task NetworkCountsRoundTripAndVersionOneStateMigratesSafely()
+    {
+        var start = CreateLocalTime(2026, 8, 11, 6, 0, 0);
+        var store = new RecordingStore(null);
+        var service = new MachineLearningService();
+        for (var index = 0; index < 12; index++)
+        {
+            service.Observe(CreateObservation(
+                start.AddSeconds(index * 30),
+                networkActivityClass: MachineNetworkActivityClass.Quiet));
+        }
+
+        Assert.True(await service.SaveIfDueAsync(
+            store,
+            start.AddMinutes(6),
+            force: true));
+        Assert.Equal(MachineLearningService.PersistenceSchemaVersion,
+            store.SavedState!.SchemaVersion);
+        Assert.Equal(12,
+            Assert.Single(store.SavedState.Baselines)
+                .NetworkQuietSampleCount);
+
+        var restored = new MachineLearningService();
+        await restored.LoadAsync(new RecordingStore(store.SavedState));
+        var restoredBaseline = Assert.Single(restored.Baselines);
+        Assert.Equal(12, restoredBaseline.NetworkQuietSampleCount);
+        Assert.Equal(MachineNetworkActivityClass.Quiet,
+            restoredBaseline.DominantNetworkActivityClass);
+
+        var legacyBaseline = new MachineLearningBaselineState(
+            LocalHour: 6,
+            ActivityState: MachineUserActivityState.Active,
+            SampleCount: 12,
+            CpuMean: 20,
+            CpuM2: 0,
+            MemoryMean: 50,
+            MemoryM2: 0,
+            FirstObservedAt: start,
+            LastObservedAt: start.AddMinutes(6),
+            ObservedLocalDates: [DateOnly.FromDateTime(start.DateTime)]);
+        var legacy = new MachineLearningPersistedState(
+            MachineLearningService.LegacyPersistenceSchemaVersion,
+            [legacyBaseline],
+            [],
+            12,
+            start,
+            start.AddMinutes(6));
+        var migrated = new MachineLearningService();
+
+        await migrated.LoadAsync(new RecordingStore(legacy));
+
+        Assert.Equal(MachineLearningDataHealth.Healthy, migrated.DataHealth);
+        Assert.Equal(0, Assert.Single(migrated.Baselines)
+            .NetworkObservationCount);
+    }
+
+    [Fact]
+    public async Task VersionOneJsonWithoutNetworkFieldsLoadsSafely()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            const string legacyJson = """
+                {
+                  "SchemaVersion": 1,
+                  "Baselines": [
+                    {
+                      "LocalHour": 0,
+                      "ActivityState": 0,
+                      "SampleCount": 12,
+                      "CpuMean": 20,
+                      "CpuM2": 0,
+                      "MemoryMean": 50,
+                      "MemoryM2": 0,
+                      "FirstObservedAt": "1970-01-01T00:00:00+00:00",
+                      "LastObservedAt": "1970-01-01T00:06:00+00:00"
+                    }
+                  ],
+                  "Episodes": [],
+                  "ObservationCount": 12,
+                  "FirstObservedAt": "1970-01-01T00:00:00+00:00",
+                  "LastObservedAt": "1970-01-01T00:06:00+00:00"
+                }
+                """;
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "learning-state.json"),
+                legacyJson);
+            var service = new MachineLearningService();
+
+            await service.LoadAsync(new FileMachineLearningStore(directory));
+
+            Assert.Equal(MachineLearningDataHealth.Healthy, service.DataHealth);
+            var baseline = Assert.Single(service.Baselines);
+            Assert.Equal(12, baseline.SampleCount);
+            Assert.Equal(0, baseline.NetworkObservationCount);
+            Assert.Null(baseline.DominantNetworkActivityClass);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void EpisodeProjectionIsNewestFirstAndBoundedToFifty()
     {
         var start = DateTimeOffset.UnixEpoch;
@@ -455,8 +631,22 @@ public sealed class MachineLearningServiceTests
         MachineUserActivityState activity = MachineUserActivityState.Active,
         MachineOverallState state = MachineOverallState.Stable,
         double cpu = 20,
-        double memory = 50) => new(timestamp, cpu, memory, activity, state,
-            [], 40, $"{activity}:{state}");
+        double memory = 50,
+        MachineNetworkActivityClass networkActivityClass =
+            MachineNetworkActivityClass.Unavailable,
+        double? receiveBytesPerSecond = null,
+        double? sendBytesPerSecond = null) => new(
+            timestamp,
+            cpu,
+            memory,
+            activity,
+            state,
+            [],
+            40,
+            $"{activity}:{state}",
+            networkActivityClass,
+            receiveBytesPerSecond,
+            sendBytesPerSecond);
 
     private static DateTimeOffset CreateLocalTime(
         int year,

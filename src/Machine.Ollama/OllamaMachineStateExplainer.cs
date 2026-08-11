@@ -17,7 +17,7 @@ public sealed partial class OllamaMachineStateExplainer
 
         Use only the verified machine facts supplied by the application.
         The application renders the deterministic overall state separately. Generate only the short natural insight body; do not add a heading or state label.
-        Use one or two short sentences based only on supplied findings, CPU or memory values, the system-volume summary, bounded software or startup counts, or partial or unavailable data state.
+        Use one or two short sentences based only on supplied findings, CPU or memory values, the system-volume summary, bounded software or startup counts, bounded network/session context, or partial or unavailable data state.
         Never mention a process name or infer anything from process activity.
         Never invent causes, diagnoses, temperatures, hardware details, emotions, processes, or actions.
         Do not claim that you changed, fixed, deleted, stopped, or optimized anything.
@@ -29,13 +29,16 @@ public sealed partial class OllamaMachineStateExplainer
         An incomplete folder scan means only that its results are partial; never infer why it is incomplete or how much unmeasured data exists.
         Never claim software is unused, harmful, outdated, or removable.
         Never claim startup entries are enabled, expensive, or safe to disable.
+        Network activity is behavioral context only. Never treat it as a finding, severity, pressure, warning, anomaly, recommendation, or evidence of good or bad behavior.
+        Never infer an application, remote host, connection, URL, download, upload, stream, game, suspicious activity, or cause from network activity or throughput.
+        System uptime and Machine uptime are elapsed durations only. Never infer sleep, resume, absence, work, or productivity from them.
         Never recommend deletion, uninstalling, disabling, cleanup, or optimization.
         Treat supplied deterministic findings as authoritative.
         Never upgrade or downgrade a supplied finding severity.
         Never invent additional findings or reinterpret partial data as complete.
         Use only supplied deterministic findings and overall_state for severity or pressure language.
         Never judge severity or pressure from raw metric values.
-        You may use words such as usual, normal for me, or typically only when learned_context is supplied with Established confidence. Those comparisons must be limited to its supplied CPU or memory values and must never be called an anomaly or a problem.
+        You may use words such as usual, normal for me, or typically only when learned_context is supplied with Established confidence. CPU or memory comparisons must use their supplied learned values. Network comparisons additionally require dominant_network_activity_class and its evidence counts. Learned comparisons must never be called an anomaly or a problem.
         Do not mention being an AI, language model, or Ollama.
 
         Respond in natural conversational Filipino Taglish.
@@ -144,7 +147,8 @@ public sealed partial class OllamaMachineStateExplainer
                 request.Findings,
                 request.Storage,
                 request.Resources,
-                request.LearnedContext))
+                request.LearnedContext,
+                request.Network))
         {
             return CreateFallbackExplanation(request.Findings);
         }
@@ -185,7 +189,9 @@ public sealed partial class OllamaMachineStateExplainer
             Software: CreateSoftwarePayload(request.Software),
             Startup: CreateStartupPayload(request.Startup),
             Findings: CreateFindingsPayload(request.Findings),
-            LearnedContext: CreateLearnedContextPayload(request.LearnedContext));
+            LearnedContext: CreateLearnedContextPayload(request.LearnedContext),
+            Network: CreateNetworkPayload(request.Network),
+            Session: CreateSessionPayload(request.Session));
 
         var payloadJson = JsonSerializer.Serialize(
             payload,
@@ -296,6 +302,18 @@ public sealed partial class OllamaMachineStateExplainer
             CpuStandardDeviation: context.CpuStandardDeviation,
             MemoryMean: context.MemoryMean,
             MemoryStandardDeviation: context.MemoryStandardDeviation,
+            DominantNetworkActivityClass:
+                HasNetworkLearningEvidence(context)
+                    ? context.DominantNetworkActivityClass?.ToString()
+                    : null,
+            DominantNetworkActivityCount:
+                HasNetworkLearningEvidence(context)
+                    ? context.DominantNetworkActivityCount
+                    : 0,
+            NetworkObservationCount:
+                HasNetworkLearningEvidence(context)
+                    ? context.NetworkObservationCount
+                    : 0,
             RecentEpisodes: context.RecentEpisodes.Take(3).Select(episode =>
                 new LearnedEpisodePayload(
                     episode.ActivityState.ToString(),
@@ -307,6 +325,56 @@ public sealed partial class OllamaMachineStateExplainer
                     episode.FindingKeys.Take(8).ToArray(),
                     episode.Outcome)).ToArray());
     }
+
+    private static NetworkSnapshotPayload? CreateNetworkPayload(
+        MachineNetworkInsightContext? network)
+    {
+        if (network is null || !Enum.IsDefined(network.ActivityClass))
+        {
+            return null;
+        }
+
+        return new NetworkSnapshotPayload(
+            network.ActivityClass.ToString(),
+            GetValidRate(network.ReceiveBytesPerSecond),
+            GetValidRate(network.SendBytesPerSecond));
+    }
+
+    private static SessionSnapshotPayload? CreateSessionPayload(
+        MachineSessionInsightContext? session)
+    {
+        if (session is null)
+        {
+            return null;
+        }
+
+        return new SessionSnapshotPayload(
+            ToElapsedSeconds(session.SystemUptime),
+            ToElapsedSeconds(session.MachineUptime));
+    }
+
+    private static bool HasNetworkLearningEvidence(
+        MachineLearnedContext context) =>
+        context.DominantNetworkActivityClass is
+            MachineNetworkActivityClass.Quiet or
+            MachineNetworkActivityClass.Light or
+            MachineNetworkActivityClass.Active &&
+        context.DominantNetworkActivityCount >=
+            MachineNetworkActivityClassifier.MinimumDominantObservationCount &&
+        context.NetworkObservationCount >=
+            context.DominantNetworkActivityCount;
+
+    private static double? GetValidRate(double? value) =>
+        value is not null && double.IsFinite(value.Value) && value.Value >= 0d
+            ? value
+            : null;
+
+    private static long ToElapsedSeconds(TimeSpan elapsed) =>
+        elapsed <= TimeSpan.Zero
+            ? 0
+            : elapsed.TotalSeconds >= long.MaxValue
+                ? long.MaxValue
+                : (long)elapsed.TotalSeconds;
 
     private sealed record ChatRequest(
         [property: JsonPropertyName("model")]
@@ -364,7 +432,11 @@ public sealed partial class OllamaMachineStateExplainer
         [property: JsonPropertyName("findings")]
         FindingsSnapshotPayload? Findings,
         [property: JsonPropertyName("learned_context")]
-        LearnedContextPayload? LearnedContext);
+        LearnedContextPayload? LearnedContext,
+        [property: JsonPropertyName("network")]
+        NetworkSnapshotPayload? Network,
+        [property: JsonPropertyName("session")]
+        SessionSnapshotPayload? Session);
 
     private sealed record LearnedContextPayload(
         [property: JsonPropertyName("activity_state")]
@@ -383,8 +455,28 @@ public sealed partial class OllamaMachineStateExplainer
         double MemoryMean,
         [property: JsonPropertyName("memory_standard_deviation")]
         double MemoryStandardDeviation,
+        [property: JsonPropertyName("dominant_network_activity_class")]
+        string? DominantNetworkActivityClass,
+        [property: JsonPropertyName("dominant_network_activity_count")]
+        long DominantNetworkActivityCount,
+        [property: JsonPropertyName("network_observation_count")]
+        long NetworkObservationCount,
         [property: JsonPropertyName("recent_episodes")]
         LearnedEpisodePayload[] RecentEpisodes);
+
+    private sealed record NetworkSnapshotPayload(
+        [property: JsonPropertyName("activity_class")]
+        string ActivityClass,
+        [property: JsonPropertyName("receive_bytes_per_second")]
+        double? ReceiveBytesPerSecond,
+        [property: JsonPropertyName("send_bytes_per_second")]
+        double? SendBytesPerSecond);
+
+    private sealed record SessionSnapshotPayload(
+        [property: JsonPropertyName("system_uptime_seconds")]
+        long SystemUptimeSeconds,
+        [property: JsonPropertyName("machine_uptime_seconds")]
+        long MachineUptimeSeconds);
 
     private sealed record LearnedEpisodePayload(
         [property: JsonPropertyName("activity_state")]

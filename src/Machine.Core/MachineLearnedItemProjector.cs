@@ -67,6 +67,25 @@ public static class MachineLearnedItemProjector
             {
                 break;
             }
+
+            if (baseline.DominantNetworkActivityClass is { } dominantClass)
+            {
+                var dominantCount = baseline.DominantNetworkActivityCount
+                    .ToString("N0", CultureInfo.InvariantCulture);
+                var networkEvidence = baseline.NetworkObservationCount
+                    .ToString("N0", CultureInfo.InvariantCulture);
+                items.Add(new MachineLearnedItem(
+                    $"{dominantCount} of {networkEvidence} " +
+                    $"{baseline.ActivityState} observations at {hour} had " +
+                    $"{dominantClass} network activity.",
+                    baseline.NetworkObservationCount,
+                    baseline.Confidence,
+                    early));
+                if (items.Count >= baselineItemLimit)
+                {
+                    break;
+                }
+            }
         }
 
         var completed = episodes

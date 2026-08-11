@@ -23,7 +23,11 @@ public sealed record MachineLearningObservation(
     MachineOverallState OverallState,
     IReadOnlyList<string> FindingKeys,
     double? SystemVolumeFreePercent,
-    string ContextFingerprint);
+    string ContextFingerprint,
+    MachineNetworkActivityClass NetworkActivityClass =
+        MachineNetworkActivityClass.Unavailable,
+    double? ReceiveBytesPerSecond = null,
+    double? SendBytesPerSecond = null);
 
 public sealed record MachineLearningBaseline(
     int LocalHour,
@@ -36,7 +40,34 @@ public sealed record MachineLearningBaseline(
     DateTimeOffset FirstObservedAt,
     DateTimeOffset LastObservedAt,
     int ObservedDayCount,
-    MachineLearningConfidence Confidence);
+    MachineLearningConfidence Confidence,
+    long NetworkQuietSampleCount = 0,
+    long NetworkLightSampleCount = 0,
+    long NetworkActiveSampleCount = 0,
+    long NetworkUnavailableSampleCount = 0)
+{
+    public long NetworkObservationCount => SaturatingAdd(
+        SaturatingAdd(NetworkQuietSampleCount, NetworkLightSampleCount),
+        NetworkActiveSampleCount);
+
+    public MachineNetworkActivityClass? DominantNetworkActivityClass =>
+        MachineNetworkActivityClassifier.SelectDominant(
+            NetworkQuietSampleCount,
+            NetworkLightSampleCount,
+            NetworkActiveSampleCount);
+
+    public long DominantNetworkActivityCount =>
+        DominantNetworkActivityClass is { } activityClass
+            ? MachineNetworkActivityClassifier.GetCount(
+                activityClass,
+                NetworkQuietSampleCount,
+                NetworkLightSampleCount,
+                NetworkActiveSampleCount)
+            : 0;
+
+    private static long SaturatingAdd(long left, long right) =>
+        left >= long.MaxValue - right ? long.MaxValue : left + right;
+}
 
 public sealed record MachineLearningEpisode(
     DateTimeOffset StartedAt,
@@ -96,4 +127,7 @@ public sealed record MachineLearnedContext(
     double CpuStandardDeviation,
     double MemoryMean,
     double MemoryStandardDeviation,
-    IReadOnlyList<MachineLearningEpisodeSummary> RecentEpisodes);
+    IReadOnlyList<MachineLearningEpisodeSummary> RecentEpisodes,
+    MachineNetworkActivityClass? DominantNetworkActivityClass = null,
+    long DominantNetworkActivityCount = 0,
+    long NetworkObservationCount = 0);

@@ -21,4 +21,8 @@ public sealed record MachineLearningBaselineState(
     double MemoryM2,
     DateTimeOffset FirstObservedAt,
     DateTimeOffset LastObservedAt,
-    IReadOnlyList<DateOnly>? ObservedLocalDates = null);
+    IReadOnlyList<DateOnly>? ObservedLocalDates = null,
+    long NetworkQuietSampleCount = 0,
+    long NetworkLightSampleCount = 0,
+    long NetworkActiveSampleCount = 0,
+    long NetworkUnavailableSampleCount = 0);

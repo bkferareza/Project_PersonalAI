@@ -40,6 +40,10 @@ public partial class App : Application
             new WindowsMachineStartupInventoryProvider();
         IMachineUserActivityProvider userActivityProvider =
             new WindowsMachineUserActivityProvider();
+        IMachineNetworkProvider networkProvider =
+            new WindowsMachineNetworkProvider();
+        IMachineSessionProvider sessionProvider =
+            new WindowsMachineSessionProvider(userActivityProvider);
         var learningService = new MachineLearningService();
         IMachineLearningStore learningStore = new FileMachineLearningStore();
         var ollamaHttpClient = new HttpClient
@@ -80,6 +84,8 @@ public partial class App : Application
             packagedSoftwareInventoryProvider,
             startupInventoryProvider,
             userActivityProvider,
+            networkProvider,
+            sessionProvider,
             learningService,
             learningStore);
         _window = window;

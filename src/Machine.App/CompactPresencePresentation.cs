@@ -46,6 +46,8 @@ public static class DashboardChromeLayout
 {
     public const bool HasBorder = false;
     public const bool HasTitleBar = false;
+    public const int DwmWindowCornerPreferenceAttribute = 33;
+    public const int DwmRoundSmallCornerPreference = 3;
     public const uint EscapeVirtualKey = 27;
 
     public static bool IsReturnToAmbientKey(uint virtualKey) =>

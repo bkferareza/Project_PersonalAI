@@ -179,6 +179,33 @@ public static class MachineExplanationValidator
         "limited storage"
     ];
 
+    private static readonly string[] UnsupportedNetworkLanguage =
+    [
+        "download",
+        "upload",
+        "streaming",
+        "gaming",
+        "suspicious",
+        "kahina-hinala",
+        "disconnect",
+        "mag-disconnect",
+        "network problem",
+        "network issue",
+        "network pressure",
+        "traffic problem",
+        "traffic issue",
+        "traffic warning",
+        "application traffic",
+        "app traffic",
+        "browser traffic",
+        "using the network",
+        "uses the network",
+        "using the internet",
+        "uses the internet",
+        "network usage by",
+        "internet usage by"
+    ];
+
     private static readonly Regex CpuThenPercentage = new(
         @"\bcpu\b[^.!?%]{0,60}?(?<value>\d{1,3}(?:\.\d+)?)\s*(?:%|percent|porsyento)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
@@ -215,7 +242,7 @@ public static class MachineExplanationValidator
         TimeSpan.FromMilliseconds(100));
 
     private static readonly Regex PersonalizedComparisonLanguage = new(
-        @"\b(?:usual|normal\s+for\s+me|typically|karaniwan)\b",
+        @"\b(?:usual|normal\s+for\s+me|typically|karaniwan|kumpara|compared|observed\s+pattern)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(100));
 
@@ -225,7 +252,8 @@ public static class MachineExplanationValidator
         MachineFindingsSnapshot? findings,
         MachineStorageExplanationContext? storage = null,
         MachineResourceSnapshot? resources = null,
-        MachineLearnedContext? learnedContext = null)
+        MachineLearnedContext? learnedContext = null,
+        MachineNetworkInsightContext? network = null)
     {
         ArgumentNullException.ThrowIfNull(currentProcessNames);
 
@@ -242,7 +270,11 @@ public static class MachineExplanationValidator
             ConflatesMemoryAndStorage(text) ||
             InventsFolderScanResult(text, storage) ||
             ContainsIncorrectResourcePercentage(text, resources) ||
-            ContainsUnsupportedPersonalizedComparison(text, learnedContext))
+            ContainsUnsupportedNetworkClaim(text, network) ||
+            ContainsUnsupportedPersonalizedComparison(
+                text,
+                learnedContext,
+                network))
         {
             return false;
         }
@@ -271,11 +303,82 @@ public static class MachineExplanationValidator
 
     private static bool ContainsUnsupportedPersonalizedComparison(
         string text,
-        MachineLearnedContext? learnedContext) =>
-        PersonalizedComparisonLanguage.IsMatch(text) &&
-        (learnedContext is null ||
-         learnedContext.Confidence != MachineLearningConfidence.Established ||
-         learnedContext.SampleCount <= 0);
+        MachineLearnedContext? learnedContext,
+        MachineNetworkInsightContext? network)
+    {
+        if (!PersonalizedComparisonLanguage.IsMatch(text))
+        {
+            return false;
+        }
+
+        if (learnedContext is null ||
+            learnedContext.Confidence != MachineLearningConfidence.Established ||
+            learnedContext.SampleCount <= 0)
+        {
+            return true;
+        }
+
+        if (!MentionsNetwork(text))
+        {
+            return false;
+        }
+
+        return network is null ||
+            learnedContext.DominantNetworkActivityClass is not
+                (MachineNetworkActivityClass.Quiet or
+                 MachineNetworkActivityClass.Light or
+                 MachineNetworkActivityClass.Active) ||
+            learnedContext.DominantNetworkActivityCount <
+                MachineNetworkActivityClassifier.MinimumDominantObservationCount ||
+            learnedContext.NetworkObservationCount <
+                learnedContext.DominantNetworkActivityCount;
+    }
+
+    private static bool ContainsUnsupportedNetworkClaim(
+        string text,
+        MachineNetworkInsightContext? network)
+    {
+        if (ContainsAny(text, UnsupportedNetworkLanguage))
+        {
+            return true;
+        }
+
+        if (!MentionsNetwork(text))
+        {
+            return false;
+        }
+
+        if (network is null)
+        {
+            return true;
+        }
+
+        var sentences = text.Split(
+            ['.', '!', '?'],
+            StringSplitOptions.RemoveEmptyEntries);
+        return sentences.Any(sentence =>
+            MentionsNetwork(sentence) && ContainsAny(
+                sentence,
+                [
+                    "attention",
+                    "warning",
+                    "critical",
+                    "anomal",
+                    "problem",
+                    "issue",
+                    "pressure",
+                    "productive",
+                    "good",
+                    "bad",
+                    "masama",
+                    "maganda"
+                ]));
+    }
+
+    private static bool MentionsNetwork(string text) =>
+        ContainsAny(
+            text,
+            ["network", "traffic", "internet", "throughput"]);
 
     private static bool ContradictsVerifiedContext(
         string text,

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Machine.Core;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
@@ -23,6 +24,7 @@ public sealed partial class MainWindow : Window
     private const int ExplanationLargeFolderCount = 3;
     private const int ExplanationStartupNameCount = 5;
     private const int FindingsDisplayCount = 8;
+    private const int MaximumNetworkInterfaceCount = 12;
     private const string UnavailableValue = "Unavailable";
     private const double BytesPerMebibyte =
         1024d * 1024d;
@@ -54,6 +56,8 @@ public sealed partial class MainWindow : Window
     private readonly IMachineStartupInventoryProvider
         _startupInventoryProvider;
     private readonly IMachineUserActivityProvider _userActivityProvider;
+    private readonly IMachineNetworkProvider _networkProvider;
+    private readonly IMachineSessionProvider _sessionProvider;
     private readonly MachineLearningService _learningService;
     private readonly IMachineLearningStore _learningStore;
     private readonly MachineInsightTriggerPolicy
@@ -82,6 +86,8 @@ public sealed partial class MainWindow : Window
         _latestPackagedSoftwareInventorySnapshot;
     private MachineStartupInventorySnapshot?
         _latestStartupInventorySnapshot;
+    private MachineNetworkSnapshot? _latestNetworkSnapshot;
+    private MachineSessionSnapshot? _latestSessionSnapshot;
     private OllamaStatusSnapshot? _latestOllamaStatusSnapshot;
     private MachineFindingsSnapshot _latestFindingsSnapshot =
         MachineFindingsEvaluator.Evaluate(new());
@@ -120,6 +126,8 @@ public sealed partial class MainWindow : Window
             packagedSoftwareInventoryProvider,
         IMachineStartupInventoryProvider startupInventoryProvider,
         IMachineUserActivityProvider userActivityProvider,
+        IMachineNetworkProvider networkProvider,
+        IMachineSessionProvider sessionProvider,
         MachineLearningService learningService,
         IMachineLearningStore learningStore)
     {
@@ -135,6 +143,8 @@ public sealed partial class MainWindow : Window
             packagedSoftwareInventoryProvider);
         ArgumentNullException.ThrowIfNull(startupInventoryProvider);
         ArgumentNullException.ThrowIfNull(userActivityProvider);
+        ArgumentNullException.ThrowIfNull(networkProvider);
+        ArgumentNullException.ThrowIfNull(sessionProvider);
         ArgumentNullException.ThrowIfNull(learningService);
         ArgumentNullException.ThrowIfNull(learningStore);
 
@@ -150,6 +160,8 @@ public sealed partial class MainWindow : Window
             packagedSoftwareInventoryProvider;
         _startupInventoryProvider = startupInventoryProvider;
         _userActivityProvider = userActivityProvider;
+        _networkProvider = networkProvider;
+        _sessionProvider = sessionProvider;
         _learningService = learningService;
         _learningStore = learningStore;
 
@@ -202,6 +214,27 @@ public sealed partial class MainWindow : Window
 
         ApplyCompactPresentation(force: true);
         UpdateDashboardDragRegion();
+    }
+
+    private void ApplyDashboardCornerPreference()
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+        {
+            return;
+        }
+
+        var cornerPreference =
+            DashboardChromeLayout.DwmRoundSmallCornerPreference;
+        var result = DwmSetWindowAttribute(
+            WinRT.Interop.WindowNative.GetWindowHandle(this),
+            DashboardChromeLayout.DwmWindowCornerPreferenceAttribute,
+            ref cornerPreference,
+            Marshal.SizeOf<int>());
+        if (result != 0)
+        {
+            Debug.WriteLine(
+                $"DwmSetWindowAttribute failed with HRESULT 0x{result:X8}.");
+        }
     }
 
     private async void OnMainContentLoaded(
@@ -314,12 +347,26 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            var snapshot = await _resourceProvider.GetAsync(
-                cancellationToken);
+            var resourceTask = _resourceProvider.GetAsync(cancellationToken);
+            var networkTask = TryCaptureNetworkAsync(cancellationToken);
+            var sessionTask = TryCaptureSessionAsync(cancellationToken);
+            await Task.WhenAll(resourceTask, networkTask, sessionTask);
+
+            var snapshot = await resourceTask;
+            var networkSnapshot = await networkTask;
+            var sessionSnapshot = await sessionTask;
 
             cancellationToken.ThrowIfCancellationRequested();
 
             _latestResourceSnapshot = snapshot;
+            if (networkSnapshot is not null)
+            {
+                _latestNetworkSnapshot = networkSnapshot;
+            }
+            if (sessionSnapshot is not null)
+            {
+                _latestSessionSnapshot = sessionSnapshot;
+            }
 
             CpuUsageText.Text =
                 $"{snapshot.CpuUsagePercent:F1}%";
@@ -332,10 +379,14 @@ public sealed partial class MainWindow : Window
                 $"{usedMemory:F1} GB / {totalMemory:F1} GB";
             TelemetryStatusText.Text = string.Empty;
             TelemetryStatusText.Visibility = Visibility.Collapsed;
+            UpdateNetworkTelemetry(networkSnapshot);
+            UpdateSessionTelemetry(sessionSnapshot);
 
             ReevaluateFindings();
             var learningChanged = await CaptureLearningObservationAsync(
                 snapshot,
+                networkSnapshot,
+                sessionSnapshot,
                 cancellationToken);
             var previousLearningHealth = _learningService.DataHealth;
             var previousLastPersistence = _learningService.LastPersistedAt;
@@ -379,6 +430,44 @@ public sealed partial class MainWindow : Window
             TelemetryStatusText.Text =
                 "Resource telemetry could not be loaded.";
             TelemetryStatusText.Visibility = Visibility.Visible;
+        }
+    }
+
+    private async Task<MachineNetworkSnapshot?> TryCaptureNetworkAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _networkProvider.GetAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            return null;
+        }
+    }
+
+    private async Task<MachineSessionSnapshot?> TryCaptureSessionAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _sessionProvider.GetAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            return null;
         }
     }
 
@@ -469,6 +558,8 @@ public sealed partial class MainWindow : Window
 
     private async Task<bool> CaptureLearningObservationAsync(
         MachineResourceSnapshot resources,
+        MachineNetworkSnapshot? network,
+        MachineSessionSnapshot? session,
         CancellationToken cancellationToken)
     {
         if (!_learningService.TryBeginObservationAttempt(
@@ -486,24 +577,29 @@ public sealed partial class MainWindow : Window
             return true;
         }
 
-        MachineUserActivitySnapshot activity;
-        try
+        var activityState = session?.CurrentUserInputState;
+        if (activityState is null)
         {
-            activity = await _userActivityProvider.GetAsync(cancellationToken);
-        }
-        catch (OperationCanceledException)
-            when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            Debug.WriteLine(exception);
-            _learningService.RecordMissingPrerequisite();
-            return true;
+            try
+            {
+                var activity = await _userActivityProvider.GetAsync(
+                    cancellationToken);
+                activityState = activity.State;
+            }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine(exception);
+                _learningService.RecordMissingPrerequisite();
+                return true;
+            }
         }
 
-        if (!Enum.IsDefined(activity.State))
+        if (activityState is null || !Enum.IsDefined(activityState.Value))
         {
             _learningService.RecordMissingPrerequisite();
             return true;
@@ -519,19 +615,148 @@ public sealed partial class MainWindow : Window
                 ? null
                 : systemVolume.AvailableFreeSpaceBytes /
                     (double)systemVolume.TotalSizeBytes * 100d;
+        var networkActivityClass = network?.Aggregate.ActivityClass ??
+            MachineNetworkActivityClass.Unavailable;
+        var receiveBytesPerSecond = networkActivityClass ==
+                MachineNetworkActivityClass.Unavailable
+            ? null
+            : GetVerifiedRate(
+                network?.Aggregate.ReceiveBytesPerSecond);
+        var sendBytesPerSecond = networkActivityClass ==
+                MachineNetworkActivityClass.Unavailable
+            ? null
+            : GetVerifiedRate(
+                network?.Aggregate.SendBytesPerSecond);
         var observation = new MachineLearningObservation(
             resources.CapturedAt,
             resources.CpuUsagePercent,
             memoryPercent,
-            activity.State,
+            activityState.Value,
             _latestFindingsSnapshot.OverallState,
             _latestFindingsSnapshot.Findings.Select(finding =>
                 $"{finding.Code}:{finding.Severity}").ToArray(),
             freePercent,
-            MachineInsightContextFingerprint.Create(_latestFindingsSnapshot));
+            MachineInsightContextFingerprint.Create(_latestFindingsSnapshot),
+            networkActivityClass,
+            receiveBytesPerSecond,
+            sendBytesPerSecond);
 
         return _learningService.Observe(observation);
     }
+
+    private static double? GetVerifiedRate(double? value) =>
+        value is not null && double.IsFinite(value.Value) && value.Value >= 0d
+            ? value
+            : null;
+
+    private void UpdateNetworkTelemetry(MachineNetworkSnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            NetworkStatusText.Text =
+                "Network telemetry is temporarily unavailable.";
+            NetworkStatusText.Visibility = Visibility.Visible;
+            if (_latestNetworkSnapshot is null)
+            {
+                OverviewNetworkActivityText.Text = UnavailableValue;
+                OverviewNetworkReceiveText.Text = UnavailableValue;
+                OverviewNetworkSendText.Text = UnavailableValue;
+                OverviewNetworkInterfaceText.Text =
+                    "Interface status unavailable";
+                NetworkReceiveRateText.Text = UnavailableValue;
+                NetworkSendRateText.Text = UnavailableValue;
+                NetworkActivityClassText.Text = UnavailableValue;
+                NetworkInterfacesList.ItemsSource =
+                    Array.Empty<NetworkInterfaceDisplayItem>();
+                NetworkInterfacesEmptyText.Visibility = Visibility.Visible;
+            }
+            return;
+        }
+
+        var aggregate = snapshot.Aggregate;
+        OverviewNetworkActivityText.Text = aggregate.ActivityClass.ToString();
+        OverviewNetworkReceiveText.Text =
+            $"Receive {FormatByteRate(aggregate.ReceiveBytesPerSecond)}";
+        OverviewNetworkSendText.Text =
+            $"Send {FormatByteRate(aggregate.SendBytesPerSecond)}";
+        OverviewNetworkInterfaceText.Text =
+            FormatOnlineInterfaceCount(aggregate.ActiveInterfaceCount);
+
+        NetworkReceiveRateText.Text =
+            FormatByteRate(aggregate.ReceiveBytesPerSecond);
+        NetworkSendRateText.Text =
+            FormatByteRate(aggregate.SendBytesPerSecond);
+        NetworkActivityClassText.Text = aggregate.ActivityClass.ToString();
+        var interfaceItems = snapshot.Interfaces
+            .Take(MaximumNetworkInterfaceCount)
+            .Select(CreateNetworkInterfaceDisplayItem)
+            .ToArray();
+        NetworkInterfacesList.ItemsSource = interfaceItems;
+        NetworkInterfacesEmptyText.Visibility = interfaceItems.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        NetworkStatusText.Text = snapshot.Interfaces.Count >
+                MaximumNetworkInterfaceCount
+            ? $"Showing {MaximumNetworkInterfaceCount:N0} of " +
+                $"{snapshot.Interfaces.Count:N0} active interfaces."
+            : string.Empty;
+        NetworkStatusText.Visibility = string.IsNullOrEmpty(
+            NetworkStatusText.Text)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+    }
+
+    private void UpdateSessionTelemetry(MachineSessionSnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            if (_latestSessionSnapshot is null)
+            {
+                OverviewSessionUptimeText.Text =
+                    "Session uptime unavailable";
+                OverviewSessionActivityText.Text =
+                    "Input state unavailable";
+                SessionSystemUptimeText.Text = UnavailableValue;
+                SessionMachineUptimeText.Text = UnavailableValue;
+                SessionInputStateText.Text = UnavailableValue;
+                SessionIdleDurationText.Text = UnavailableValue;
+            }
+            return;
+        }
+
+        OverviewSessionUptimeText.Text =
+            $"Windows up {FormatUptime(snapshot.SystemUptime)} · " +
+            $"Machine running {FormatUptime(snapshot.MachineUptime)}";
+        OverviewSessionActivityText.Text =
+            $"{snapshot.CurrentUserInputState} · " +
+            $"last input {FormatInputAge(snapshot.CurrentUserIdleDuration)} ago";
+        SessionSystemUptimeText.Text = FormatUptime(snapshot.SystemUptime);
+        SessionMachineUptimeText.Text = FormatUptime(snapshot.MachineUptime);
+        SessionInputStateText.Text = snapshot.CurrentUserInputState.ToString();
+        SessionIdleDurationText.Text =
+            FormatInputAge(snapshot.CurrentUserIdleDuration);
+    }
+
+    private static NetworkInterfaceDisplayItem
+        CreateNetworkInterfaceDisplayItem(
+            MachineNetworkInterfaceSnapshot networkInterface) => new(
+                networkInterface.Name,
+                $"{networkInterface.OperationalStatus} · " +
+                    networkInterface.InterfaceType,
+                networkInterface.Description ?? string.Empty,
+                FormatLinkSpeed(
+                    networkInterface.ReceiveLinkSpeedBitsPerSecond,
+                    networkInterface.TransmitLinkSpeedBitsPerSecond),
+                networkInterface.BytesReceived is null
+                    ? "Received unavailable"
+                    : $"Received {FormatBytes(networkInterface.BytesReceived.Value)}",
+                networkInterface.BytesSent is null
+                    ? "Sent unavailable"
+                    : $"Sent {FormatBytes(networkInterface.BytesSent.Value)}");
+
+    private static string FormatOnlineInterfaceCount(int count) =>
+        $"{Math.Max(0, count):N0} " +
+        (count == 1 ? "interface" : "interfaces") + " online";
 
     private void UpdateLearningDashboard()
     {
@@ -645,6 +870,12 @@ public sealed partial class MainWindow : Window
         var observedSpan = first.Date == last.Date
             ? $"Observed {first:MMM d, yyyy}"
             : $"Observed {first:MMM d, yyyy} → {last:MMM d, yyyy}";
+        var networkValue = baseline.DominantNetworkActivityClass is
+                { } dominantClass
+            ? $"Mostly {dominantClass}\n" +
+                $"{baseline.DominantNetworkActivityCount:N0} / " +
+                $"{baseline.NetworkObservationCount:N0} observations"
+            : "Still calibrating";
 
         return new LearningBaselineDisplayItem(
             $"{FormatLearningHour(baseline.LocalHour)} · " +
@@ -656,6 +887,7 @@ public sealed partial class MainWindow : Window
                 $"± {baseline.CpuStandardDeviation:F1}%",
             $"{valueLabel} {baseline.MemoryMean:F1}%\n" +
                 $"± {baseline.MemoryStandardDeviation:F1}%",
+            networkValue,
             observedSpan);
     }
 
@@ -1023,6 +1255,8 @@ public sealed partial class MainWindow : Window
             _latestPackagedSoftwareInventorySnapshot;
         var startupInventorySnapshot =
             _latestStartupInventorySnapshot;
+        var networkSnapshot = _latestNetworkSnapshot;
+        var sessionSnapshot = _latestSessionSnapshot;
         var findingsSnapshot = _latestFindingsSnapshot;
         var cancellationToken =
             _windowCancellationTokenSource.Token;
@@ -1070,7 +1304,9 @@ public sealed partial class MainWindow : Window
                 Startup: CreateStartupExplanationContext(
                     startupInventorySnapshot),
                 Findings: findingsSnapshot,
-                LearnedContext: _learningService.GetLearnedContext());
+                LearnedContext: _learningService.GetLearnedContext(),
+                Network: CreateNetworkInsightContext(networkSnapshot),
+                Session: CreateSessionInsightContext(sessionSnapshot));
             var explanation =
                 await _machineStateExplainer.ExplainAsync(
                     request,
@@ -1172,6 +1408,25 @@ public sealed partial class MainWindow : Window
             !_insightTriggerPolicy.IsRequestInFlight &&
             !_isExplanationRequestRunning;
     }
+
+    private static MachineNetworkInsightContext?
+        CreateNetworkInsightContext(MachineNetworkSnapshot? snapshot) =>
+            snapshot is null
+                ? null
+                : new MachineNetworkInsightContext(
+                    snapshot.Aggregate.ActivityClass,
+                    GetVerifiedRate(
+                        snapshot.Aggregate.ReceiveBytesPerSecond),
+                    GetVerifiedRate(
+                        snapshot.Aggregate.SendBytesPerSecond));
+
+    private static MachineSessionInsightContext?
+        CreateSessionInsightContext(MachineSessionSnapshot? snapshot) =>
+            snapshot is null
+                ? null
+                : new MachineSessionInsightContext(
+                    snapshot.SystemUptime,
+                    snapshot.MachineUptime);
 
     private static MachineStorageExplanationContext?
         CreateStorageExplanationContext(
@@ -2199,6 +2454,125 @@ public sealed partial class MainWindow : Window
         return $"{bytes} B";
     }
 
+    private static string FormatBytes(ulong bytes)
+    {
+        if (bytes >= BytesPerTebibyte)
+        {
+            return $"{bytes / BytesPerTebibyte:F1} TB";
+        }
+
+        if (bytes >= BytesPerGibibyte)
+        {
+            return $"{bytes / BytesPerGibibyte:F1} GB";
+        }
+
+        if (bytes >= BytesPerMebibyte)
+        {
+            return $"{bytes / BytesPerMebibyte:F1} MB";
+        }
+
+        if (bytes >= 1024UL)
+        {
+            return $"{bytes / 1024d:F1} KB";
+        }
+
+        return $"{bytes} B";
+    }
+
+    private static string FormatByteRate(double? bytesPerSecond)
+    {
+        if (bytesPerSecond is null ||
+            !double.IsFinite(bytesPerSecond.Value) ||
+            bytesPerSecond.Value < 0d)
+        {
+            return UnavailableValue;
+        }
+
+        var value = bytesPerSecond.Value;
+        if (value >= BytesPerTebibyte)
+        {
+            return $"{value / BytesPerTebibyte:F1} TB/s";
+        }
+
+        if (value >= BytesPerGibibyte)
+        {
+            return $"{value / BytesPerGibibyte:F1} GB/s";
+        }
+
+        if (value >= BytesPerMebibyte)
+        {
+            return $"{value / BytesPerMebibyte:F1} MB/s";
+        }
+
+        if (value >= 1024d)
+        {
+            return $"{value / 1024d:F1} KB/s";
+        }
+
+        return $"{value:F0} B/s";
+    }
+
+    private static string FormatLinkSpeed(
+        long? receiveBitsPerSecond,
+        long? transmitBitsPerSecond)
+    {
+        if (receiveBitsPerSecond is null && transmitBitsPerSecond is null)
+        {
+            return "Link speed unavailable";
+        }
+
+        if (receiveBitsPerSecond == transmitBitsPerSecond)
+        {
+            return $"{FormatBitsPerSecond(receiveBitsPerSecond)} link";
+        }
+
+        return $"Receive {FormatBitsPerSecond(receiveBitsPerSecond)} · " +
+            $"send {FormatBitsPerSecond(transmitBitsPerSecond)} link";
+    }
+
+    private static string FormatBitsPerSecond(long? bitsPerSecond)
+    {
+        if (bitsPerSecond is null || bitsPerSecond <= 0)
+        {
+            return UnavailableValue;
+        }
+
+        return bitsPerSecond >= 1_000_000_000L
+            ? $"{bitsPerSecond / 1_000_000_000d:F1} Gbps"
+            : bitsPerSecond >= 1_000_000L
+                ? $"{bitsPerSecond / 1_000_000d:F1} Mbps"
+                : $"{bitsPerSecond / 1_000d:F1} Kbps";
+    }
+
+    private static string FormatUptime(TimeSpan uptime)
+    {
+        var bounded = uptime < TimeSpan.Zero ? TimeSpan.Zero : uptime;
+        if (bounded.TotalDays >= 1d)
+        {
+            return $"{(int)bounded.TotalDays}d {bounded.Hours}h";
+        }
+
+        return bounded.TotalHours >= 1d
+            ? $"{(int)bounded.TotalHours}h {bounded.Minutes}m"
+            : $"{Math.Max(0, bounded.Minutes)}m";
+    }
+
+    private static string FormatInputAge(TimeSpan age)
+    {
+        var bounded = age < TimeSpan.Zero ? TimeSpan.Zero : age;
+        if (bounded.TotalHours >= 1d)
+        {
+            return $"{(int)bounded.TotalHours}h {bounded.Minutes}m";
+        }
+
+        if (bounded.TotalMinutes >= 1d)
+        {
+            return $"{(int)bounded.TotalMinutes}m {bounded.Seconds}s";
+        }
+
+        return $"{Math.Max(0, bounded.Seconds)}s";
+    }
+
     private void OnDashboardBackRequested(
         NavigationView sender,
         NavigationViewBackRequestedEventArgs args)
@@ -2417,6 +2791,8 @@ public sealed partial class MainWindow : Window
                     DashboardChromeLayout.HasBorder,
                     DashboardChromeLayout.HasTitleBar);
             }
+
+            ApplyDashboardCornerPreference();
         }
         catch (Exception exception)
         {
@@ -2494,6 +2870,9 @@ public sealed partial class MainWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
         LearningPage.Visibility = tag == "learning"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        NetworkPage.Visibility = tag == "network"
             ? Visibility.Visible
             : Visibility.Collapsed;
         StoragePage.Visibility = tag == "storage"
@@ -2621,6 +3000,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(
+        IntPtr windowHandle,
+        int attribute,
+        ref int attributeValue,
+        int attributeSize);
+
     internal void StopForApplicationShutdown()
     {
         _ambientOrbWindow.NewInsightCompleted -= OnNewInsightBloomCompleted;
@@ -2657,6 +3043,7 @@ public sealed record LearningBaselineDisplayItem(
     string Evidence,
     string CpuValue,
     string MemoryValue,
+    string NetworkValue,
     string ObservedSpan);
 
 public sealed record LearnedItemDisplayItem(
@@ -2702,3 +3089,11 @@ public sealed record StartupApplicationDisplayItem(
     string Name,
     string CommandOrPathDetails,
     string SourceDetails);
+
+public sealed record NetworkInterfaceDisplayItem(
+    string Name,
+    string StatusAndType,
+    string Description,
+    string LinkDetails,
+    string ReceivedDetails,
+    string SentDetails);
