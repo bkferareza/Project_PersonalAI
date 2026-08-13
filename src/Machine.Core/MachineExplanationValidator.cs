@@ -332,8 +332,38 @@ public static class MachineExplanationValidator
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(100));
 
+    private static readonly Regex RecentComparisonLanguage = new(
+        @"\b(?:recent|recently|recent average|historical average|last\s+(?:7|seven)\s+days?|kumpara sa recent|recent na average)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
     private static readonly Regex HealthCountClaim = new(
         @"\b(?<value>\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:application\s+|app\s+)?(?<kind>pending\s+updates?|updates?\s+available|crashes?\s+or\s+hangs?|crashes?|hangs?|unexpected\s+shutdowns?|update\s+failures?|hardware\s+(?:errors?|failures?))\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex GpuUtilizationClaim = new(
+        @"\bgpu(?:\s+(?:utilization|usage|load))?\b[^.!?%]{0,40}?(?<value>\d{1,3}(?:\.\d+)?)\s*(?:%|percent)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex GpuMemoryClaim = new(
+        @"\b(?:vram|gpu\s+memory)\b[^.!?%]{0,40}?(?<value>\d{1,3}(?:\.\d+)?)\s*(?:%|percent)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex GpuTemperatureClaim = new(
+        @"\b(?:gpu\s+temperature|temperature)\b[^.!?\d]{0,24}(?<value>\d{1,3}(?:\.\d+)?)\s*(?:°\s*)?(?:c|celsius)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex GpuPowerClaim = new(
+        @"\b(?:gpu\s+board\s+power|board\s+power|gpu\s+power)\b[^.!?\d]{0,24}(?<value>\d{1,4}(?:\.\d+)?)\s*(?:w|watts?)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex GpuReference = new(
+        @"\b(?:gpu|vram)\b|\bboard\s+power\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(100));
 
@@ -345,7 +375,9 @@ public static class MachineExplanationValidator
         MachineResourceSnapshot? resources = null,
         MachineLearnedContext? learnedContext = null,
         MachineNetworkInsightContext? network = null,
-        MachineHealthInsightContext? health = null)
+        MachineHealthInsightContext? health = null,
+        MachineHistoryInsightContext? history = null,
+        MachineGpuInsightContext? gpu = null)
     {
         ArgumentNullException.ThrowIfNull(currentProcessNames);
 
@@ -368,6 +400,8 @@ public static class MachineExplanationValidator
             ContainsUnsupportedNetworkClaim(text, network) ||
             ContainsUnsupportedHealthClaim(text, health) ||
             ContainsIncorrectHealthCount(text, health) ||
+            ContainsUnsupportedHistoryClaim(text, history) ||
+            ContainsUnsupportedGpuClaim(text, gpu, history) ||
             ContainsUnsupportedPersonalizedComparison(
                 text,
                 learnedContext,
@@ -397,6 +431,84 @@ public static class MachineExplanationValidator
 
         return !ContainsCausalLanguage(textWithoutVerifiedDetails);
     }
+
+    private static bool ContainsUnsupportedHistoryClaim(
+        string text,
+        MachineHistoryInsightContext? history)
+    {
+        if (!RecentComparisonLanguage.IsMatch(text))
+        {
+            return false;
+        }
+
+        return history?.RecentComparable is null;
+    }
+
+    private static bool ContainsUnsupportedGpuClaim(
+        string text,
+        MachineGpuInsightContext? gpu,
+        MachineHistoryInsightContext? history)
+    {
+        if (!GpuReference.IsMatch(text))
+        {
+            return false;
+        }
+
+        if (ContainsAny(text,
+            ["gpu pressure", "gpu warning", "gpu critical",
+             "gpu is stable", "stable gpu", "gpu problem", "gpu issue"]))
+        {
+            return true;
+        }
+
+        var utilization = AllowedGpuValues(
+            gpu?.UtilizationPercent,
+            history?.CurrentPeriod.GpuMeanPercent,
+            history?.RecentComparable?.GpuMeanPercent);
+        var memory = AllowedGpuValues(
+            gpu?.MemoryUtilizationPercent,
+            history?.CurrentPeriod.GpuMemoryMeanPercent,
+            history?.RecentComparable?.GpuMemoryMeanPercent);
+        var temperature = AllowedGpuValues(
+            gpu?.TemperatureCelsius,
+            history?.CurrentPeriod.GpuTemperatureMeanCelsius,
+            history?.RecentComparable?.GpuTemperatureMeanCelsius);
+        var power = AllowedGpuValues(
+            gpu?.BoardPowerWatts,
+            history?.CurrentPeriod.GpuBoardPowerMeanWatts,
+            history?.RecentComparable?.GpuBoardPowerMeanWatts);
+
+        if (utilization.Count == 0 && memory.Count == 0 &&
+            temperature.Count == 0 && power.Count == 0)
+        {
+            return true;
+        }
+
+        return HasUnsupportedGpuValue(text, GpuUtilizationClaim, utilization) ||
+            HasUnsupportedGpuValue(text, GpuMemoryClaim, memory) ||
+            HasUnsupportedGpuValue(text, GpuTemperatureClaim, temperature) ||
+            HasUnsupportedGpuValue(text, GpuPowerClaim, power);
+    }
+
+    private static IReadOnlyList<double> AllowedGpuValues(
+        params double?[] values) => values
+        .Where(value => value is not null && double.IsFinite(value.Value))
+        .Select(value => value!.Value)
+        .ToArray();
+
+    private static bool HasUnsupportedGpuValue(
+        string text,
+        Regex pattern,
+        IReadOnlyList<double> allowedValues) => pattern.Matches(text)
+        .Select(match => double.TryParse(
+            match.Groups["value"].Value,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var value)
+                ? value
+                : double.NaN)
+        .Any(claim => !double.IsFinite(claim) ||
+            !allowedValues.Any(value => ApproximatelyEquals(claim, value)));
 
     private static bool ContainsUnsupportedPersonalizedComparison(
         string text,

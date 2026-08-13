@@ -13,7 +13,7 @@ public sealed partial class OllamaMachineStateExplainer
     private const string UserMessagePrefix =
         "Explain this verified machine snapshot:";
     private const string SystemMessage = """
-        You are this Windows PC speaking directly to your owner.
+        Explain this Windows PC's verified local state directly to its owner.
 
         Use only the verified machine facts supplied by the application.
         The application renders the deterministic overall state separately. Generate only the short natural insight body; do not add a heading or state label.
@@ -31,10 +31,13 @@ public sealed partial class OllamaMachineStateExplainer
         Never claim startup entries are enabled, expensive, or safe to disable.
         Network activity is behavioral context only. Never treat it as a finding, severity, pressure, warning, anomaly, recommendation, or evidence of good or bad behavior.
         Never infer an application, remote host, connection, URL, download, upload, stream, game, suspicious activity, or cause from network activity or throughput.
-        System uptime and Machine uptime are elapsed durations only. Never infer sleep, resume, absence, work, or productivity from them.
+        System uptime and Matasuri uptime are elapsed durations only. Never infer sleep, resume, absence, work, or productivity from them.
         Health context is verified Windows history, not root-cause analysis. An unexpected shutdown does not identify a brownout, power loss, power-supply failure, forced shutdown, or any other cause. An application crash or hang identifies only the recorded application, not the cause or system-wide blame.
         Never claim that an update caused a crash, that a driver caused a failure, that an application broke the system, or that restarting will fix anything. Never recommend restarting, installing updates, repairing, or changing configuration.
-        Historical incident severity describes reliability history only. Do not turn an isolated historical event into current Machine severity; use supplied deterministic findings and overall_state for current severity.
+        Historical incident severity describes reliability history only. Do not turn an isolated historical event into current severity; use supplied deterministic findings and overall_state for current severity.
+        history contains at most one current-period aggregate, one recent comparable aggregate, and one significant verified event. It never contains a telemetry series or generated prose. Missing history values are unavailable, never zero.
+        Make a current-versus-recent historical comparison only when both exact aggregate values are supplied. Never infer what the owner was doing, which application caused load, why a shutdown happened, or why GPU or power use changed.
+        gpu contains at most current GPU utilization, VRAM utilization, temperature, and board power. Null means the driver did not supply that value. Copy supplied values accurately, never infer severity from them, and never claim a control or tuning action.
         Never recommend deletion, uninstalling, disabling, cleanup, or optimization.
         Treat supplied deterministic findings as authoritative.
         Never upgrade or downgrade a supplied finding severity.
@@ -156,7 +159,9 @@ public sealed partial class OllamaMachineStateExplainer
                 request.Resources,
                 request.LearnedContext,
                 request.Network,
-                request.Health))
+                request.Health,
+                request.History,
+                request.Gpu))
         {
             return CreateFallbackExplanation(request.Findings);
         }
@@ -200,7 +205,9 @@ public sealed partial class OllamaMachineStateExplainer
             LearnedContext: CreateLearnedContextPayload(request.LearnedContext),
             Network: CreateNetworkPayload(request.Network),
             Session: CreateSessionPayload(request.Session),
-            Health: CreateHealthPayload(request.Health));
+            Health: CreateHealthPayload(request.Health),
+            History: CreateHistoryPayload(request.History),
+            Gpu: CreateGpuPayload(request.Gpu));
 
         var payloadJson = JsonSerializer.Serialize(
             payload,
@@ -477,6 +484,47 @@ public sealed partial class OllamaMachineStateExplainer
             "O",
             System.Globalization.CultureInfo.InvariantCulture);
 
+    private static HistorySnapshotPayload? CreateHistoryPayload(
+        MachineHistoryInsightContext? history) => history is null
+        ? null
+        : new(
+            CreateHistoryPeriodPayload(history.CurrentPeriod),
+            history.RecentComparable is null
+                ? null
+                : CreateHistoryPeriodPayload(history.RecentComparable),
+            history.SignificantEvent is null
+                ? null
+                : new(
+                    FormatVerifiedAt(
+                        history.SignificantEvent.OccurredAt)!,
+                    history.SignificantEvent.Kind.ToString(),
+                    history.SignificantEvent.Title,
+                    history.SignificantEvent.Detail,
+                    history.SignificantEvent.Count));
+
+    private static GpuSnapshotPayload? CreateGpuPayload(
+        MachineGpuInsightContext? gpu) => gpu is null
+        ? null
+        : new(
+            gpu.UtilizationPercent,
+            gpu.MemoryUtilizationPercent,
+            gpu.TemperatureCelsius,
+            gpu.BoardPowerWatts);
+
+    private static HistoryPeriodPayload CreateHistoryPeriodPayload(
+        MachineHistoryInsightPeriod period) => new(
+        FormatVerifiedAt(period.StartedAt)!,
+        FormatVerifiedAt(period.EndedAt)!,
+        period.ObservedDurationSeconds,
+        period.CpuMeanPercent,
+        period.MemoryMeanPercent,
+        period.NetworkReceiveMeanBytesPerSecond,
+        period.NetworkSendMeanBytesPerSecond,
+        period.GpuMeanPercent,
+        period.GpuMemoryMeanPercent,
+        period.GpuTemperatureMeanCelsius,
+        period.GpuBoardPowerMeanWatts);
+
     private static HealthIncidentPayload? CreateHealthIncidentPayload(
         MachineReliabilityIncident? incident)
     {
@@ -580,7 +628,11 @@ public sealed partial class OllamaMachineStateExplainer
         [property: JsonPropertyName("session")]
         SessionSnapshotPayload? Session,
         [property: JsonPropertyName("health")]
-        HealthSnapshotPayload? Health);
+        HealthSnapshotPayload? Health,
+        [property: JsonPropertyName("history")]
+        HistorySnapshotPayload? History,
+        [property: JsonPropertyName("gpu")]
+        GpuSnapshotPayload? Gpu);
 
     private sealed record LearnedContextPayload(
         [property: JsonPropertyName("current_baseline")]
@@ -715,6 +767,60 @@ public sealed partial class OllamaMachineStateExplainer
         string ReliabilityDataStatus,
         [property: JsonPropertyName("reliability_verified_at")]
         string? ReliabilityVerifiedAt);
+
+    private sealed record HistorySnapshotPayload(
+        [property: JsonPropertyName("current_period")]
+        HistoryPeriodPayload CurrentPeriod,
+        [property: JsonPropertyName("recent_comparable")]
+        HistoryPeriodPayload? RecentComparable,
+        [property: JsonPropertyName("significant_event")]
+        HistoryEventPayload? SignificantEvent);
+
+    private sealed record HistoryPeriodPayload(
+        [property: JsonPropertyName("started_at")]
+        string StartedAt,
+        [property: JsonPropertyName("ended_at")]
+        string EndedAt,
+        [property: JsonPropertyName("observed_duration_seconds")]
+        long ObservedDurationSeconds,
+        [property: JsonPropertyName("cpu_mean_percent")]
+        double? CpuMeanPercent,
+        [property: JsonPropertyName("memory_mean_percent")]
+        double? MemoryMeanPercent,
+        [property: JsonPropertyName("network_receive_mean_bytes_per_second")]
+        double? NetworkReceiveMeanBytesPerSecond,
+        [property: JsonPropertyName("network_send_mean_bytes_per_second")]
+        double? NetworkSendMeanBytesPerSecond,
+        [property: JsonPropertyName("gpu_mean_percent")]
+        double? GpuMeanPercent,
+        [property: JsonPropertyName("gpu_memory_mean_percent")]
+        double? GpuMemoryMeanPercent,
+        [property: JsonPropertyName("gpu_temperature_mean_celsius")]
+        double? GpuTemperatureMeanCelsius,
+        [property: JsonPropertyName("gpu_board_power_mean_watts")]
+        double? GpuBoardPowerMeanWatts);
+
+    private sealed record HistoryEventPayload(
+        [property: JsonPropertyName("occurred_at")]
+        string OccurredAt,
+        [property: JsonPropertyName("kind")]
+        string Kind,
+        [property: JsonPropertyName("title")]
+        string Title,
+        [property: JsonPropertyName("detail")]
+        string? Detail,
+        [property: JsonPropertyName("count")]
+        int Count);
+
+    private sealed record GpuSnapshotPayload(
+        [property: JsonPropertyName("utilization_percent")]
+        double? UtilizationPercent,
+        [property: JsonPropertyName("memory_utilization_percent")]
+        double? MemoryUtilizationPercent,
+        [property: JsonPropertyName("temperature_celsius")]
+        double? TemperatureCelsius,
+        [property: JsonPropertyName("board_power_watts")]
+        double? BoardPowerWatts);
 
     private sealed record ReliabilityCountsPayload(
         [property: JsonPropertyName("application_crashes")]

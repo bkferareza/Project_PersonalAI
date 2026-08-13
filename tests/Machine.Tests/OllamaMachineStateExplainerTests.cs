@@ -256,6 +256,107 @@ public sealed class OllamaMachineStateExplainerTests
     }
 
     [Fact]
+    public async Task ExplainAsyncSendsOnlyBoundedHistoryContext()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            ChatResponse(StableInsight, ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+        var current = new MachineHistoryInsightPeriod(
+            DateTimeOffset.Parse("2026-08-14T11:00:00Z"),
+            DateTimeOffset.Parse("2026-08-14T12:00:00Z"),
+            3_300,
+            24,
+            51,
+            1_000,
+            500,
+            42,
+            48,
+            54,
+            108);
+        var request = CreateExplanationRequest() with
+        {
+            History = new(
+                current,
+                current with
+                {
+                    StartedAt = current.StartedAt.AddDays(-7),
+                    EndedAt = current.EndedAt.AddDays(-7),
+                    CpuMeanPercent = 17
+                },
+                new(
+                    DateTimeOffset.Parse("2026-08-14T04:00:00Z"),
+                    MachineHistoryEventKind.ApplicationFailureRecorded,
+                    "Application failure recorded",
+                    "sample.exe",
+                    2))
+        };
+
+        await explainer.ExplainAsync(request);
+
+        var history = GetUserPayload(handler.RequestJson)
+            .GetProperty("history");
+        Assert.Equal(24,
+            history.GetProperty("current_period")
+                .GetProperty("cpu_mean_percent").GetDouble());
+        Assert.Equal(17,
+            history.GetProperty("recent_comparable")
+                .GetProperty("cpu_mean_percent").GetDouble());
+        Assert.Equal(2,
+            history.GetProperty("significant_event")
+                .GetProperty("count").GetInt32());
+        var json = history.GetRawText();
+        Assert.DoesNotContain("fingerprint", json,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("rollups", json,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("series", json,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExplainAsyncSendsOnlyTinyCurrentGpuContext()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            ChatResponse(StableInsight, ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+        var request = CreateExplanationRequest() with
+        {
+            Gpu = new(
+                UtilizationPercent: 37,
+                MemoryUtilizationPercent: 46,
+                TemperatureCelsius: 58,
+                BoardPowerWatts: null)
+        };
+
+        await explainer.ExplainAsync(request);
+
+        var gpu = GetUserPayload(handler.RequestJson).GetProperty("gpu");
+        Assert.Equal(37,
+            gpu.GetProperty("utilization_percent").GetDouble());
+        Assert.Equal(46,
+            gpu.GetProperty("memory_utilization_percent").GetDouble());
+        Assert.Equal(58,
+            gpu.GetProperty("temperature_celsius").GetDouble());
+        Assert.Equal(JsonValueKind.Null,
+            gpu.GetProperty("board_power_watts").ValueKind);
+        var json = gpu.GetRawText();
+        Assert.DoesNotContain("adapter", json,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("name", json,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("clock", json,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("fan", json,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ExplainAsyncSendsBoundedDeterministicFindings()
     {
         const string insight =

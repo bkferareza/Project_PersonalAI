@@ -11,4 +11,6 @@ public sealed record MachineStateExplanationRequest(
     MachineLearnedContext? LearnedContext = null,
     MachineNetworkInsightContext? Network = null,
     MachineSessionInsightContext? Session = null,
-    MachineHealthInsightContext? Health = null);
+    MachineHealthInsightContext? Health = null,
+    MachineHistoryInsightContext? History = null,
+    MachineGpuInsightContext? Gpu = null);
