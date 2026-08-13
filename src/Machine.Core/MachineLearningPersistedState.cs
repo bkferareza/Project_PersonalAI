@@ -9,7 +9,20 @@ public sealed record MachineLearningPersistedState(
     DateTimeOffset? LastObservedAt,
     DateTimeOffset? PersistedAt = null,
     long ObservedDurationTicks = 0,
-    MachineLearningEpisode? ActiveEpisode = null);
+    MachineLearningEpisode? ActiveEpisode = null,
+    MachineLearningMetadataState? Metadata = null,
+    IReadOnlyList<MachineLearningContextProfile>? ContextProfiles = null,
+    IReadOnlyList<MachineLearningRecurringPattern>? BroaderPatterns = null);
+
+public sealed record MachineLearningMetadataState(
+    long LifetimeAcceptedObservationCount,
+    long LifetimeObservedDurationTicks,
+    long LifetimeMachineSessionCount,
+    DateTimeOffset? FirstLearningAt,
+    DateTimeOffset? LastLearningAt,
+    DateTimeOffset CurrentSessionStartedAt,
+    DateTimeOffset? PreviousMachineSessionEndedAt,
+    DateTimeOffset? LastPersistedAt);
 
 public sealed record MachineLearningBaselineState(
     int LocalHour,
@@ -25,4 +38,13 @@ public sealed record MachineLearningBaselineState(
     long NetworkQuietSampleCount = 0,
     long NetworkLightSampleCount = 0,
     long NetworkActiveSampleCount = 0,
-    long NetworkUnavailableSampleCount = 0);
+    long NetworkUnavailableSampleCount = 0,
+    int ObservedDayCount = 0,
+    DateOnly? LastObservedLocalDate = null,
+    long ObservedDurationTicks = 0,
+    double? AdaptiveCpuMean = null,
+    double? AdaptiveCpuVariance = null,
+    double? AdaptiveMemoryMean = null,
+    double? AdaptiveMemoryVariance = null,
+    long AdaptiveSampleCount = 0,
+    DateTimeOffset? AdaptiveLastUpdatedAt = null);

@@ -7,6 +7,21 @@ public enum MachineLearningConfidence
     Established
 }
 
+public enum MachineLearningFreshness
+{
+    Fresh,
+    Aging,
+    Stale
+}
+
+public enum MachineLearningMemoryLayer
+{
+    ContextBaseline,
+    CompactProfile,
+    BroaderPattern,
+    AggregateEpisode
+}
+
 public enum MachineLearningDataHealth
 {
     Healthy,
@@ -44,8 +59,31 @@ public sealed record MachineLearningBaseline(
     long NetworkQuietSampleCount = 0,
     long NetworkLightSampleCount = 0,
     long NetworkActiveSampleCount = 0,
-    long NetworkUnavailableSampleCount = 0)
+    long NetworkUnavailableSampleCount = 0,
+    long ObservedDurationTicks = 0,
+    double AdaptiveCpuMean = 0,
+    double AdaptiveCpuStandardDeviation = 0,
+    double AdaptiveMemoryMean = 0,
+    double AdaptiveMemoryStandardDeviation = 0,
+    long AdaptiveSampleCount = 0,
+    DateTimeOffset? AdaptiveLastUpdatedAt = null,
+    MachineLearningFreshness Freshness = MachineLearningFreshness.Fresh)
 {
+    public TimeSpan LifetimeObservedDuration => TimeSpan.FromTicks(
+        Math.Clamp(ObservedDurationTicks, 0, TimeSpan.MaxValue.Ticks));
+
+    public MachineLearningRange? CpuTypicalRange =>
+        MachineLearningPolicy.CreateTypicalRange(
+            AdaptiveCpuMean,
+            AdaptiveCpuStandardDeviation,
+            AdaptiveSampleCount);
+
+    public MachineLearningRange? MemoryTypicalRange =>
+        MachineLearningPolicy.CreateTypicalRange(
+            AdaptiveMemoryMean,
+            AdaptiveMemoryStandardDeviation,
+            AdaptiveSampleCount);
+
     public long NetworkObservationCount => SaturatingAdd(
         SaturatingAdd(NetworkQuietSampleCount, NetworkLightSampleCount),
         NetworkActiveSampleCount);
@@ -68,6 +106,76 @@ public sealed record MachineLearningBaseline(
     private static long SaturatingAdd(long left, long right) =>
         left >= long.MaxValue - right ? long.MaxValue : left + right;
 }
+
+public readonly record struct MachineLearningContextKey(
+    int LocalHour,
+    MachineUserActivityState ActivityState);
+
+public sealed record MachineLearningRange(
+    double Low,
+    double High);
+
+public sealed record MachineLearningMetricProfile(
+    double AdaptiveMean,
+    double AdaptiveStandardDeviation,
+    MachineLearningRange? TypicalRange);
+
+public sealed record MachineLearningContextProfile(
+    int LocalHour,
+    MachineUserActivityState ActivityState,
+    MachineLearningConfidence Confidence,
+    MachineLearningFreshness Freshness,
+    long LifetimeSampleCount,
+    long LifetimeObservedDurationTicks,
+    int DistinctObservedDayCount,
+    DateTimeOffset FirstObservedAt,
+    DateTimeOffset LastObservedAt,
+    MachineLearningMetricProfile Cpu,
+    MachineLearningMetricProfile Memory,
+    MachineNetworkActivityClass? DominantNetworkActivityClass,
+    long DominantNetworkActivityCount,
+    long NetworkObservationCount,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset LastReinforcedAt,
+    DateTimeOffset LastMateriallyChangedAt)
+{
+    public MachineLearningContextKey ContextKey => new(
+        LocalHour,
+        ActivityState);
+
+    public TimeSpan LifetimeObservedDuration => TimeSpan.FromTicks(
+        Math.Clamp(LifetimeObservedDurationTicks, 0,
+            TimeSpan.MaxValue.Ticks));
+}
+
+public sealed record MachineLearningRecurringPattern(
+    MachineUserActivityState ActivityState,
+    int StartHour,
+    int EndHourExclusive,
+    bool CrossesMidnight,
+    IReadOnlyList<MachineLearningContextKey> MemberContexts,
+    MachineLearningConfidence Confidence,
+    MachineLearningFreshness Freshness,
+    long CombinedSampleCount,
+    int MinimumDistinctObservedDayCount,
+    MachineLearningRange CpuTypicalRange,
+    MachineLearningRange MemoryTypicalRange,
+    MachineNetworkActivityClass? DominantNetworkActivityClass,
+    long DominantNetworkActivityCount,
+    long NetworkObservationCount,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset LastReinforcedAt);
+
+public sealed record MachineLearningMetadata(
+    long LifetimeAcceptedObservationCount,
+    TimeSpan LifetimeObservedDuration,
+    long LifetimeMachineSessionCount,
+    DateTimeOffset? FirstLearningAt,
+    DateTimeOffset? LastLearningAt,
+    DateTimeOffset CurrentSessionStartedAt,
+    DateTimeOffset? PreviousMachineSessionEndedAt,
+    DateTimeOffset? LastPersistedAt,
+    int PersistedSchemaVersion);
 
 public sealed record MachineLearningEpisode(
     DateTimeOffset StartedAt,
@@ -94,7 +202,10 @@ public sealed record MachineLearningDashboardSnapshot(
     MachineLearningDiagnostics Diagnostics,
     DateTimeOffset? LastPersistedAt,
     bool IsDirty,
-    MachineLearningDataHealth DataHealth);
+    MachineLearningDataHealth DataHealth,
+    MachineLearningMetadata Metadata,
+    IReadOnlyList<MachineLearningContextProfile> ContextProfiles,
+    IReadOnlyList<MachineLearningRecurringPattern> BroaderPatterns);
 
 public sealed record MachineLearningDiagnostics(
     long AcceptedObservationCount,
@@ -106,7 +217,9 @@ public sealed record MachineLearnedItem(
     string Text,
     long EvidenceCount,
     MachineLearningConfidence? Confidence,
-    bool IsEarlyObservation);
+    bool IsEarlyObservation,
+    MachineLearningMemoryLayer Layer =
+        MachineLearningMemoryLayer.ContextBaseline);
 
 public sealed record MachineLearningEpisodeSummary(
     MachineUserActivityState ActivityState,
@@ -119,15 +232,7 @@ public sealed record MachineLearningEpisodeSummary(
     string? Outcome);
 
 public sealed record MachineLearnedContext(
-    MachineUserActivityState ActivityState,
-    int LocalHour,
-    MachineLearningConfidence Confidence,
-    long SampleCount,
-    double CpuMean,
-    double CpuStandardDeviation,
-    double MemoryMean,
-    double MemoryStandardDeviation,
-    IReadOnlyList<MachineLearningEpisodeSummary> RecentEpisodes,
-    MachineNetworkActivityClass? DominantNetworkActivityClass = null,
-    long DominantNetworkActivityCount = 0,
-    long NetworkObservationCount = 0);
+    MachineLearningBaseline CurrentBaseline,
+    MachineLearningContextProfile? MatchingProfile,
+    MachineLearningRecurringPattern? MatchingBroaderPattern,
+    IReadOnlyList<MachineLearningEpisodeSummary> RecentEpisodes);

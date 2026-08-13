@@ -68,7 +68,10 @@ public sealed class MachineLearningServiceTests
         Assert.Equal(MachineLearningConfidence.Provisional,
             service.GetDashboardSnapshot(start.AddDays(11))
                 .CurrentBaseline!.Confidence);
-        Assert.Null(service.GetLearnedContext());
+        var earlyContext = Assert.IsType<MachineLearnedContext>(
+            service.GetLearnedContext());
+        Assert.Equal(MachineLearningConfidence.Provisional,
+            earlyContext.MatchingProfile!.Confidence);
 
         for (var index = 12; index < 168; index++)
         {
@@ -77,7 +80,8 @@ public sealed class MachineLearningServiceTests
         Assert.Equal(MachineLearningConfidence.Established,
             service.GetDashboardSnapshot(start.AddDays(167))
                 .CurrentBaseline!.Confidence);
-        Assert.NotNull(service.GetLearnedContext());
+        Assert.Equal(MachineLearningConfidence.Established,
+            service.GetLearnedContext()!.MatchingProfile!.Confidence);
     }
 
     [Fact]
@@ -336,14 +340,14 @@ public sealed class MachineLearningServiceTests
         }
 
         var items = service.GetDashboardSnapshot(start).LearnedItems;
-        Assert.Equal(2, items.Count);
+        Assert.Single(items);
         Assert.All(items, item =>
         {
             Assert.Equal(12, item.EvidenceCount);
             Assert.True(item.IsEarlyObservation);
             Assert.Equal(MachineLearningConfidence.Provisional,
                 item.Confidence);
-            Assert.Contains("12 samples", item.Text);
+            Assert.Contains("12 observations", item.Text);
             Assert.DoesNotContain("anomal", item.Text,
                 StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("productiv", item.Text,

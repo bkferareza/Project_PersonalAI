@@ -445,14 +445,14 @@
                                 Text="Learning" />
                             <TextBlock
                                 Style="{StaticResource SecondaryTextStyle}"
-                                Text="Verified local behavioral evidence" />
+                                Text="Persistent verified behavioral memory" />
                         </StackPanel>
 
                         <Border Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="10">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Learning status" />
+                                    Text="Long-term memory" />
                                 <Grid ColumnSpacing="14" RowSpacing="10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -462,52 +462,85 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <StackPanel Spacing="2">
-                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="STATUS" />
-                                        <TextBlock
-                                            x:Name="LearningPageStatusText"
-                                            AutomationProperties.AutomationId="LearningPageStatusText"
-                                            FontWeight="SemiBold"
-                                            Text="Calibrating" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Spacing="2">
                                         <TextBlock Style="{StaticResource MetricLabelStyle}" Text="OBSERVED" />
                                         <TextBlock
                                             x:Name="LearningPageObservedText"
                                             AutomationProperties.AutomationId="LearningPageObservedText"
-                                            Text="0m" />
+                                            FontWeight="SemiBold"
+                                            Text="0m across 1 Machine session"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="ACCEPTED OBSERVATIONS" />
+                                        <TextBlock
+                                            x:Name="LearningPageLifetimeObservationsText"
+                                            AutomationProperties.AutomationId="LearningPageLifetimeObservationsText"
+                                            Text="0 lifetime" />
                                     </StackPanel>
                                     <StackPanel Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="CONTEXTS LEARNED" />
+                                        <TextBlock
+                                            x:Name="LearningPageContextCountText"
+                                            AutomationProperties.AutomationId="LearningPageContextCountText"
+                                            Text="0 / 48" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="ESTABLISHED PROFILES" />
+                                        <TextBlock
+                                            x:Name="LearningPageEstablishedProfilesText"
+                                            AutomationProperties.AutomationId="LearningPageEstablishedProfilesText"
+                                            Text="0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="2" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="BROADER PATTERNS" />
+                                        <TextBlock
+                                            x:Name="LearningPageBroaderPatternCountText"
+                                            AutomationProperties.AutomationId="LearningPageBroaderPatternCountText"
+                                            Text="0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="2" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="MACHINE SESSIONS" />
+                                        <TextBlock
+                                            x:Name="LearningPageSessionCountText"
+                                            AutomationProperties.AutomationId="LearningPageSessionCountText"
+                                            Text="1" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="3" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="FIRST LEARNED" />
+                                        <TextBlock
+                                            x:Name="LearningPageFirstLearnedText"
+                                            AutomationProperties.AutomationId="LearningPageFirstLearnedText"
+                                            Text="Not yet observed"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="3" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LAST LEARNED" />
+                                        <TextBlock
+                                            x:Name="LearningPageLastLearnedText"
+                                            AutomationProperties.AutomationId="LearningPageLastLearnedText"
+                                            Text="Not yet observed"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="4" Spacing="2">
                                         <TextBlock
                                             Style="{StaticResource MetricLabelStyle}"
-                                            Text="RAW OBSERVATIONS IN MEMORY"
+                                            Text="RAW JOURNAL IN MEMORY"
                                             TextWrapping="Wrap" />
                                         <TextBlock
                                             x:Name="LearningPageRawObservationsText"
                                             AutomationProperties.AutomationId="LearningPageRawObservationsText"
                                             Text="0 / 2,880" />
                                     </StackPanel>
-                                    <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
+                                    <StackPanel Grid.Column="1" Grid.Row="4" Spacing="2">
                                         <TextBlock Style="{StaticResource MetricLabelStyle}" Text="RECENT EPISODES" />
                                         <TextBlock
                                             x:Name="LearningPageRecentEpisodesText"
                                             AutomationProperties.AutomationId="LearningPageRecentEpisodesText"
-                                            Text="0" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Row="2" Spacing="2">
-                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LAST OBSERVATION" />
-                                        <TextBlock
-                                            x:Name="LearningPageLastObservationText"
-                                            AutomationProperties.AutomationId="LearningPageLastObservationText"
-                                            Text="Not yet observed" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Grid.Row="2" Spacing="2">
-                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LAST PERSISTED" />
-                                        <TextBlock
-                                            x:Name="LearningPageLastPersistedText"
-                                            AutomationProperties.AutomationId="LearningPageLastPersistedText"
-                                            Text="Not yet persisted" />
+                                            Text="0 / 200" />
                                     </StackPanel>
                                 </Grid>
                                 <StackPanel Spacing="2">
@@ -555,7 +588,7 @@
                                 <TextBlock
                                     x:Name="LearningPageConfidenceRulesText"
                                     Style="{StaticResource SecondaryTextStyle}"
-                                    Text="Provisional requires 12 samples. Established requires 168 samples across 7 observed days." />
+                                    Text="Confidence measures evidence: Provisional requires 12 samples; Established requires 168 samples across 7 observed days. Freshness measures recency separately." />
                             </StackPanel>
                         </Border>
 
@@ -563,20 +596,20 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Learned baselines" />
+                                    Text="Context profiles" />
                                 <TextBlock
-                                    x:Name="LearningBaselinesEmptyText"
+                                    x:Name="LearningProfilesEmptyText"
                                     Style="{StaticResource SecondaryTextStyle}"
-                                    Text="No baseline samples yet." />
+                                    Text="Still learning compact profiles. A context needs 12 verified observations for an early profile." />
                                 <ListView
-                                    x:Name="LearningBaselinesList"
-                                    AutomationProperties.AutomationId="LearningBaselinesList"
+                                    x:Name="LearningProfilesList"
+                                    AutomationProperties.AutomationId="LearningProfilesList"
                                     MaxHeight="360"
                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                                     SelectionMode="None">
                                     <ListView.ItemTemplate>
-                                        <DataTemplate x:DataType="local:LearningBaselineDisplayItem">
-                                            <StackPanel Margin="0,5" Spacing="3">
+                                        <DataTemplate x:DataType="local:LearningProfileDisplayItem">
+                                            <StackPanel Margin="0,5" Opacity="{x:Bind Opacity}" Spacing="3">
                                                 <TextBlock FontWeight="SemiBold" Text="{x:Bind Header}" />
                                                 <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Evidence}" />
                                                 <Grid ColumnSpacing="12" Margin="0,3,0,0">
@@ -597,7 +630,50 @@
                                                     <TextBlock FontWeight="SemiBold" Text="Network" />
                                                     <TextBlock Text="{x:Bind NetworkValue}" TextWrapping="Wrap" />
                                                 </StackPanel>
-                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind ObservedSpan}" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Reinforcement}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Broader patterns" />
+                                <TextBlock
+                                    x:Name="LearningPatternsEmptyText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Still learning broader patterns. More adjacent Established context profiles are needed." />
+                                <ListView
+                                    x:Name="LearningPatternsList"
+                                    AutomationProperties.AutomationId="LearningPatternsList"
+                                    MaxHeight="280"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                    SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:LearningPatternDisplayItem">
+                                            <StackPanel Margin="0,5" Spacing="3">
+                                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Header}" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Status}" />
+                                                <Grid ColumnSpacing="12" Margin="0,3,0,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Spacing="1">
+                                                        <TextBlock FontWeight="SemiBold" Text="CPU" />
+                                                        <TextBlock Text="{x:Bind CpuValue}" TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="1" Spacing="1">
+                                                        <TextBlock FontWeight="SemiBold" Text="Memory" />
+                                                        <TextBlock Text="{x:Bind MemoryValue}" TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                </Grid>
+                                                <TextBlock Text="{x:Bind NetworkValue}" TextWrapping="Wrap" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Evidence}" TextWrapping="Wrap" />
                                             </StackPanel>
                                         </DataTemplate>
                                     </ListView.ItemTemplate>
@@ -686,6 +762,8 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <TextBlock FontWeight="SemiBold" Text="Learning data" />
                                     <TextBlock x:Name="LearningDataHealthText" Grid.Column="1" Text="Not yet persisted" TextWrapping="Wrap" />
@@ -699,10 +777,14 @@
                                     <TextBlock x:Name="LearningLastAcceptedText" Grid.Column="1" Grid.Row="4" Text="Not yet observed" TextWrapping="Wrap" />
                                     <TextBlock Grid.Row="5" FontWeight="SemiBold" Text="Persistence" />
                                     <TextBlock x:Name="LearningDirtyStateText" Grid.Column="1" Grid.Row="5" Text="No pending changes" TextWrapping="Wrap" />
-                                    <TextBlock Grid.Row="6" FontWeight="SemiBold" Text="AI runtime" />
-                                    <TextBlock x:Name="LearningAiRuntimeText" Grid.Column="1" Grid.Row="6" Text="Checking" TextWrapping="Wrap" />
-                                    <TextBlock Grid.Row="7" FontWeight="SemiBold" Text="Model" />
-                                    <TextBlock x:Name="LearningAiModelText" Grid.Column="1" Grid.Row="7" Text="Checking" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="6" FontWeight="SemiBold" Text="Last persisted" />
+                                    <TextBlock x:Name="LearningLastPersistedText" Grid.Column="1" Grid.Row="6" Text="Not yet persisted" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="7" FontWeight="SemiBold" Text="Schema" />
+                                    <TextBlock x:Name="LearningSchemaText" Grid.Column="1" Grid.Row="7" Text="v3" />
+                                    <TextBlock Grid.Row="8" FontWeight="SemiBold" Text="AI runtime" />
+                                    <TextBlock x:Name="LearningAiRuntimeText" Grid.Column="1" Grid.Row="8" Text="Checking" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="9" FontWeight="SemiBold" Text="Model" />
+                                    <TextBlock x:Name="LearningAiModelText" Grid.Column="1" Grid.Row="9" Text="Checking" TextWrapping="Wrap" />
                                 </Grid>
                             </StackPanel>
                         </Border>

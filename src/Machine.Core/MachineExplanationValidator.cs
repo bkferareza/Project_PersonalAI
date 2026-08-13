@@ -79,7 +79,9 @@ public static class MachineExplanationValidator
         "artificial intelligence",
         "ollama",
         "bilang ai",
-        "isang ai"
+        "isang ai",
+        "palagi",
+        "always"
     ];
 
     private static readonly string[] CausalLanguage =
@@ -226,6 +228,26 @@ public static class MachineExplanationValidator
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(100));
 
+    private static readonly Regex CpuThenPercentageRange = new(
+        @"\bcpu\b[^.!?%]{0,60}?(?<low>\d{1,3}(?:\.\d+)?)\s*(?:-|to|\u2013|\u2014)\s*(?<high>\d{1,3}(?:\.\d+)?)\s*(?:%|percent|porsyento)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex PercentageRangeThenCpu = new(
+        @"(?<low>\d{1,3}(?:\.\d+)?)\s*(?:-|to|\u2013|\u2014)\s*(?<high>\d{1,3}(?:\.\d+)?)\s*(?:%|percent|porsyento)[^.!?%]{0,30}?\bcpu\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex MemoryThenPercentageRange = new(
+        @"\b(?:memory|ram)\b[^.!?%]{0,60}?(?<low>\d{1,3}(?:\.\d+)?)\s*(?:-|to|\u2013|\u2014)\s*(?<high>\d{1,3}(?:\.\d+)?)\s*(?:%|percent|porsyento)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex PercentageRangeThenMemory = new(
+        @"(?<low>\d{1,3}(?:\.\d+)?)\s*(?:-|to|\u2013|\u2014)\s*(?<high>\d{1,3}(?:\.\d+)?)\s*(?:%|percent|porsyento)[^.!?%]{0,30}?\b(?:memory|ram)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
     private static readonly Regex AiReference = new(
         @"\bai\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
@@ -242,7 +264,17 @@ public static class MachineExplanationValidator
         TimeSpan.FromMilliseconds(100));
 
     private static readonly Regex PersonalizedComparisonLanguage = new(
-        @"\b(?:usual|normal\s+for\s+me|typically|karaniwan|kumpara|compared|observed\s+pattern)\b",
+        @"\b(?:usual|usually|normal\s+(?:for\s+me|ko)|normally|typical|typically|karaniwan|kumpara|compared|learned\s+pattern|observed\s+pattern|over\s+time|magkakahawig|similar\s+(?:learned\s+)?behavior)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex PatternLanguage = new(
+        @"\b(?:learned\s+pattern|observed\s+pattern|broader\s+pattern|magkakahawig|similar\s+(?:learned\s+)?behavior)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex HistoricalLanguage = new(
+        @"\b(?:historical|historically|stale|dati|noon|previously)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(100));
 
@@ -269,7 +301,10 @@ public static class MachineExplanationValidator
             ContradictsVerifiedContext(text, findings) ||
             ConflatesMemoryAndStorage(text) ||
             InventsFolderScanResult(text, storage) ||
-            ContainsIncorrectResourcePercentage(text, resources) ||
+            ContainsIncorrectResourcePercentage(
+                text,
+                resources,
+                learnedContext) ||
             ContainsUnsupportedNetworkClaim(text, network) ||
             ContainsUnsupportedPersonalizedComparison(
                 text,
@@ -311,11 +346,60 @@ public static class MachineExplanationValidator
             return false;
         }
 
-        if (learnedContext is null ||
-            learnedContext.Confidence != MachineLearningConfidence.Established ||
-            learnedContext.SampleCount <= 0)
+        if (ContainsAny(text,
+        [
+            "anomal",
+            "unusual",
+            "abnormal",
+            "problema",
+            "problem",
+            "issue"
+        ]))
         {
             return true;
+        }
+
+        if (learnedContext is null)
+        {
+            return true;
+        }
+
+        MachineNetworkActivityClass? learnedNetworkClass;
+        long learnedDominantNetworkCount;
+        long learnedNetworkObservationCount;
+        if (PatternLanguage.IsMatch(text))
+        {
+            var pattern = learnedContext.MatchingBroaderPattern;
+            if (pattern is null ||
+                pattern.Confidence != MachineLearningConfidence.Established ||
+                pattern.Freshness == MachineLearningFreshness.Stale)
+            {
+                return true;
+            }
+
+            learnedNetworkClass = pattern.DominantNetworkActivityClass;
+            learnedDominantNetworkCount =
+                pattern.DominantNetworkActivityCount;
+            learnedNetworkObservationCount =
+                pattern.NetworkObservationCount;
+        }
+        else
+        {
+            var profile = learnedContext.MatchingProfile;
+            if (profile is null ||
+                profile.Confidence != MachineLearningConfidence.Established ||
+                profile.LifetimeSampleCount <= 0 ||
+                profile.Freshness == MachineLearningFreshness.Stale &&
+                    !HistoricalLanguage.IsMatch(text))
+            {
+                return true;
+            }
+
+            learnedNetworkClass = profile.DominantNetworkActivityClass;
+            learnedDominantNetworkCount =
+                profile.DominantNetworkActivityCount;
+            learnedNetworkObservationCount =
+                profile.NetworkObservationCount;
         }
 
         if (!MentionsNetwork(text))
@@ -324,14 +408,13 @@ public static class MachineExplanationValidator
         }
 
         return network is null ||
-            learnedContext.DominantNetworkActivityClass is not
+            learnedNetworkClass is not
                 (MachineNetworkActivityClass.Quiet or
                  MachineNetworkActivityClass.Light or
                  MachineNetworkActivityClass.Active) ||
-            learnedContext.DominantNetworkActivityCount <
+            learnedDominantNetworkCount <
                 MachineNetworkActivityClassifier.MinimumDominantObservationCount ||
-            learnedContext.NetworkObservationCount <
-                learnedContext.DominantNetworkActivityCount;
+            learnedNetworkObservationCount < learnedDominantNetworkCount;
     }
 
     private static bool ContainsUnsupportedNetworkClaim(
@@ -577,7 +660,8 @@ public static class MachineExplanationValidator
 
     private static bool ContainsIncorrectResourcePercentage(
         string text,
-        MachineResourceSnapshot? resources)
+        MachineResourceSnapshot? resources,
+        MachineLearnedContext? learnedContext)
     {
         var cpuClaims = GetPercentageClaims(
             text,
@@ -587,8 +671,17 @@ public static class MachineExplanationValidator
             text,
             MemoryThenPercentage,
             PercentageThenMemory);
+        var cpuRangeClaims = GetPercentageRangeClaims(
+            text,
+            CpuThenPercentageRange,
+            PercentageRangeThenCpu);
+        var memoryRangeClaims = GetPercentageRangeClaims(
+            text,
+            MemoryThenPercentageRange,
+            PercentageRangeThenMemory);
 
-        if (cpuClaims.Count == 0 && memoryClaims.Count == 0)
+        if (cpuClaims.Count == 0 && memoryClaims.Count == 0 &&
+            cpuRangeClaims.Count == 0 && memoryRangeClaims.Count == 0)
         {
             return false;
         }
@@ -601,10 +694,35 @@ public static class MachineExplanationValidator
             return true;
         }
 
-        if (cpuClaims.Any(claim =>
-            !ApproximatelyEquals(
-                claim.Value,
-                resources.CpuUsagePercent)))
+        var usesLearnedLanguage =
+            PersonalizedComparisonLanguage.IsMatch(text);
+        var learnedCpu = GetLearnedCpuEvidence(
+            text,
+            learnedContext,
+            usesLearnedLanguage);
+        var learnedMemory = GetLearnedMemoryEvidence(
+            text,
+            learnedContext,
+            usesLearnedLanguage);
+        if (cpuRangeClaims.Any(claim =>
+                learnedCpu.Range is null ||
+                !ApproximatelyEquals(claim.Low, learnedCpu.Range.Low) ||
+                !ApproximatelyEquals(claim.High, learnedCpu.Range.High)) ||
+            memoryRangeClaims.Any(claim =>
+                learnedMemory.Range is null ||
+                !ApproximatelyEquals(claim.Low, learnedMemory.Range.Low) ||
+                !ApproximatelyEquals(claim.High, learnedMemory.Range.High)))
+        {
+            return true;
+        }
+
+        var allowedCpuValues = new List<double>
+        {
+            resources.CpuUsagePercent
+        };
+        AddLearnedValues(allowedCpuValues, learnedCpu);
+        if (cpuClaims.Any(claim => !allowedCpuValues.Any(value =>
+            ApproximatelyEquals(claim.Value, value))))
         {
             return true;
         }
@@ -612,6 +730,18 @@ public static class MachineExplanationValidator
         var usedMemoryPercent = resources.UsedMemoryBytes /
             (double)resources.TotalMemoryBytes * 100d;
         var availableMemoryPercent = 100d - usedMemoryPercent;
+
+        var allowedMemoryValues = new List<double>
+        {
+            usedMemoryPercent,
+            availableMemoryPercent
+        };
+        AddLearnedValues(allowedMemoryValues, learnedMemory);
+        var allowedUsedMemoryValues = new List<double>
+        {
+            usedMemoryPercent
+        };
+        AddLearnedValues(allowedUsedMemoryValues, learnedMemory);
 
         return memoryClaims.Any(claim =>
         {
@@ -624,9 +754,8 @@ public static class MachineExplanationValidator
 
             if (describesUsedMemory)
             {
-                return !ApproximatelyEquals(
-                    claim.Value,
-                    usedMemoryPercent);
+                return !allowedUsedMemoryValues.Any(value =>
+                    ApproximatelyEquals(claim.Value, value));
             }
 
             if (describesAvailableMemory)
@@ -636,13 +765,74 @@ public static class MachineExplanationValidator
                     availableMemoryPercent);
             }
 
-            return !ApproximatelyEquals(
-                    claim.Value,
-                    usedMemoryPercent) &&
-                !ApproximatelyEquals(
-                    claim.Value,
-                    availableMemoryPercent);
+            return !allowedMemoryValues.Any(value =>
+                ApproximatelyEquals(claim.Value, value));
         });
+    }
+
+    private static LearnedMetricEvidence GetLearnedCpuEvidence(
+        string text,
+        MachineLearnedContext? context,
+        bool usesLearnedLanguage)
+    {
+        if (!usesLearnedLanguage || context is null)
+        {
+            return default;
+        }
+
+        if (PatternLanguage.IsMatch(text) &&
+            context.MatchingBroaderPattern is { } pattern)
+        {
+            return new LearnedMetricEvidence(
+                pattern.CpuTypicalRange,
+                null);
+        }
+
+        return context.MatchingProfile is { } profile
+            ? new LearnedMetricEvidence(
+                profile.Cpu.TypicalRange,
+                profile.Cpu.AdaptiveMean)
+            : default;
+    }
+
+    private static LearnedMetricEvidence GetLearnedMemoryEvidence(
+        string text,
+        MachineLearnedContext? context,
+        bool usesLearnedLanguage)
+    {
+        if (!usesLearnedLanguage || context is null)
+        {
+            return default;
+        }
+
+        if (PatternLanguage.IsMatch(text) &&
+            context.MatchingBroaderPattern is { } pattern)
+        {
+            return new LearnedMetricEvidence(
+                pattern.MemoryTypicalRange,
+                null);
+        }
+
+        return context.MatchingProfile is { } profile
+            ? new LearnedMetricEvidence(
+                profile.Memory.TypicalRange,
+                profile.Memory.AdaptiveMean)
+            : default;
+    }
+
+    private static void AddLearnedValues(
+        ICollection<double> values,
+        LearnedMetricEvidence evidence)
+    {
+        if (evidence.Mean is { } mean)
+        {
+            values.Add(mean);
+        }
+        if (evidence.Range is { } range)
+        {
+            values.Add(range.Low);
+            values.Add(range.High);
+        }
     }
 
     private static IReadOnlyList<PercentageClaim>
@@ -659,10 +849,34 @@ public static class MachineExplanationValidator
                 match.Value))
             .ToArray();
 
+    private static IReadOnlyList<PercentageRangeClaim>
+        GetPercentageRangeClaims(
+            string text,
+            Regex metricThenRange,
+            Regex rangeThenMetric) =>
+        metricThenRange.Matches(text)
+            .Concat(rangeThenMetric.Matches(text))
+            .Select(match => new PercentageRangeClaim(
+                double.Parse(
+                    match.Groups["low"].Value,
+                    CultureInfo.InvariantCulture),
+                double.Parse(
+                    match.Groups["high"].Value,
+                    CultureInfo.InvariantCulture)))
+            .ToArray();
+
     private static bool ApproximatelyEquals(
         double actual,
         double expected) =>
         Math.Abs(actual - expected) <= 1d;
+
+    private readonly record struct LearnedMetricEvidence(
+        MachineLearningRange? Range,
+        double? Mean);
+
+    private readonly record struct PercentageRangeClaim(
+        double Low,
+        double High);
 
     private static int CountWords(string text) =>
         text.Split(

@@ -32,6 +32,9 @@ public sealed class MachineShutdownCoordinatorTests
 
         Assert.Equal(1, runtime.ShutdownCount);
         Assert.Equal(1, httpDisposals);
+        Assert.NotNull(store.State?.Metadata?.PreviousMachineSessionEndedAt);
+        Assert.Null(store.State?.ActiveEpisode);
+        Assert.Equal("Session ended", Assert.Single(store.State!.Episodes).Outcome);
     }
 
     [Fact]
@@ -86,6 +89,7 @@ public sealed class MachineShutdownCoordinatorTests
         private readonly TaskCompletionSource _completion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         public int SaveCount { get; private set; }
+        public MachineLearningPersistedState? State { get; private set; }
         public Task<MachineLearningPersistedState?> LoadAsync(
             CancellationToken cancellationToken = default) =>
             Task.FromResult<MachineLearningPersistedState?>(null);
@@ -93,6 +97,7 @@ public sealed class MachineShutdownCoordinatorTests
             CancellationToken cancellationToken = default)
         {
             SaveCount++;
+            State = state;
             return _completion.Task;
         }
         public void Complete() => _completion.TrySetResult();

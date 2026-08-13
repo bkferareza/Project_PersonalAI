@@ -8,142 +8,170 @@ public static class MachineLearnedItemProjector
 
     public static IReadOnlyList<MachineLearnedItem> Project(
         IReadOnlyList<MachineLearningBaseline> baselines,
+        IReadOnlyList<MachineLearningContextProfile> profiles,
+        IReadOnlyList<MachineLearningRecurringPattern> patterns,
         IReadOnlyList<MachineLearningEpisode> episodes,
         MachineLearningObservation? currentObservation,
         int maximumItemCount = DefaultMaximumItemCount)
     {
         ArgumentNullException.ThrowIfNull(baselines);
+        ArgumentNullException.ThrowIfNull(profiles);
+        ArgumentNullException.ThrowIfNull(patterns);
         ArgumentNullException.ThrowIfNull(episodes);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumItemCount);
 
         var currentHour = currentObservation?.Timestamp.ToLocalTime().Hour;
         var currentActivity = currentObservation?.ActivityState;
-        var orderedBaselines = baselines
-            .Where(baseline => baseline.Confidence !=
-                MachineLearningConfidence.Calibrating)
+        var items = new List<MachineLearnedItem>(maximumItemCount);
+
+        foreach (var baseline in baselines
+            .Where(baseline =>
+                baseline.Confidence != MachineLearningConfidence.Calibrating &&
+                baseline.DominantNetworkActivityClass is not null)
             .OrderBy(baseline => currentHour == baseline.LocalHour &&
                 currentActivity == baseline.ActivityState ? 0 : 1)
             .ThenByDescending(baseline => baseline.LastObservedAt)
-            .ThenBy(baseline => baseline.LocalHour)
-            .ThenBy(baseline => baseline.ActivityState)
-            .ToArray();
-
-        var items = new List<MachineLearnedItem>(maximumItemCount);
-        var baselineItemLimit = episodes.Count == 0
-            ? maximumItemCount
-            : Math.Max(0, maximumItemCount - Math.Min(3, maximumItemCount));
-        foreach (var baseline in orderedBaselines)
+            .Take(2))
         {
-            if (items.Count >= baselineItemLimit)
+            if (items.Count >= maximumItemCount)
             {
                 break;
             }
 
-            var hour = FormatHour(baseline.LocalHour);
-            var evidence = baseline.SampleCount.ToString(
-                "N0", CultureInfo.InvariantCulture);
-            var early = baseline.Confidence !=
-                MachineLearningConfidence.Established;
+            var dominant = baseline.DominantNetworkActivityClass!.Value;
+            var evidenceLabel = baseline.Confidence ==
+                    MachineLearningConfidence.Established
+                ? "Cumulative evidence"
+                : "Early observation";
             items.Add(new MachineLearnedItem(
-                $"{baseline.ActivityState} periods around {hour} have " +
-                $"averaged {baseline.CpuMean.ToString("F1", CultureInfo.InvariantCulture)}% " +
-                $"CPU across {evidence} samples.",
-                baseline.SampleCount,
+                $"{evidenceLabel} \u00B7 " +
+                $"{baseline.DominantNetworkActivityCount.ToString("N0", CultureInfo.InvariantCulture)} " +
+                $"of {baseline.NetworkObservationCount.ToString("N0", CultureInfo.InvariantCulture)} " +
+                $"{baseline.ActivityState} observations at " +
+                $"{FormatHour(baseline.LocalHour)} had {dominant} network activity.",
+                baseline.NetworkObservationCount,
                 baseline.Confidence,
-                early));
-            if (items.Count >= baselineItemLimit)
+                baseline.Confidence != MachineLearningConfidence.Established,
+                MachineLearningMemoryLayer.ContextBaseline));
+        }
+
+        foreach (var profile in profiles
+            .OrderBy(profile => currentHour == profile.LocalHour &&
+                currentActivity == profile.ActivityState ? 0 : 1)
+            .ThenBy(profile => profile.Freshness)
+            .ThenByDescending(profile => profile.LastReinforcedAt)
+            .Take(8))
+        {
+            if (items.Count >= maximumItemCount)
+            {
+                break;
+            }
+
+            var cpu = FormatRange(profile.Cpu.TypicalRange);
+            var memory = FormatRange(profile.Memory.TypicalRange);
+            var confidenceLabel = profile.Confidence ==
+                    MachineLearningConfidence.Established
+                ? "Established"
+                : "Early profile";
+            var behaviorLabel = profile.Confidence ==
+                    MachineLearningConfidence.Established &&
+                profile.Freshness != MachineLearningFreshness.Stale
+                    ? "has typically stayed"
+                    : "has an adaptive learned range";
+            items.Add(new MachineLearnedItem(
+                $"{confidenceLabel} \u00B7 During {FormatHour(profile.LocalHour)} " +
+                $"{profile.ActivityState} periods, CPU {behaviorLabel} around " +
+                $"{cpu} and memory around {memory} across " +
+                $"{FormatCount(profile.LifetimeSampleCount, "observation")} " +
+                $"on {FormatCount(profile.DistinctObservedDayCount, "day")}." +
+                (profile.Freshness == MachineLearningFreshness.Stale
+                    ? " This profile is historical and currently stale."
+                    : string.Empty),
+                profile.LifetimeSampleCount,
+                profile.Confidence,
+                profile.Confidence != MachineLearningConfidence.Established,
+                MachineLearningMemoryLayer.CompactProfile));
+        }
+
+        foreach (var pattern in patterns
+            .OrderByDescending(pattern =>
+                pattern.Confidence == MachineLearningConfidence.Established)
+            .ThenByDescending(pattern => pattern.LastReinforcedAt)
+            .Take(3))
+        {
+            if (items.Count >= maximumItemCount)
             {
                 break;
             }
 
             items.Add(new MachineLearnedItem(
-                $"Memory during {baseline.ActivityState} {hour} observations " +
-                $"has averaged {baseline.MemoryMean.ToString("F1", CultureInfo.InvariantCulture)}% " +
-                $"across {evidence} samples.",
-                baseline.SampleCount,
-                baseline.Confidence,
-                early));
-            if (items.Count >= baselineItemLimit)
-            {
-                break;
-            }
+                $"{(pattern.Confidence == MachineLearningConfidence.Established ? "Established pattern" : "Early broader pattern")} \u00B7 " +
+                $"Observed {pattern.ActivityState} behavior from " +
+                $"{FormatHour(pattern.StartHour)}\u2013" +
+                $"{FormatHour(pattern.EndHourExclusive)} has been statistically " +
+                $"similar across {FormatCount(pattern.MemberContexts.Count, "learned hourly context")}, " +
+                $"with {FormatCount(pattern.CombinedSampleCount, "observation")}.",
+                pattern.CombinedSampleCount,
+                pattern.Confidence,
+                pattern.Confidence != MachineLearningConfidence.Established,
+                MachineLearningMemoryLayer.BroaderPattern));
+        }
 
-            if (baseline.DominantNetworkActivityClass is { } dominantClass)
-            {
-                var dominantCount = baseline.DominantNetworkActivityCount
-                    .ToString("N0", CultureInfo.InvariantCulture);
-                var networkEvidence = baseline.NetworkObservationCount
-                    .ToString("N0", CultureInfo.InvariantCulture);
-                items.Add(new MachineLearnedItem(
-                    $"{dominantCount} of {networkEvidence} " +
-                    $"{baseline.ActivityState} observations at {hour} had " +
-                    $"{dominantClass} network activity.",
-                    baseline.NetworkObservationCount,
-                    baseline.Confidence,
-                    early));
-                if (items.Count >= baselineItemLimit)
-                {
-                    break;
-                }
-            }
+        AddEpisodeItems(items, episodes, maximumItemCount);
+        return items.Take(maximumItemCount).ToArray();
+    }
+
+    private static void AddEpisodeItems(
+        ICollection<MachineLearnedItem> items,
+        IReadOnlyList<MachineLearningEpisode> episodes,
+        int maximumItemCount)
+    {
+        if (items.Count >= maximumItemCount)
+        {
+            return;
         }
 
         var completed = episodes
             .OrderByDescending(episode => episode.EndedAt)
             .ToArray();
-        if (completed.Length > 0)
+        var stable = completed.Where(episode =>
+            episode.OverallState == MachineOverallState.Stable).ToArray();
+        if (stable.Length > 0)
         {
-            var stable = completed.Where(episode =>
-                episode.OverallState == MachineOverallState.Stable).ToArray();
-            if (stable.Length > 0)
-            {
-                var stableSamples = stable.Sum(episode => (long)episode.SampleCount);
-                items.Add(new MachineLearnedItem(
-                    $"{FormatCount(stable.Length, "completed Stable episode")} " +
-                    $"{(stable.Length == 1 ? "was" : "were")} recorded across " +
-                    $"{FormatCount(stableSamples, "sample")}.",
-                    stableSamples,
-                    null,
-                    false));
-            }
-
-            if (items.Count < maximumItemCount)
-            {
-                var longest = completed
-                    .OrderByDescending(episode => episode.EndedAt - episode.StartedAt)
-                    .First();
-                items.Add(new MachineLearnedItem(
-                    $"The longest completed observed {longest.ActivityState} episode " +
-                    $"lasted {FormatDuration(longest.EndedAt - longest.StartedAt)} " +
-                    $"across {FormatCount(longest.SampleCount, "sample")}.",
-                    longest.SampleCount,
-                    null,
-                    false));
-            }
-
-            if (items.Count < maximumItemCount)
-            {
-                var recoveries = completed.Where(episode => string.Equals(
-                    episode.Outcome,
-                    "Recovered to Stable",
-                    StringComparison.Ordinal)).ToArray();
-                if (recoveries.Length > 0)
-                {
-                    var recoverySamples = recoveries.Sum(episode =>
-                        (long)episode.SampleCount);
-                    items.Add(new MachineLearnedItem(
-                        $"{FormatCount(recoveries.Length, "completed episode")} " +
-                        $"recorded a verified recovery to Stable across " +
-                        $"{FormatCount(recoverySamples, "sample")}.",
-                        recoverySamples,
-                        null,
-                        false));
-                }
-            }
+            var stableSamples = stable.Sum(episode => (long)episode.SampleCount);
+            items.Add(new MachineLearnedItem(
+                $"{FormatCount(stable.Length, "completed Stable episode")} " +
+                $"{(stable.Length == 1 ? "was" : "were")} recorded across " +
+                $"{FormatCount(stableSamples, "sample")}.",
+                stableSamples,
+                null,
+                false,
+                MachineLearningMemoryLayer.AggregateEpisode));
         }
 
-        return items.Take(maximumItemCount).ToArray();
+        if (items.Count >= maximumItemCount || completed.Length == 0)
+        {
+            return;
+        }
+
+        var longest = completed
+            .OrderByDescending(episode => episode.EndedAt - episode.StartedAt)
+            .First();
+        items.Add(new MachineLearnedItem(
+            $"The longest completed observed {longest.ActivityState} episode " +
+            $"lasted {FormatDuration(longest.EndedAt - longest.StartedAt)} " +
+            $"across {FormatCount(longest.SampleCount, "sample")}.",
+            longest.SampleCount,
+            null,
+            false,
+            MachineLearningMemoryLayer.AggregateEpisode));
     }
+
+    private static string FormatRange(MachineLearningRange? range) =>
+        range is null
+            ? "not yet available"
+            : $"{range.Low.ToString("F1", CultureInfo.InvariantCulture)}\u2013" +
+                $"{range.High.ToString("F1", CultureInfo.InvariantCulture)}%";
 
     private static string FormatHour(int hour)
     {

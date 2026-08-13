@@ -38,7 +38,11 @@ public sealed partial class OllamaMachineStateExplainer
         Never invent additional findings or reinterpret partial data as complete.
         Use only supplied deterministic findings and overall_state for severity or pressure language.
         Never judge severity or pressure from raw metric values.
-        You may use words such as usual, normal for me, or typically only when learned_context is supplied with Established confidence. CPU or memory comparisons must use their supplied learned values. Network comparisons additionally require dominant_network_activity_class and its evidence counts. Learned comparisons must never be called an anomaly or a problem.
+        learned_context contains at most the current cumulative baseline, one matching compact profile, one matching broader pattern, and two recent aggregate episodes. It never contains raw observations or the full memory store.
+        You may use words such as usual, normal for me, or typically only when matching_profile has Established confidence and is not Stale. CPU or memory comparisons must use that profile's supplied typical range. Network comparisons additionally require its dominant_network_activity_class and evidence counts.
+        A broader-pattern claim requires matching_broader_pattern with Established confidence. Never invent a semantic label for a time range.
+        A Stale profile is historical evidence only. Do not describe it as the present usual or current typical behavior unless the wording explicitly says it is historical or stale.
+        Learned comparisons must never be called an anomaly or a problem.
         Do not mention being an AI, language model, or Ollama.
 
         Respond in natural conversational Filipino Taglish.
@@ -287,34 +291,19 @@ public sealed partial class OllamaMachineStateExplainer
     private static LearnedContextPayload? CreateLearnedContextPayload(
         MachineLearnedContext? context)
     {
-        if (context is null ||
-            context.Confidence != MachineLearningConfidence.Established)
+        if (context is null)
         {
             return null;
         }
 
         return new LearnedContextPayload(
-            ActivityState: context.ActivityState.ToString(),
-            LocalHour: context.LocalHour,
-            Confidence: context.Confidence.ToString(),
-            SampleCount: context.SampleCount,
-            CpuMean: context.CpuMean,
-            CpuStandardDeviation: context.CpuStandardDeviation,
-            MemoryMean: context.MemoryMean,
-            MemoryStandardDeviation: context.MemoryStandardDeviation,
-            DominantNetworkActivityClass:
-                HasNetworkLearningEvidence(context)
-                    ? context.DominantNetworkActivityClass?.ToString()
-                    : null,
-            DominantNetworkActivityCount:
-                HasNetworkLearningEvidence(context)
-                    ? context.DominantNetworkActivityCount
-                    : 0,
-            NetworkObservationCount:
-                HasNetworkLearningEvidence(context)
-                    ? context.NetworkObservationCount
-                    : 0,
-            RecentEpisodes: context.RecentEpisodes.Take(3).Select(episode =>
+            CurrentBaseline: CreateBaselinePayload(
+                context.CurrentBaseline),
+            MatchingProfile: CreateProfilePayload(
+                context.MatchingProfile),
+            MatchingBroaderPattern: CreatePatternPayload(
+                context.MatchingBroaderPattern),
+            RecentEpisodes: context.RecentEpisodes.Take(2).Select(episode =>
                 new LearnedEpisodePayload(
                     episode.ActivityState.ToString(),
                     episode.OverallState.ToString(),
@@ -324,6 +313,79 @@ public sealed partial class OllamaMachineStateExplainer
                     episode.AverageMemoryUsagePercent,
                     episode.FindingKeys.Take(8).ToArray(),
                     episode.Outcome)).ToArray());
+    }
+
+    private static LearnedBaselinePayload CreateBaselinePayload(
+        MachineLearningBaseline baseline) => new(
+            baseline.ActivityState.ToString(),
+            baseline.LocalHour,
+            baseline.Confidence.ToString(),
+            baseline.Freshness.ToString(),
+            baseline.SampleCount,
+            baseline.ObservedDayCount,
+            baseline.CpuMean,
+            baseline.MemoryMean,
+            baseline.AdaptiveCpuMean,
+            baseline.AdaptiveMemoryMean);
+
+    private static LearnedProfilePayload? CreateProfilePayload(
+        MachineLearningContextProfile? profile)
+    {
+        if (profile is null)
+        {
+            return null;
+        }
+
+        var hasNetworkEvidence = HasNetworkLearningEvidence(profile);
+        return new LearnedProfilePayload(
+            profile.ActivityState.ToString(),
+            profile.LocalHour,
+            profile.Confidence.ToString(),
+            profile.Freshness.ToString(),
+            profile.LifetimeSampleCount,
+            profile.DistinctObservedDayCount,
+            profile.Cpu.TypicalRange?.Low,
+            profile.Cpu.TypicalRange?.High,
+            profile.Memory.TypicalRange?.Low,
+            profile.Memory.TypicalRange?.High,
+            hasNetworkEvidence
+                ? profile.DominantNetworkActivityClass?.ToString()
+                : null,
+            hasNetworkEvidence
+                ? profile.DominantNetworkActivityCount
+                : 0,
+            hasNetworkEvidence
+                ? profile.NetworkObservationCount
+                : 0);
+    }
+
+    private static LearnedPatternPayload? CreatePatternPayload(
+        MachineLearningRecurringPattern? pattern)
+    {
+        if (pattern is null ||
+            pattern.Confidence != MachineLearningConfidence.Established ||
+            pattern.Freshness == MachineLearningFreshness.Stale)
+        {
+            return null;
+        }
+
+        return new LearnedPatternPayload(
+            pattern.ActivityState.ToString(),
+            pattern.StartHour,
+            pattern.EndHourExclusive,
+            pattern.CrossesMidnight,
+            pattern.Confidence.ToString(),
+            pattern.Freshness.ToString(),
+            pattern.MemberContexts.Count,
+            pattern.CombinedSampleCount,
+            pattern.MinimumDistinctObservedDayCount,
+            pattern.CpuTypicalRange.Low,
+            pattern.CpuTypicalRange.High,
+            pattern.MemoryTypicalRange.Low,
+            pattern.MemoryTypicalRange.High,
+            pattern.DominantNetworkActivityClass?.ToString(),
+            pattern.DominantNetworkActivityCount,
+            pattern.NetworkObservationCount);
     }
 
     private static NetworkSnapshotPayload? CreateNetworkPayload(
@@ -354,15 +416,15 @@ public sealed partial class OllamaMachineStateExplainer
     }
 
     private static bool HasNetworkLearningEvidence(
-        MachineLearnedContext context) =>
-        context.DominantNetworkActivityClass is
+        MachineLearningContextProfile profile) =>
+        profile.DominantNetworkActivityClass is
             MachineNetworkActivityClass.Quiet or
             MachineNetworkActivityClass.Light or
             MachineNetworkActivityClass.Active &&
-        context.DominantNetworkActivityCount >=
+        profile.DominantNetworkActivityCount >=
             MachineNetworkActivityClassifier.MinimumDominantObservationCount &&
-        context.NetworkObservationCount >=
-            context.DominantNetworkActivityCount;
+        profile.NetworkObservationCount >=
+            profile.DominantNetworkActivityCount;
 
     private static double? GetValidRate(double? value) =>
         value is not null && double.IsFinite(value.Value) && value.Value >= 0d
@@ -439,30 +501,98 @@ public sealed partial class OllamaMachineStateExplainer
         SessionSnapshotPayload? Session);
 
     private sealed record LearnedContextPayload(
+        [property: JsonPropertyName("current_baseline")]
+        LearnedBaselinePayload CurrentBaseline,
+        [property: JsonPropertyName("matching_profile")]
+        LearnedProfilePayload? MatchingProfile,
+        [property: JsonPropertyName("matching_broader_pattern")]
+        LearnedPatternPayload? MatchingBroaderPattern,
+        [property: JsonPropertyName("recent_episodes")]
+        LearnedEpisodePayload[] RecentEpisodes);
+
+    private sealed record LearnedBaselinePayload(
         [property: JsonPropertyName("activity_state")]
         string ActivityState,
         [property: JsonPropertyName("local_hour")]
         int LocalHour,
         [property: JsonPropertyName("confidence")]
         string Confidence,
-        [property: JsonPropertyName("sample_count")]
-        long SampleCount,
-        [property: JsonPropertyName("cpu_mean")]
-        double CpuMean,
-        [property: JsonPropertyName("cpu_standard_deviation")]
-        double CpuStandardDeviation,
-        [property: JsonPropertyName("memory_mean")]
-        double MemoryMean,
-        [property: JsonPropertyName("memory_standard_deviation")]
-        double MemoryStandardDeviation,
+        [property: JsonPropertyName("freshness")]
+        string Freshness,
+        [property: JsonPropertyName("lifetime_sample_count")]
+        long LifetimeSampleCount,
+        [property: JsonPropertyName("observed_day_count")]
+        int ObservedDayCount,
+        [property: JsonPropertyName("lifetime_cpu_mean")]
+        double LifetimeCpuMean,
+        [property: JsonPropertyName("lifetime_memory_mean")]
+        double LifetimeMemoryMean,
+        [property: JsonPropertyName("adaptive_cpu_mean")]
+        double AdaptiveCpuMean,
+        [property: JsonPropertyName("adaptive_memory_mean")]
+        double AdaptiveMemoryMean);
+
+    private sealed record LearnedProfilePayload(
+        [property: JsonPropertyName("activity_state")]
+        string ActivityState,
+        [property: JsonPropertyName("local_hour")]
+        int LocalHour,
+        [property: JsonPropertyName("confidence")]
+        string Confidence,
+        [property: JsonPropertyName("freshness")]
+        string Freshness,
+        [property: JsonPropertyName("lifetime_sample_count")]
+        long LifetimeSampleCount,
+        [property: JsonPropertyName("distinct_observed_day_count")]
+        int DistinctObservedDayCount,
+        [property: JsonPropertyName("cpu_typical_low")]
+        double? CpuTypicalLow,
+        [property: JsonPropertyName("cpu_typical_high")]
+        double? CpuTypicalHigh,
+        [property: JsonPropertyName("memory_typical_low")]
+        double? MemoryTypicalLow,
+        [property: JsonPropertyName("memory_typical_high")]
+        double? MemoryTypicalHigh,
         [property: JsonPropertyName("dominant_network_activity_class")]
         string? DominantNetworkActivityClass,
         [property: JsonPropertyName("dominant_network_activity_count")]
         long DominantNetworkActivityCount,
         [property: JsonPropertyName("network_observation_count")]
-        long NetworkObservationCount,
-        [property: JsonPropertyName("recent_episodes")]
-        LearnedEpisodePayload[] RecentEpisodes);
+        long NetworkObservationCount);
+
+    private sealed record LearnedPatternPayload(
+        [property: JsonPropertyName("activity_state")]
+        string ActivityState,
+        [property: JsonPropertyName("start_hour")]
+        int StartHour,
+        [property: JsonPropertyName("end_hour_exclusive")]
+        int EndHourExclusive,
+        [property: JsonPropertyName("crosses_midnight")]
+        bool CrossesMidnight,
+        [property: JsonPropertyName("confidence")]
+        string Confidence,
+        [property: JsonPropertyName("freshness")]
+        string Freshness,
+        [property: JsonPropertyName("member_profile_count")]
+        int MemberProfileCount,
+        [property: JsonPropertyName("combined_sample_count")]
+        long CombinedSampleCount,
+        [property: JsonPropertyName("minimum_observed_day_count")]
+        int MinimumObservedDayCount,
+        [property: JsonPropertyName("cpu_typical_low")]
+        double CpuTypicalLow,
+        [property: JsonPropertyName("cpu_typical_high")]
+        double CpuTypicalHigh,
+        [property: JsonPropertyName("memory_typical_low")]
+        double MemoryTypicalLow,
+        [property: JsonPropertyName("memory_typical_high")]
+        double MemoryTypicalHigh,
+        [property: JsonPropertyName("dominant_network_activity_class")]
+        string? DominantNetworkActivityClass,
+        [property: JsonPropertyName("dominant_network_activity_count")]
+        long DominantNetworkActivityCount,
+        [property: JsonPropertyName("network_observation_count")]
+        long NetworkObservationCount);
 
     private sealed record NetworkSnapshotPayload(
         [property: JsonPropertyName("activity_class")]

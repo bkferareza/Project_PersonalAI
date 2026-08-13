@@ -773,20 +773,33 @@ public sealed partial class MainWindow : Window
         LearningObservationText.Text =
             FormatSampleCount(snapshot.ObservationCount);
 
-        LearningPageStatusText.Text = confidence.ToString();
+        var sessionCount = snapshot.Metadata.LifetimeMachineSessionCount;
         LearningPageObservedText.Text =
-            FormatDuration(snapshot.ObservedDuration);
+            $"{FormatDuration(snapshot.ObservedDuration)} across " +
+            $"{sessionCount:N0} Machine " +
+            (sessionCount == 1 ? "session" : "sessions");
+        LearningPageLifetimeObservationsText.Text =
+            $"{snapshot.Metadata.LifetimeAcceptedObservationCount:N0} lifetime";
+        LearningPageContextCountText.Text =
+            $"{snapshot.ContextProfiles.Count:N0} / " +
+            $"{MachineLearningService.MaximumContextProfileCount:N0}";
+        LearningPageEstablishedProfilesText.Text =
+            $"{snapshot.ContextProfiles.Count(profile => profile.Confidence == MachineLearningConfidence.Established):N0}";
+        LearningPageBroaderPatternCountText.Text =
+            $"{snapshot.BroaderPatterns.Count:N0}";
+        LearningPageSessionCountText.Text = $"{sessionCount:N0}";
+        LearningPageFirstLearnedText.Text = FormatLearningDateTime(
+            snapshot.Metadata.FirstLearningAt,
+            "Not yet observed");
+        LearningPageLastLearnedText.Text = FormatLearningDateTime(
+            snapshot.Metadata.LastLearningAt,
+            "Not yet observed");
         LearningPageRawObservationsText.Text =
             $"{snapshot.RawObservationCount:N0} / " +
             $"{MachineLearningService.MaximumObservationCount:N0}";
         LearningPageRecentEpisodesText.Text =
-            $"{snapshot.RecentEpisodeCount:N0}";
-        LearningPageLastObservationText.Text = FormatLearningTimestamp(
-            snapshot.Diagnostics.LastAcceptedObservationAt,
-            "Not yet observed");
-        LearningPageLastPersistedText.Text = FormatLearningTimestamp(
-            snapshot.LastPersistedAt,
-            "Not yet persisted");
+            $"{snapshot.RecentEpisodeCount:N0} / " +
+            $"{MachineLearningService.MaximumEpisodeCount:N0}";
         LearningPageCurrentContextText.Text = current is null
             ? "Waiting for verified telemetry"
             : $"{current.ActivityState} · " +
@@ -803,27 +816,43 @@ public sealed partial class MainWindow : Window
             $"{MachineLearningService.EstablishedObservedDayCount:N0}";
         LearningPageConfidenceText.Text = confidence.ToString();
 
-        var orderedBaselines = snapshot.Baselines
+        var orderedProfiles = snapshot.ContextProfiles
             .OrderBy(item => baseline is not null &&
                 item.LocalHour == baseline.LocalHour &&
                 item.ActivityState == baseline.ActivityState ? 0 : 1)
-            .ThenByDescending(item => item.LastObservedAt)
+            .ThenBy(item => item.Freshness)
+            .ThenByDescending(item => item.LastReinforcedAt)
             .ThenBy(item => item.LocalHour)
             .ThenBy(item => item.ActivityState)
-            .Select(CreateLearningBaselineDisplayItem)
+            .Select(CreateLearningProfileDisplayItem)
             .ToArray();
-        LearningBaselinesList.ItemsSource = orderedBaselines;
-        LearningBaselinesEmptyText.Visibility = orderedBaselines.Length == 0
+        LearningProfilesList.ItemsSource = orderedProfiles;
+        LearningProfilesEmptyText.Visibility = orderedProfiles.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        var patterns = snapshot.BroaderPatterns
+            .OrderByDescending(item =>
+                item.Confidence == MachineLearningConfidence.Established)
+            .ThenBy(item => item.Freshness)
+            .ThenBy(item => item.StartHour)
+            .ThenBy(item => item.ActivityState)
+            .Select(CreateLearningPatternDisplayItem)
+            .ToArray();
+        LearningPatternsList.ItemsSource = patterns;
+        LearningPatternsEmptyText.Visibility = patterns.Length == 0
             ? Visibility.Visible
             : Visibility.Collapsed;
 
         var learnedItems = snapshot.LearnedItems.Select(item =>
             new LearnedItemDisplayItem(
-                item.IsEarlyObservation
-                    ? $"Early observation · {item.Confidence}"
-                    : item.Confidence == MachineLearningConfidence.Established
-                        ? "Established"
-                        : "Recorded aggregate",
+                $"{FormatLearningLayer(item.Layer)} · " +
+                    (item.IsEarlyObservation
+                        ? $"Early · {item.Confidence}"
+                        : item.Confidence ==
+                            MachineLearningConfidence.Established
+                            ? "Established"
+                            : "Recorded"),
                 item.Text,
                 $"Evidence · {FormatSampleCount(item.EvidenceCount)}"))
             .ToArray();
@@ -855,41 +884,93 @@ public sealed partial class MainWindow : Window
         LearningDirtyStateText.Text = snapshot.IsDirty
             ? "Changes waiting for the next periodic save"
             : "No pending changes";
+        LearningLastPersistedText.Text = FormatLearningDateTime(
+            snapshot.LastPersistedAt,
+            "Not yet persisted");
+        LearningSchemaText.Text =
+            $"v{snapshot.Metadata.PersistedSchemaVersion}";
         UpdateLearningRuntimeStatus();
     }
 
-    private static LearningBaselineDisplayItem
-        CreateLearningBaselineDisplayItem(MachineLearningBaseline baseline)
+    private static LearningProfileDisplayItem
+        CreateLearningProfileDisplayItem(
+            MachineLearningContextProfile profile)
     {
-        var valueLabel = baseline.Confidence ==
-            MachineLearningConfidence.Established
-                ? "Typical"
-                : "Observed average";
-        var first = baseline.FirstObservedAt.ToLocalTime();
-        var last = baseline.LastObservedAt.ToLocalTime();
+        var valueLabel = profile.Confidence ==
+                MachineLearningConfidence.Established
+            ? profile.Freshness == MachineLearningFreshness.Stale
+                ? "Historical learned range"
+                : "Typical"
+            : "Adaptive observed range";
+        var first = profile.FirstObservedAt.ToLocalTime();
+        var last = profile.LastObservedAt.ToLocalTime();
         var observedSpan = first.Date == last.Date
             ? $"Observed {first:MMM d, yyyy}"
-            : $"Observed {first:MMM d, yyyy} → {last:MMM d, yyyy}";
-        var networkValue = baseline.DominantNetworkActivityClass is
+            : $"Observed {first:MMM d, yyyy} to {last:MMM d, yyyy}";
+        var networkValue = profile.DominantNetworkActivityClass is
                 { } dominantClass
             ? $"Mostly {dominantClass}\n" +
-                $"{baseline.DominantNetworkActivityCount:N0} / " +
-                $"{baseline.NetworkObservationCount:N0} observations"
+                $"{profile.DominantNetworkActivityCount:N0} / " +
+                $"{profile.NetworkObservationCount:N0} observations"
             : "Still calibrating";
 
-        return new LearningBaselineDisplayItem(
-            $"{FormatLearningHour(baseline.LocalHour)} · " +
-                $"{baseline.ActivityState}",
-            $"{FormatSampleCount(baseline.SampleCount)} · {baseline.Confidence} · " +
-                $"{baseline.ObservedDayCount:N0} observed " +
-                (baseline.ObservedDayCount == 1 ? "day" : "days"),
-            $"{valueLabel} {baseline.CpuMean:F1}%\n" +
-                $"± {baseline.CpuStandardDeviation:F1}%",
-            $"{valueLabel} {baseline.MemoryMean:F1}%\n" +
-                $"± {baseline.MemoryStandardDeviation:F1}%",
+        return new LearningProfileDisplayItem(
+            $"{FormatLearningHour(profile.LocalHour)} - " +
+                $"{profile.ActivityState}",
+            $"{profile.Confidence} - {profile.Freshness}",
+            FormatLearningRange(valueLabel, profile.Cpu.TypicalRange,
+                profile.Cpu.AdaptiveMean),
+            FormatLearningRange(valueLabel, profile.Memory.TypicalRange,
+                profile.Memory.AdaptiveMean),
             networkValue,
-            observedSpan);
+            $"Evidence - {FormatSampleCount(profile.LifetimeSampleCount)} - " +
+                $"{profile.DistinctObservedDayCount:N0} observed " +
+                (profile.DistinctObservedDayCount == 1 ? "day" : "days") +
+                $"\n{observedSpan} - Reinforced " +
+                $"{FormatLearningDateTime(profile.LastReinforcedAt, "Unknown")}",
+            profile.Freshness == MachineLearningFreshness.Stale ? 0.64 : 1d);
     }
+
+    private static LearningPatternDisplayItem
+        CreateLearningPatternDisplayItem(
+            MachineLearningRecurringPattern pattern)
+    {
+        var network = pattern.DominantNetworkActivityClass is { } dominant
+            ? $"Network mostly {dominant}"
+            : "Network evidence is incomplete across this window";
+        return new LearningPatternDisplayItem(
+            $"{FormatLearningHour(pattern.StartHour)}-" +
+                $"{FormatLearningHour(pattern.EndHourExclusive)} - " +
+                $"{pattern.ActivityState}",
+            $"{pattern.Confidence} pattern - {pattern.Freshness}" +
+                (pattern.CrossesMidnight ? " - crosses midnight" : string.Empty),
+            FormatLearningRange("Typical", pattern.CpuTypicalRange, null),
+            FormatLearningRange("Typical", pattern.MemoryTypicalRange, null),
+            network,
+            $"Built from {pattern.MemberContexts.Count:N0} established hourly " +
+                (pattern.MemberContexts.Count == 1 ? "profile" : "profiles") +
+                $" - {pattern.CombinedSampleCount:N0} observations - " +
+                $"minimum {pattern.MinimumDistinctObservedDayCount:N0} observed days");
+    }
+
+    private static string FormatLearningLayer(
+        MachineLearningMemoryLayer layer) => layer switch
+        {
+            MachineLearningMemoryLayer.ContextBaseline => "Layer 1 baseline",
+            MachineLearningMemoryLayer.CompactProfile => "Layer 2 profile",
+            MachineLearningMemoryLayer.BroaderPattern => "Layer 3 pattern",
+            MachineLearningMemoryLayer.AggregateEpisode => "Aggregate episode",
+            _ => "Learned evidence"
+        };
+
+    private static string FormatLearningRange(
+        string label,
+        MachineLearningRange? range,
+        double? adaptiveMean) => range is null
+            ? adaptiveMean is null
+                ? "Range unavailable"
+                : $"Observed adaptive mean {adaptiveMean.Value:F1}%\nRange still calibrating"
+            : $"{label} {range.Low:F1}-{range.High:F1}%";
 
     private static LearningEpisodeDisplayItem
         CreateLearningEpisodeDisplayItem(MachineLearningEpisode episode)
@@ -953,6 +1034,14 @@ public sealed partial class MainWindow : Window
                 "Persistence temporarily unavailable",
             _ => "Not yet persisted"
         };
+
+    private static string FormatLearningDateTime(
+        DateTimeOffset? timestamp,
+        string fallback) => timestamp is null
+            ? fallback
+            : timestamp.Value.ToLocalTime().ToString(
+                "MMM d, yyyy HH:mm",
+                CultureInfo.CurrentCulture);
 
     private void UpdateLearningRuntimeStatus()
     {
@@ -3038,13 +3127,22 @@ public sealed record MachineFindingDisplayItem(
     string Header,
     string Detail);
 
-public sealed record LearningBaselineDisplayItem(
+public sealed record LearningProfileDisplayItem(
     string Header,
     string Evidence,
     string CpuValue,
     string MemoryValue,
     string NetworkValue,
-    string ObservedSpan);
+    string Reinforcement,
+    double Opacity);
+
+public sealed record LearningPatternDisplayItem(
+    string Header,
+    string Status,
+    string CpuValue,
+    string MemoryValue,
+    string NetworkValue,
+    string Evidence);
 
 public sealed record LearnedItemDisplayItem(
     string Label,
