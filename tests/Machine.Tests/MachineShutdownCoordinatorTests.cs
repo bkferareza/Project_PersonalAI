@@ -95,6 +95,19 @@ public sealed class MachineShutdownCoordinatorTests
                 "application.crash")
         ], DateTimeOffset.UtcNow);
         health.Observe(null, null, reliability, DateTimeOffset.UtcNow);
+        var history = new MachineHistoryService(
+            TimeSpan.Zero,
+            TimeSpan.FromMinutes(1));
+        var historyStore = new RecordingHistoryStore();
+        history.BeginSession(DateTimeOffset.UtcNow.AddMinutes(-1));
+        history.Observe(new MachineHistoryObservation(
+            DateTimeOffset.UtcNow.AddSeconds(-30),
+            10,
+            20,
+            null,
+            null,
+            MachineUserActivityState.Active,
+            MachineOverallState.Stable));
         using var cancellation = new CancellationTokenSource();
         var coordinator = new MachineShutdownCoordinator(
             learning,
@@ -105,13 +118,19 @@ public sealed class MachineShutdownCoordinatorTests
             () => { },
             TimeSpan.FromSeconds(1),
             health,
-            healthStore);
+            healthStore,
+            history,
+            historyStore);
 
         await coordinator.BeginShutdown();
 
         Assert.NotNull(healthStore.State);
         Assert.Equal(1, healthStore.State.LifetimeObservedIncidentCount);
         Assert.Single(healthStore.State.Reliability!.RecentIncidents);
+        Assert.NotNull(historyStore.State);
+        Assert.False(historyStore.State.SessionOpen);
+        Assert.Contains(historyStore.State.Events, item =>
+            item.Kind == MachineHistoryEventKind.MatasuriSessionEnded);
     }
 
     private static MachineLearningService CreateDirtyService()
@@ -175,6 +194,23 @@ public sealed class MachineShutdownCoordinatorTests
 
         public Task SaveAsync(
             MachineHealthHistoryPersistedState state,
+            CancellationToken cancellationToken = default)
+        {
+            State = state;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingHistoryStore : IMachineHistoryStore
+    {
+        public MachineHistoryPersistedState? State { get; private set; }
+
+        public Task<MachineHistoryPersistedState?> LoadAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(State);
+
+        public Task SaveAsync(
+            MachineHistoryPersistedState state,
             CancellationToken cancellationToken = default)
         {
             State = state;
