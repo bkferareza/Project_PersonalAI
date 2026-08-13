@@ -34,6 +34,12 @@
     <Compile
       Include="..\..\src\Machine.App\MachineShutdownCoordinator.cs"
       Link="MachineShutdownCoordinator.cs" />
+    <Compile
+      Include="..\..\src\Machine.App\MatasuriShellAtmosphere.cs"
+      Link="MatasuriShellAtmosphere.cs" />
+    <Compile
+      Include="..\..\src\Machine.App\MatasuriPresentationValidation.cs"
+      Link="MatasuriPresentationValidation.cs" />
     <None
       Include="..\..\src\Machine.App\MainWindow.xaml"
       Link="Fixtures\MainWindow.xaml"

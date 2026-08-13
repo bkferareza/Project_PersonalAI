@@ -2,13 +2,16 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using Machine.Core;
+using Machine.Windows;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Windows.Graphics;
 using Windows.UI.ViewManagement;
 
@@ -16,8 +19,8 @@ namespace Machine.App;
 
 public sealed partial class MainWindow : Window
 {
-    private const int ExpandedWindowWidth = 520;
-    private const int ExpandedWindowHeight = 760;
+    private const int ExpandedWindowWidth = 650;
+    private const int ExpandedWindowHeight = 820;
     private const int WorkAreaMargin = 24;
     private const int TopProcessCount = 5;
     private const int LargeFolderResultCount = 10;
@@ -28,6 +31,7 @@ public sealed partial class MainWindow : Window
     private const int MaximumUpdateHistoryDisplayCount = 12;
     private const int MaximumReliabilityIncidentDisplayCount = 16;
     private const int MaximumRecurringFailureDisplayCount = 4;
+    private const int MaximumInventoryDisplayCount = 1_000;
     private const string UnavailableValue = "Unavailable";
     private const double BytesPerMebibyte =
         1024d * 1024d;
@@ -70,6 +74,15 @@ public sealed partial class MainWindow : Window
     private readonly IMachineLearningStore _learningStore;
     private readonly MachineHealthHistoryService _healthHistoryService;
     private readonly IMachineHealthHistoryStore _healthHistoryStore;
+    private readonly MachineHistoryService _historyService;
+    private readonly IMachineHistoryStore _historyStore;
+    private readonly IMachineServiceInventoryProvider
+        _serviceInventoryProvider;
+    private readonly IMachineScheduledTaskInventoryProvider
+        _taskInventoryProvider;
+    private readonly IMachineDeviceInventoryProvider
+        _deviceInventoryProvider;
+    private readonly IMachineGpuTelemetryProvider _gpuTelemetryProvider;
     private readonly MachineInsightTriggerPolicy
         _insightTriggerPolicy = new();
     private readonly CompactPresenceInteraction
@@ -79,6 +92,7 @@ public sealed partial class MainWindow : Window
     private readonly SystemBackdrop _dashboardBackdrop;
     private readonly UISettings _uiSettings = new();
     private readonly NativeAmbientOrbWindow _ambientOrbWindow;
+    private WindowsPowerBroadcastMonitor? _powerBroadcastMonitor;
     private InputNonClientPointerSource? _nonClientPointerSource;
     private CancellationTokenSource?
         _folderScanCancellationTokenSource;
@@ -101,6 +115,11 @@ public sealed partial class MainWindow : Window
     private MachineWindowsUpdateSnapshot? _latestWindowsUpdateSnapshot;
     private MachineRebootPendingSnapshot? _latestRebootPendingSnapshot;
     private MachineReliabilitySnapshot? _latestReliabilitySnapshot;
+    private MachineServiceInventorySnapshot? _latestServiceInventorySnapshot;
+    private MachineScheduledTaskInventorySnapshot?
+        _latestTaskInventorySnapshot;
+    private MachineDeviceInventorySnapshot? _latestDeviceInventorySnapshot;
+    private MachineGpuTelemetrySnapshot? _latestGpuTelemetrySnapshot;
     private OllamaStatusSnapshot? _latestOllamaStatusSnapshot;
     private MachineFindingsSnapshot _latestFindingsSnapshot =
         MachineFindingsEvaluator.Evaluate(new());
@@ -117,6 +136,11 @@ public sealed partial class MainWindow : Window
     private bool _isPackagedSoftwareInventoryRequestRunning;
     private bool _isStartupInventoryRequestRunning;
     private bool _isHealthRequestRunning;
+    private bool _isServiceInventoryRequestRunning;
+    private bool _isTaskInventoryRequestRunning;
+    private bool _isDeviceInventoryRequestRunning;
+    private MachineHistoryRange _selectedHistoryRange =
+        MachineHistoryRange.Last24Hours;
     private MachineOverallState _latestOverallState =
         MachineOverallState.Unknown;
     private CompactPresencePresentation?
@@ -126,6 +150,13 @@ public sealed partial class MainWindow : Window
     private bool _showNewInsightBloom;
     private bool _isAnimationSettingsChangeSubscribed;
     private bool _isXamlRootChangeSubscribed;
+    private Storyboard? _shellAtmosphereStoryboard;
+    private Storyboard? _generatingAtmosphereStoryboard;
+    private MatasuriShellAtmosphere? _appliedShellAtmosphere;
+#if DEBUG
+    private readonly MatasuriPresentationValidationOptions
+        _presentationValidationOptions;
+#endif
 
     public MainWindow(
         IMachineIdentityProvider identityProvider,
@@ -148,7 +179,14 @@ public sealed partial class MainWindow : Window
         MachineLearningService learningService,
         IMachineLearningStore learningStore,
         MachineHealthHistoryService healthHistoryService,
-        IMachineHealthHistoryStore healthHistoryStore)
+        IMachineHealthHistoryStore healthHistoryStore,
+        MachineHistoryService historyService,
+        IMachineHistoryStore historyStore,
+        IMachineServiceInventoryProvider serviceInventoryProvider,
+        IMachineScheduledTaskInventoryProvider taskInventoryProvider,
+        IMachineDeviceInventoryProvider deviceInventoryProvider,
+        IMachineGpuTelemetryProvider gpuTelemetryProvider,
+        string? presentationValidationArguments = null)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
         ArgumentNullException.ThrowIfNull(resourceProvider);
@@ -171,6 +209,12 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(learningStore);
         ArgumentNullException.ThrowIfNull(healthHistoryService);
         ArgumentNullException.ThrowIfNull(healthHistoryStore);
+        ArgumentNullException.ThrowIfNull(historyService);
+        ArgumentNullException.ThrowIfNull(historyStore);
+        ArgumentNullException.ThrowIfNull(serviceInventoryProvider);
+        ArgumentNullException.ThrowIfNull(taskInventoryProvider);
+        ArgumentNullException.ThrowIfNull(deviceInventoryProvider);
+        ArgumentNullException.ThrowIfNull(gpuTelemetryProvider);
 
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
@@ -193,8 +237,29 @@ public sealed partial class MainWindow : Window
         _learningStore = learningStore;
         _healthHistoryService = healthHistoryService;
         _healthHistoryStore = healthHistoryStore;
+        _historyService = historyService;
+        _historyStore = historyStore;
+        _serviceInventoryProvider = serviceInventoryProvider;
+        _taskInventoryProvider = taskInventoryProvider;
+        _deviceInventoryProvider = deviceInventoryProvider;
+        _gpuTelemetryProvider = gpuTelemetryProvider;
+#if DEBUG
+        _presentationValidationOptions =
+            MatasuriPresentationValidationOptions.Parse(
+                presentationValidationArguments);
+#endif
 
         InitializeComponent();
+#if DEBUG
+        MainContent.RequestedTheme =
+            _presentationValidationOptions.Theme switch
+            {
+                MatasuriPresentationTheme.Light => ElementTheme.Light,
+                MatasuriPresentationTheme.Dark => ElementTheme.Dark,
+                _ => ElementTheme.Default
+            };
+#endif
+        ApplyShellAtmosphere();
         _dashboardBackdrop = SystemBackdrop!;
         _ambientOrbWindow = new NativeAmbientOrbWindow(
             OpenDashboardFromAmbientOrb);
@@ -235,6 +300,9 @@ public sealed partial class MainWindow : Window
 
             _nonClientPointerSource =
                 InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+            _powerBroadcastMonitor ??= new(
+                WinRT.Interop.WindowNative.GetWindowHandle(this),
+                OnPowerTransition);
         }
         catch (Exception exception)
         {
@@ -243,6 +311,23 @@ public sealed partial class MainWindow : Window
 
         ApplyCompactPresentation(force: true);
         UpdateDashboardDragRegion();
+    }
+
+    private void OnPowerTransition(MachinePowerTransition transition)
+    {
+        var historyKind = transition.Kind switch
+        {
+            MachinePowerTransitionKind.Suspend =>
+                MachineHistoryEventKind.SystemSuspend,
+            MachinePowerTransitionKind.ResumeAutomatic =>
+                MachineHistoryEventKind.SystemResumeAutomatic,
+            MachinePowerTransitionKind.ResumeSuspend =>
+                MachineHistoryEventKind.SystemResumeSuspend,
+            _ => throw new ArgumentOutOfRangeException()
+        };
+        _historyService.RecordPowerTransition(
+            historyKind,
+            transition.OccurredAt);
     }
 
     private void ApplyDashboardCornerPreference()
@@ -286,6 +371,7 @@ public sealed partial class MainWindow : Window
         await LoadIdentityAsync();
         await LoadLearningAsync();
         await LoadHealthHistoryAsync();
+        await LoadHistoryAsync();
 
         var cancellationToken =
             _windowCancellationTokenSource.Token;
@@ -310,7 +396,16 @@ public sealed partial class MainWindow : Window
                 cancellationToken: cancellationToken),
             LoadStartupInventoryAsync(
                 isManualRefresh: false,
-                cancellationToken: cancellationToken));
+                cancellationToken: cancellationToken),
+            LoadServiceInventoryAsync(
+                isManualRefresh: false,
+                cancellationToken),
+            LoadTaskInventoryAsync(
+                isManualRefresh: false,
+                cancellationToken),
+            LoadDeviceInventoryAsync(
+                isManualRefresh: false,
+                cancellationToken));
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -351,7 +446,7 @@ public sealed partial class MainWindow : Window
             DeviceNameText.Text = UnavailableValue;
             OperatingSystemText.Text = UnavailableValue;
             ArchitectureText.Text = UnavailableValue;
-            LoadStatusText.Text = "Machine identity could not be loaded.";
+            LoadStatusText.Text = "Local identity could not be loaded.";
         }
     }
 
@@ -382,11 +477,17 @@ public sealed partial class MainWindow : Window
             var resourceTask = _resourceProvider.GetAsync(cancellationToken);
             var networkTask = TryCaptureNetworkAsync(cancellationToken);
             var sessionTask = TryCaptureSessionAsync(cancellationToken);
-            await Task.WhenAll(resourceTask, networkTask, sessionTask);
+            var gpuTask = TryCaptureGpuAsync(cancellationToken);
+            await Task.WhenAll(
+                resourceTask,
+                networkTask,
+                sessionTask,
+                gpuTask);
 
             var snapshot = await resourceTask;
             var networkSnapshot = await networkTask;
             var sessionSnapshot = await sessionTask;
+            var gpuSnapshot = await gpuTask;
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -398,6 +499,10 @@ public sealed partial class MainWindow : Window
             if (sessionSnapshot is not null)
             {
                 _latestSessionSnapshot = sessionSnapshot;
+            }
+            if (gpuSnapshot is not null)
+            {
+                _latestGpuTelemetrySnapshot = gpuSnapshot;
             }
 
             CpuUsageText.Text =
@@ -413,8 +518,14 @@ public sealed partial class MainWindow : Window
             TelemetryStatusText.Visibility = Visibility.Collapsed;
             UpdateNetworkTelemetry(networkSnapshot);
             UpdateSessionTelemetry(sessionSnapshot);
+            UpdateGpuDashboard(gpuSnapshot);
 
             ReevaluateFindings();
+            var historyChanged = CaptureHistoryObservation(
+                snapshot,
+                networkSnapshot,
+                sessionSnapshot,
+                gpuSnapshot);
             var learningChanged = await CaptureLearningObservationAsync(
                 snapshot,
                 networkSnapshot,
@@ -431,6 +542,20 @@ public sealed partial class MainWindow : Window
                 previousLastPersistence != _learningService.LastPersistedAt)
             {
                 UpdateLearningDashboard();
+            }
+            if (learningChanged)
+            {
+                _historyService.ObserveLearningMilestones(
+                    _learningService.GetDashboardSnapshot(
+                        DateTimeOffset.UtcNow));
+            }
+            if (historyChanged)
+            {
+                await _historyService.SaveIfDueAsync(
+                    _historyStore,
+                    DateTimeOffset.UtcNow,
+                    cancellationToken);
+                UpdateHistoryDashboard();
             }
             ObserveInsightTriggers();
             UpdateExplainMachineStateButtonState();
@@ -503,26 +628,58 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task<MachineGpuTelemetrySnapshot?> TryCaptureGpuAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _gpuTelemetryProvider.GetAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            return null;
+        }
+    }
+
     private void UpdatePresenceState(
         MachineOverallState overallState)
     {
         _latestOverallState = overallState;
+        ApplyShellAtmosphere();
         ApplyPresenceVisualMode();
     }
 
-    private static Brush GetStateBrush(
+    private Brush GetStateBrush(
         MachineOverallState overallState)
     {
-        var resourceKey = overallState switch
-        {
-            MachineOverallState.Stable => "SystemFillColorSuccessBrush",
-            MachineOverallState.Attention => "SystemFillColorCautionBrush",
-            MachineOverallState.Warning or MachineOverallState.Critical =>
-                "SystemFillColorCriticalBrush",
-            _ => "TextFillColorSecondaryBrush"
-        };
+        return (Brush)MainContent.Resources[
+            "MatasuriStateAccentBrush"];
+    }
 
-        return (Brush)Application.Current.Resources[resourceKey];
+    private MachineOverallState GetPresentationState()
+    {
+#if DEBUG
+        return _presentationValidationOptions.State ??
+            _latestOverallState;
+#else
+        return _latestOverallState;
+#endif
+    }
+
+    private bool IsGeneratingPresentation()
+    {
+#if DEBUG
+        return _presentationValidationOptions.IsGenerating ||
+            _isExplanationRequestRunning;
+#else
+        return _isExplanationRequestRunning;
+#endif
     }
 
     private void ReevaluateFindings(
@@ -613,6 +770,31 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task LoadHistoryAsync()
+    {
+        try
+        {
+            await _historyService.LoadAsync(
+                _historyStore,
+                _windowCancellationTokenSource.Token);
+            _historyService.BeginSession(DateTimeOffset.UtcNow);
+            _historyService.ObserveLearningMilestones(
+                _learningService.GetDashboardSnapshot(DateTimeOffset.UtcNow));
+            UpdateHistoryDashboard();
+        }
+        catch (OperationCanceledException)
+            when (_windowCancellationTokenSource.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            _historyService.BeginSession(DateTimeOffset.UtcNow);
+            UpdateHistoryDashboard();
+        }
+    }
+
     private async Task RunHealthLoopAsync(
         CancellationToken cancellationToken)
     {
@@ -684,6 +866,11 @@ public sealed partial class MainWindow : Window
                 reboot,
                 reliability,
                 observedAt);
+            _historyService.ObserveHealth(
+                update,
+                reboot,
+                reliability,
+                observedAt);
             await _healthHistoryService.SaveIfDueAsync(
                 _healthHistoryStore,
                 observedAt,
@@ -691,6 +878,7 @@ public sealed partial class MainWindow : Window
 
             UpdateHealthDashboard();
             UpdateLearningDashboard();
+            UpdateHistoryDashboard();
             ReevaluateFindings();
         }
         catch (OperationCanceledException)
@@ -885,10 +1073,419 @@ public sealed partial class MainWindow : Window
         return _learningService.Observe(observation);
     }
 
+    private bool CaptureHistoryObservation(
+        MachineResourceSnapshot resources,
+        MachineNetworkSnapshot? network,
+        MachineSessionSnapshot? session,
+        MachineGpuTelemetrySnapshot? gpu)
+    {
+        double? memoryPercent = resources.TotalMemoryBytes == 0
+            ? null
+            : resources.UsedMemoryBytes /
+                (double)resources.TotalMemoryBytes * 100d;
+        var systemVolume = _latestStorageSnapshot?.Volumes
+            .FirstOrDefault(volume => volume.IsSystemVolume);
+        double? freePercent = systemVolume is null ||
+            systemVolume.TotalSizeBytes <= 0
+                ? null
+                : systemVolume.AvailableFreeSpaceBytes /
+                    (double)systemVolume.TotalSizeBytes * 100d;
+        var primaryGpu = gpu?.Adapters.FirstOrDefault();
+        return _historyService.Observe(new MachineHistoryObservation(
+            resources.CapturedAt,
+            resources.CpuUsagePercent,
+            memoryPercent,
+            GetVerifiedRate(network?.Aggregate.ReceiveBytesPerSecond),
+            GetVerifiedRate(network?.Aggregate.SendBytesPerSecond),
+            session?.CurrentUserInputState,
+            _latestOverallState,
+            freePercent,
+            primaryGpu?.GpuUtilizationPercent,
+            primaryGpu?.MemoryUtilizationPercent,
+            primaryGpu?.TemperatureCelsius,
+            primaryGpu?.BoardPowerWatts));
+    }
+
     private static double? GetVerifiedRate(double? value) =>
         value is not null && double.IsFinite(value.Value) && value.Value >= 0d
             ? value
             : null;
+
+    private void UpdateGpuDashboard(MachineGpuTelemetrySnapshot? snapshot)
+    {
+        var adapter = snapshot?.Adapters.FirstOrDefault();
+        if (adapter is null)
+        {
+            GpuAdapterNameText.Text = "Graphics telemetry unavailable";
+            GpuProviderStatusText.Text = snapshot?.FailureCode ==
+                    "nvml.no-device"
+                ? "No accessible NVIDIA adapter was reported. Device inventory remains available."
+                : "Detailed GPU telemetry unavailable for this adapter.";
+            GpuUtilizationText.Text = "—";
+            GpuMemoryText.Text = "—";
+            GpuTemperatureText.Text = "—";
+            GpuPowerText.Text = "—";
+            GpuGraphicsClockText.Text = "—";
+            GpuMemoryClockText.Text = "—";
+            GpuFanText.Text = "Unavailable";
+            return;
+        }
+
+        GpuAdapterNameText.Text = adapter.AdapterName ??
+            "NVIDIA graphics adapter";
+        GpuProviderStatusText.Text = snapshot!.Availability ==
+                MachineGpuTelemetryAvailability.Available
+            ? "Verified through the installed NVIDIA NVML driver interface"
+            : "Partial telemetry from the installed NVIDIA NVML driver interface";
+        GpuUtilizationText.Text = FormatPercent(
+            adapter.GpuUtilizationPercent);
+        GpuMemoryText.Text = adapter.MemoryUsedBytes is { } used &&
+            adapter.MemoryTotalBytes is { } total
+                ? $"{used / BytesPerGibibyte:F1} / " +
+                    $"{total / BytesPerGibibyte:F1} GB"
+                : "—";
+        GpuTemperatureText.Text = adapter.TemperatureCelsius is { } temperature
+            ? $"{temperature:F0} °C"
+            : "—";
+        GpuPowerText.Text = adapter.BoardPowerWatts is { } power
+            ? $"{power:F0} W"
+            : "—";
+        GpuGraphicsClockText.Text = adapter.GraphicsClockMHz is { } graphics
+            ? $"{graphics:N0} MHz"
+            : "—";
+        GpuMemoryClockText.Text = adapter.MemoryClockMHz is { } memory
+            ? $"{memory:N0} MHz"
+            : "—";
+        GpuFanText.Text = adapter.FanPercent is { } fan
+            ? $"{fan:F0}% of reported maximum"
+            : "Fan telemetry unavailable";
+    }
+
+    private static string FormatPercent(double? value) =>
+        value is { } percentage ? $"{percentage:F0}%" : "—";
+
+    private void OnHistoryRangeClicked(
+        object sender,
+        RoutedEventArgs args)
+    {
+        _selectedHistoryRange = (sender as Button)?.Tag?.ToString() switch
+        {
+            "7d" => MachineHistoryRange.Last7Days,
+            "30d" => MachineHistoryRange.Last30Days,
+            "all" => MachineHistoryRange.All,
+            _ => MachineHistoryRange.Last24Hours
+        };
+        UpdateHistoryDashboard();
+    }
+
+    private void UpdateHistoryDashboard()
+    {
+        if (HistoryPage is null)
+        {
+            return;
+        }
+        var snapshot = _historyService.GetSnapshot(
+            _selectedHistoryRange,
+            DateTimeOffset.UtcNow);
+        HistoryObservedDurationText.Text = snapshot.TotalObservedDuration >
+                TimeSpan.Zero
+            ? $"{FormatDuration(snapshot.TotalObservedDuration)} observed"
+            : "Beginning now";
+        HistoryResolutionText.Text =
+            $"{FormatHistoryResolution(snapshot.Resolution)} rollups · " +
+            "offline and suspended time remain gaps";
+        SetHistoryRangeButtonState();
+
+        var cpu = AggregateHistoryMetric(
+            snapshot.Rollups,
+            static item => item.CpuUtilizationPercent);
+        var memory = AggregateHistoryMetric(
+            snapshot.Rollups,
+            static item => item.MemoryUtilizationPercent);
+        var gpu = AggregateHistoryMetric(
+            snapshot.Rollups,
+            static item => item.GpuUtilizationPercent);
+        var summary = new List<string>();
+        if (cpu is not null)
+        {
+            summary.Add($"CPU {cpu.Mean:F0}% avg · {cpu.Maximum:F0}% peak");
+        }
+        if (memory is not null)
+        {
+            summary.Add($"Memory {memory.Mean:F0}% avg");
+        }
+        if (gpu is not null)
+        {
+            summary.Add($"GPU {gpu.Mean:F0}% avg · {gpu.Maximum:F0}% peak");
+        }
+        HistoryResourceSummaryText.Text = summary.Count == 0
+            ? "Waiting for history"
+            : string.Join("\n", summary);
+
+        var activeTicks = snapshot.Rollups.Aggregate(
+            0L,
+            (total, item) => SaturatingAddTicks(
+                total,
+                item.ActivityDurations.ActiveTicks));
+        var idleTicks = snapshot.Rollups.Aggregate(
+            0L,
+            (total, item) => SaturatingAddTicks(
+                total,
+                item.ActivityDurations.IdleTicks));
+        SetDurationColumns(
+            [HistoryActiveColumn, HistoryIdleColumn],
+            [activeTicks, idleTicks]);
+        HistoryActivityText.Text =
+            $"Active {FormatDuration(TimeSpan.FromTicks(activeTicks))} · " +
+            $"Idle {FormatDuration(TimeSpan.FromTicks(idleTicks))}";
+
+        var stateTicks = new[]
+        {
+            snapshot.Rollups.Aggregate(0L, (total, item) =>
+                SaturatingAddTicks(total, item.StateDurations.StableTicks)),
+            snapshot.Rollups.Aggregate(0L, (total, item) =>
+                SaturatingAddTicks(total, item.StateDurations.AttentionTicks)),
+            snapshot.Rollups.Aggregate(0L, (total, item) =>
+                SaturatingAddTicks(total, item.StateDurations.WarningTicks)),
+            snapshot.Rollups.Aggregate(0L, (total, item) =>
+                SaturatingAddTicks(total, item.StateDurations.CriticalTicks)),
+            snapshot.Rollups.Aggregate(0L, (total, item) =>
+                SaturatingAddTicks(total, item.StateDurations.UnknownTicks))
+        };
+        SetDurationColumns(
+            [
+                HistoryStableColumn,
+                HistoryAttentionColumn,
+                HistoryWarningColumn,
+                HistoryCriticalColumn,
+                HistoryUnknownColumn
+            ],
+            stateTicks);
+        HistoryStateDurationText.Text = string.Join(
+            " · ",
+            new[]
+            {
+                ("Stable", stateTicks[0]),
+                ("Attention", stateTicks[1]),
+                ("Warning", stateTicks[2]),
+                ("Critical", stateTicks[3]),
+                ("Unknown", stateTicks[4])
+            }.Where(item => item.Item2 > 0).Select(item =>
+                $"{item.Item1} " +
+                FormatDuration(TimeSpan.FromTicks(item.Item2)))) switch
+        {
+            "" => "No state-duration evidence yet",
+            var text => text
+        };
+
+        var groupedEvents = MachineHistoryEventGrouper.GroupForDisplay(
+            snapshot.Events)
+            .Take(200)
+            .Select(CreateHistoryEventDisplayItem)
+            .ToArray();
+        HistoryEventsList.ItemsSource = groupedEvents;
+        HistoryEventsEmptyText.Visibility = groupedEvents.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RenderHistoryTrends(snapshot.Rollups);
+    }
+
+    private void SetHistoryRangeButtonState()
+    {
+        var selected = _selectedHistoryRange switch
+        {
+            MachineHistoryRange.Last7Days => History7DayButton,
+            MachineHistoryRange.Last30Days => History30DayButton,
+            MachineHistoryRange.All => HistoryAllButton,
+            _ => History24HourButton
+        };
+        foreach (var button in new[]
+        {
+            History24HourButton,
+            History7DayButton,
+            History30DayButton,
+            HistoryAllButton
+        })
+        {
+            button.Opacity = ReferenceEquals(button, selected) ? 1d : 0.55d;
+            button.FontWeight = ReferenceEquals(button, selected)
+                ? Microsoft.UI.Text.FontWeights.SemiBold
+                : Microsoft.UI.Text.FontWeights.Normal;
+        }
+    }
+
+    private static string FormatHistoryResolution(
+        MachineHistoryResolution resolution) => resolution switch
+        {
+            MachineHistoryResolution.FiveMinutes => "5-minute",
+            MachineHistoryResolution.Hour => "Hourly",
+            MachineHistoryResolution.Day => "Daily",
+            MachineHistoryResolution.Month => "Monthly",
+            _ => "Bounded"
+        };
+
+    private static HistoryEventDisplayItem CreateHistoryEventDisplayItem(
+        MachineHistoryEvent item)
+    {
+        var title = item.Count > 1
+            ? $"{item.Title} · {item.Count} occurrences"
+            : item.Title;
+        var time = item.Count > 1 && item.PeriodStart is { } start
+            ? $"{start.ToLocalTime():HH:mm}–" +
+                $"{(item.PeriodEnd ?? item.OccurredAt).ToLocalTime():HH:mm}"
+            : item.OccurredAt.ToLocalTime().ToString("HH:mm");
+        return new(
+            time,
+            title,
+            item.Detail,
+            string.IsNullOrWhiteSpace(item.Detail)
+                ? Visibility.Collapsed
+                : Visibility.Visible);
+    }
+
+    private void OnHistoryTrendSizeChanged(
+        object sender,
+        SizeChangedEventArgs args) => UpdateHistoryDashboard();
+
+    private void RenderHistoryTrends(
+        IReadOnlyList<MachineHistoryRollup> rollups)
+    {
+        var width = Math.Max(1d, HistoryTrendCanvas.ActualWidth);
+        var height = Math.Max(1d, HistoryTrendCanvas.ActualHeight);
+        SetHistoryPath(
+            HistoryCpuPolyline,
+            CreateHistorySegments(
+                rollups,
+                static item => item.CpuUtilizationPercent?.Mean,
+                width,
+                height));
+        SetHistoryPath(
+            HistoryMemoryPolyline,
+            CreateHistorySegments(
+                rollups,
+                static item => item.MemoryUtilizationPercent?.Mean,
+                width,
+                height));
+        var gpuSegments = CreateHistorySegments(
+            rollups,
+            static item => item.GpuUtilizationPercent?.Mean,
+            width,
+            height);
+        SetHistoryPath(HistoryGpuPolyline, gpuSegments);
+        var hasGpuSeries = gpuSegments.Any(segment => segment.Count > 1);
+        HistoryGpuPolyline.Visibility = hasGpuSeries
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        HistoryGpuLegendText.Visibility = hasGpuSeries
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private static IReadOnlyList<IReadOnlyList<
+        global::Windows.Foundation.Point>> CreateHistorySegments(
+            IReadOnlyList<MachineHistoryRollup> rollups,
+            Func<MachineHistoryRollup, double?> select,
+            double width,
+            double height)
+    {
+        if (rollups.Count == 0)
+        {
+            return [];
+        }
+        var start = rollups[0].BucketStart;
+        var end = rollups[^1].BucketEnd;
+        var durationTicks = Math.Max(1L, (end - start).Ticks);
+        var segments = new List<List<global::Windows.Foundation.Point>>();
+        List<global::Windows.Foundation.Point>? current = null;
+        DateTimeOffset? previousEnd = null;
+        foreach (var rollup in rollups)
+        {
+            var value = select(rollup);
+            var isContinuous = previousEnd is null ||
+                rollup.BucketStart <= previousEnd.Value;
+            if (value is null || !double.IsFinite(value.Value))
+            {
+                current = null;
+                previousEnd = rollup.BucketEnd;
+                continue;
+            }
+            if (current is null || !isContinuous)
+            {
+                current = [];
+                segments.Add(current);
+            }
+            var x = (rollup.BucketStart - start).Ticks /
+                (double)durationTicks * width;
+            var y = height - Math.Clamp(value.Value, 0d, 100d) /
+                100d * height;
+            current.Add(new(x, y));
+            previousEnd = rollup.BucketEnd;
+        }
+        return segments;
+    }
+
+    private static void SetHistoryPath(
+        Microsoft.UI.Xaml.Shapes.Path path,
+        IReadOnlyList<IReadOnlyList<global::Windows.Foundation.Point>>
+            segments)
+    {
+        var geometry = new Microsoft.UI.Xaml.Media.PathGeometry();
+        foreach (var points in segments.Where(item => item.Count > 0))
+        {
+            var figure = new Microsoft.UI.Xaml.Media.PathFigure
+            {
+                StartPoint = points[0],
+                IsClosed = false,
+                IsFilled = false
+            };
+            foreach (var point in points.Skip(1))
+            {
+                figure.Segments.Add(
+                    new Microsoft.UI.Xaml.Media.LineSegment
+                    {
+                        Point = point
+                    });
+            }
+            geometry.Figures.Add(figure);
+        }
+        path.Data = geometry;
+    }
+
+    private static HistoryMetricAggregate? AggregateHistoryMetric(
+        IEnumerable<MachineHistoryRollup> rollups,
+        Func<MachineHistoryRollup, MachineHistoryNumericSummary?> select)
+    {
+        var values = rollups.Select(select)
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .ToArray();
+        if (values.Length == 0)
+        {
+            return null;
+        }
+        var count = values.Sum(item => (double)item.SampleCount);
+        return new(
+            values.Sum(item => item.Mean * item.SampleCount) / count,
+            values.Max(item => item.Maximum));
+    }
+
+    private static void SetDurationColumns(
+        IReadOnlyList<ColumnDefinition> columns,
+        IReadOnlyList<long> values)
+    {
+        var any = values.Any(value => value > 0);
+        for (var index = 0; index < columns.Count; index++)
+        {
+            columns[index].Width = new GridLength(
+                any ? Math.Max(0, values[index]) : index == 0 ? 1 : 0,
+                GridUnitType.Star);
+        }
+    }
+
+    private static long SaturatingAddTicks(long left, long right) =>
+        right > 0 && left > long.MaxValue - right
+            ? long.MaxValue
+            : left + right;
 
     private void UpdateNetworkTelemetry(MachineNetworkSnapshot? snapshot)
     {
@@ -967,7 +1564,7 @@ public sealed partial class MainWindow : Window
 
         OverviewSessionUptimeText.Text =
             $"Windows up {FormatUptime(snapshot.SystemUptime)} · " +
-            $"Machine running {FormatUptime(snapshot.MachineUptime)}";
+            $"Matasuri running {FormatUptime(snapshot.MachineUptime)}";
         OverviewSessionActivityText.Text =
             $"{snapshot.CurrentUserInputState} · " +
             $"last input {FormatInputAge(snapshot.CurrentUserIdleDuration)} ago";
@@ -1342,7 +1939,7 @@ public sealed partial class MainWindow : Window
         var sessionCount = snapshot.Metadata.LifetimeMachineSessionCount;
         LearningPageObservedText.Text =
             $"{FormatDuration(snapshot.ObservedDuration)} across " +
-            $"{sessionCount:N0} Machine " +
+            $"{sessionCount:N0} Matasuri " +
             (sessionCount == 1 ? "session" : "sessions");
         LearningPageLifetimeObservationsText.Text =
             $"{snapshot.Metadata.LifetimeAcceptedObservationCount:N0} lifetime";
@@ -1648,10 +2245,22 @@ public sealed partial class MainWindow : Window
     private void UpdateCurrentFindings(
         MachineFindingsSnapshot snapshot)
     {
-        FindingsOverallStateText.Text =
-            snapshot.OverallState.ToString();
+        var presentationState = GetPresentationState();
+        FindingsOverallStateText.Text = presentationState.ToString();
         FindingsOverallStateText.Foreground =
-            GetStateBrush(snapshot.OverallState);
+            GetStateBrush(presentationState);
+        OverviewStatePostureText.Text = presentationState switch
+        {
+            MachineOverallState.Stable =>
+                "Quiet right now. Verified signals remain within a calm posture.",
+            MachineOverallState.Attention =>
+                "A small change deserves attention, without immediate urgency.",
+            MachineOverallState.Warning =>
+                "Verified evidence shows a condition worth reviewing soon.",
+            MachineOverallState.Critical =>
+                "Verified evidence shows a serious condition requiring attention.",
+            _ => "Waiting for enough verified local evidence."
+        };
 
         var displayItems = snapshot.Findings
             .Take(FindingsDisplayCount)
@@ -1940,6 +2549,7 @@ public sealed partial class MainWindow : Window
         }
 
         _isExplanationRequestRunning = true;
+        ApplyShellAtmosphere();
         ApplyPresenceVisualMode();
         UpdateExplainMachineStateButtonState();
         ExplainMachineStateButton.Content = "Refreshing...";
@@ -1973,7 +2583,12 @@ public sealed partial class MainWindow : Window
                 Health: MachineHealthInsightProjector.Project(
                     _latestWindowsUpdateSnapshot,
                     _latestRebootPendingSnapshot,
-                    _latestReliabilitySnapshot));
+                    _latestReliabilitySnapshot),
+                History: MachineHistoryInsightProjector.Project(
+                    _historyService.GetSnapshot(
+                        MachineHistoryRange.Last7Days,
+                        DateTimeOffset.UtcNow)),
+                Gpu: CreateGpuInsightContext(_latestGpuTelemetrySnapshot));
             var explanation =
                 await _machineStateExplainer.ExplainAsync(
                     request,
@@ -2040,6 +2655,7 @@ public sealed partial class MainWindow : Window
         {
             stopwatch.Stop();
             _isExplanationRequestRunning = false;
+            ApplyShellAtmosphere();
             ApplyPresenceVisualMode();
 
             var followUp = _insightTriggerPolicy.CompleteRequest(
@@ -2074,6 +2690,19 @@ public sealed partial class MainWindow : Window
             IsInsightContextAvailable() &&
             !_insightTriggerPolicy.IsRequestInFlight &&
             !_isExplanationRequestRunning;
+    }
+
+    private static MachineGpuInsightContext? CreateGpuInsightContext(
+        MachineGpuTelemetrySnapshot? snapshot)
+    {
+        var adapter = snapshot?.Adapters.FirstOrDefault();
+        return adapter is null
+            ? null
+            : new MachineGpuInsightContext(
+                adapter.GpuUtilizationPercent,
+                adapter.MemoryUtilizationPercent,
+                adapter.TemperatureCelsius,
+                adapter.BoardPowerWatts);
     }
 
     private static MachineNetworkInsightContext?
@@ -3101,6 +3730,416 @@ public sealed partial class MainWindow : Window
             !_windowCancellationTokenSource.IsCancellationRequested;
     }
 
+    private async void OnRefreshServicesClicked(
+        object sender,
+        RoutedEventArgs args) => await LoadServiceInventoryAsync(
+        isManualRefresh: true,
+        _windowCancellationTokenSource.Token);
+
+    private async Task LoadServiceInventoryAsync(
+        bool isManualRefresh,
+        CancellationToken cancellationToken)
+    {
+        if (_isServiceInventoryRequestRunning)
+        {
+            return;
+        }
+        _isServiceInventoryRequestRunning = true;
+        RefreshServicesButton.IsEnabled = false;
+        if (isManualRefresh)
+        {
+            RefreshServicesButton.Content = "Refreshing...";
+            await Task.Yield();
+        }
+        try
+        {
+            var snapshot = await _serviceInventoryProvider.GetAsync(
+                cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            _latestServiceInventorySnapshot = snapshot;
+            ApplyServiceFilter(snapshot);
+            ServicesStatusText.Text = CreateInventoryStatus(
+                snapshot.IsComplete,
+                snapshot.ReadFailureCount,
+                snapshot.TruncatedItemCount);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            ServicesStatusText.Text =
+                "Service inventory is temporarily unavailable.";
+        }
+        finally
+        {
+            _isServiceInventoryRequestRunning = false;
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                RefreshServicesButton.Content = "Refresh";
+                RefreshServicesButton.IsEnabled = true;
+            }
+        }
+    }
+
+    private void OnServiceFilterChanged(object sender, object args)
+    {
+        if (_latestServiceInventorySnapshot is { } snapshot)
+        {
+            ApplyServiceFilter(snapshot);
+        }
+    }
+
+    private void ApplyServiceFilter(MachineServiceInventorySnapshot snapshot)
+    {
+        var search = ServiceSearchBox.Text.Trim();
+        var state = GetSelectedTag(ServiceStateFilter);
+        var startType = GetSelectedTag(ServiceStartTypeFilter);
+        var filtered = snapshot.Items.Where(item =>
+                (search.Length == 0 ||
+                 item.Name.Contains(search,
+                     StringComparison.OrdinalIgnoreCase) ||
+                 item.DisplayName.Contains(search,
+                     StringComparison.OrdinalIgnoreCase)) &&
+                ServiceStateMatches(item.State, state) &&
+                ServiceStartTypeMatches(item.StartType, startType))
+            .Take(MaximumInventoryDisplayCount)
+            .Select(CreateServiceDisplayItem)
+            .ToArray();
+        ServicesList.ItemsSource = filtered;
+        ServicesSummaryText.Text =
+            $"{snapshot.Items.Count:N0} services · showing " +
+            $"{filtered.Length:N0}";
+    }
+
+    private static bool ServiceStateMatches(
+        MachineServiceState state,
+        string filter) => filter switch
+        {
+            "Running" => state == MachineServiceState.Running,
+            "Stopped" => state == MachineServiceState.Stopped,
+            "Paused" => state == MachineServiceState.Paused,
+            "pending" => state is
+                MachineServiceState.StartPending or
+                MachineServiceState.StopPending or
+                MachineServiceState.ContinuePending or
+                MachineServiceState.PausePending,
+            _ => true
+        };
+
+    private static bool ServiceStartTypeMatches(
+        MachineServiceStartType startType,
+        string filter) => filter switch
+        {
+            "automatic" => startType is
+                MachineServiceStartType.Automatic or
+                MachineServiceStartType.AutomaticDelayed,
+            "Manual" => startType == MachineServiceStartType.Manual,
+            "Disabled" => startType == MachineServiceStartType.Disabled,
+            "boot" => startType is
+                MachineServiceStartType.Boot or
+                MachineServiceStartType.System,
+            _ => true
+        };
+
+    private static ServiceDisplayItem CreateServiceDisplayItem(
+        MachineServiceSnapshot item) => new(
+        item.DisplayName,
+        item.Name == item.DisplayName
+            ? item.Category.ToString()
+            : $"{item.Name} · {item.Category}",
+        item.State.ToString(),
+        item.ProcessId is { } processId
+            ? $"{FormatServiceStartType(item.StartType)} · PID {processId}"
+            : FormatServiceStartType(item.StartType));
+
+    private static string FormatServiceStartType(
+        MachineServiceStartType value) => value switch
+        {
+            MachineServiceStartType.AutomaticDelayed =>
+                "Automatic (delayed)",
+            _ => value.ToString()
+        };
+
+    private async void OnRefreshTasksClicked(
+        object sender,
+        RoutedEventArgs args) => await LoadTaskInventoryAsync(
+        isManualRefresh: true,
+        _windowCancellationTokenSource.Token);
+
+    private async Task LoadTaskInventoryAsync(
+        bool isManualRefresh,
+        CancellationToken cancellationToken)
+    {
+        if (_isTaskInventoryRequestRunning)
+        {
+            return;
+        }
+        _isTaskInventoryRequestRunning = true;
+        RefreshTasksButton.IsEnabled = false;
+        if (isManualRefresh)
+        {
+            RefreshTasksButton.Content = "Refreshing...";
+            await Task.Yield();
+        }
+        try
+        {
+            var snapshot = await _taskInventoryProvider.GetAsync(
+                cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            _latestTaskInventorySnapshot = snapshot;
+            ApplyTaskFilter(snapshot);
+            TasksStatusText.Text = CreateInventoryStatus(
+                snapshot.IsComplete,
+                snapshot.ReadFailureCount,
+                snapshot.TruncatedItemCount);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            TasksStatusText.Text =
+                "Scheduled-task inventory is temporarily unavailable.";
+        }
+        finally
+        {
+            _isTaskInventoryRequestRunning = false;
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                RefreshTasksButton.Content = "Refresh";
+                RefreshTasksButton.IsEnabled = true;
+            }
+        }
+    }
+
+    private void OnTaskFilterChanged(object sender, object args)
+    {
+        if (_latestTaskInventorySnapshot is { } snapshot)
+        {
+            ApplyTaskFilter(snapshot);
+        }
+    }
+
+    private void ApplyTaskFilter(
+        MachineScheduledTaskInventorySnapshot snapshot)
+    {
+        var search = TaskSearchBox.Text.Trim();
+        var enabled = GetSelectedTag(TaskEnabledFilter);
+        var state = GetSelectedTag(TaskStateFilter);
+        var result = GetSelectedTag(TaskResultFilter);
+        var filtered = snapshot.Items.Where(item =>
+                (search.Length == 0 ||
+                 item.Name.Contains(search,
+                     StringComparison.OrdinalIgnoreCase) ||
+                 item.Path.Contains(search,
+                     StringComparison.OrdinalIgnoreCase) ||
+                 item.Author?.Contains(search,
+                     StringComparison.OrdinalIgnoreCase) == true ||
+                 item.ExecutableName?.Contains(search,
+                     StringComparison.OrdinalIgnoreCase) == true) &&
+                (enabled == "all" ||
+                 enabled == "enabled" && item.Enabled ||
+                 enabled == "disabled" && !item.Enabled) &&
+                (state == "all" ||
+                 string.Equals(item.State.ToString(), state,
+                     StringComparison.Ordinal)) &&
+                (result != "failed" || item.LastRunFailed))
+            .Take(MaximumInventoryDisplayCount)
+            .Select(CreateTaskDisplayItem)
+            .ToArray();
+        TasksList.ItemsSource = filtered;
+        TasksSummaryText.Text =
+            $"{snapshot.Items.Count:N0} tasks · showing {filtered.Length:N0}";
+    }
+
+    private static ScheduledTaskDisplayItem CreateTaskDisplayItem(
+        MachineScheduledTaskSnapshot item)
+    {
+        var triggers = item.TriggerCategories.Count == 0
+            ? "Triggers unavailable"
+            : string.Join(", ", item.TriggerCategories);
+        var next = item.NextRunAt is { } nextRun
+            ? $"Next {nextRun.ToLocalTime():MMM d, HH:mm}"
+            : "No next run reported";
+        var last = item.LastRunAt is { } lastRun
+            ? $"Last {lastRun.ToLocalTime():MMM d, HH:mm}"
+            : "No last run reported";
+        var executable = item.ExecutableName is null
+            ? string.Empty
+            : $" · {item.ExecutableName}";
+        return new(
+            item.Name,
+            item.Path,
+            item.Enabled ? item.State.ToString() : "Disabled",
+            $"{triggers} · {next}",
+            $"{last} · Result " +
+                (item.LastResult?.ToString("X8") ?? "unavailable") +
+                executable);
+    }
+
+    private async void OnRefreshDevicesClicked(
+        object sender,
+        RoutedEventArgs args) => await LoadDeviceInventoryAsync(
+        isManualRefresh: true,
+        _windowCancellationTokenSource.Token);
+
+    private async Task LoadDeviceInventoryAsync(
+        bool isManualRefresh,
+        CancellationToken cancellationToken)
+    {
+        if (_isDeviceInventoryRequestRunning)
+        {
+            return;
+        }
+        _isDeviceInventoryRequestRunning = true;
+        RefreshDevicesButton.IsEnabled = false;
+        if (isManualRefresh)
+        {
+            RefreshDevicesButton.Content = "Refreshing...";
+            await Task.Yield();
+        }
+        try
+        {
+            var snapshot = await _deviceInventoryProvider.GetAsync(
+                cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            _latestDeviceInventorySnapshot = snapshot;
+            var selectedClass = DeviceClassFilter.SelectedItem?.ToString();
+            DeviceClassFilter.ItemsSource = new[] { "All classes" }
+                .Concat(snapshot.Items.Select(item => item.DeviceClass)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(item => item,
+                        StringComparer.OrdinalIgnoreCase))
+                .ToArray();
+            DeviceClassFilter.SelectedItem = selectedClass is not null &&
+                DeviceClassFilter.Items.Contains(selectedClass)
+                    ? selectedClass
+                    : "All classes";
+            ApplyDeviceFilter(snapshot);
+            DevicesStatusText.Text = CreateInventoryStatus(
+                snapshot.IsComplete,
+                snapshot.ReadFailureCount,
+                snapshot.TruncatedItemCount);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            DevicesStatusText.Text =
+                "Device inventory is temporarily unavailable.";
+        }
+        finally
+        {
+            _isDeviceInventoryRequestRunning = false;
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                RefreshDevicesButton.Content = "Refresh";
+                RefreshDevicesButton.IsEnabled = true;
+            }
+        }
+    }
+
+    private void OnDeviceFilterChanged(object sender, object args)
+    {
+        if (_latestDeviceInventorySnapshot is { } snapshot)
+        {
+            ApplyDeviceFilter(snapshot);
+        }
+    }
+
+    private void ApplyDeviceFilter(MachineDeviceInventorySnapshot snapshot)
+    {
+        var search = DeviceSearchBox.Text.Trim();
+        var selectedClass = DeviceClassFilter.SelectedItem?.ToString();
+        var problemFilter = GetSelectedTag(DeviceProblemFilter);
+        var filtered = snapshot.Items.Where(item =>
+                (search.Length == 0 ||
+                 item.DisplayName.Contains(search,
+                     StringComparison.OrdinalIgnoreCase) ||
+                 item.DeviceClass.Contains(search,
+                     StringComparison.OrdinalIgnoreCase) ||
+                 item.Manufacturer?.Contains(search,
+                     StringComparison.OrdinalIgnoreCase) == true ||
+                 item.DriverProvider?.Contains(search,
+                     StringComparison.OrdinalIgnoreCase) == true) &&
+                (selectedClass is null or "All classes" ||
+                 string.Equals(item.DeviceClass, selectedClass,
+                     StringComparison.OrdinalIgnoreCase)) &&
+                (problemFilter != "problem" ||
+                 item.HasWindowsReportedProblem))
+            .Take(MaximumInventoryDisplayCount)
+            .Select(CreateDeviceDisplayItem)
+            .ToArray();
+        DevicesList.ItemsSource = filtered;
+        var problemCount = snapshot.Items.Count(item =>
+            item.HasWindowsReportedProblem);
+        DevicesSummaryText.Text =
+            $"{snapshot.Items.Count:N0} devices · {problemCount:N0} with " +
+            $"a Windows-reported problem · showing {filtered.Length:N0}";
+    }
+
+    private static DeviceDisplayItem CreateDeviceDisplayItem(
+        MachineDeviceSnapshot item)
+    {
+        var driverParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(item.DriverProvider))
+        {
+            driverParts.Add(item.DriverProvider);
+        }
+        if (!string.IsNullOrWhiteSpace(item.DriverVersion))
+        {
+            driverParts.Add($"Driver {item.DriverVersion}");
+        }
+        if (item.DriverDate is { } date)
+        {
+            driverParts.Add(date.ToString("MMM d, yyyy"));
+        }
+        return new(
+            item.DisplayName,
+            string.IsNullOrWhiteSpace(item.Manufacturer)
+                ? item.DeviceClass
+                : $"{item.DeviceClass} · {item.Manufacturer}",
+            driverParts.Count == 0
+                ? "Driver details unavailable"
+                : string.Join(" · ", driverParts),
+            item.HasWindowsReportedProblem
+                ? $"Windows problem code {item.ProblemCode}"
+                : "No Windows-reported problem");
+    }
+
+    private static string GetSelectedTag(ComboBox comboBox) =>
+        (comboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "all";
+
+    private static string CreateInventoryStatus(
+        bool isComplete,
+        int readFailureCount,
+        int truncatedItemCount)
+    {
+        if (isComplete)
+        {
+            return string.Empty;
+        }
+        var parts = new List<string> { "Inventory is partial" };
+        if (readFailureCount > 0)
+        {
+            parts.Add($"{readFailureCount:N0} read " +
+                (readFailureCount == 1 ? "failure" : "failures"));
+        }
+        if (truncatedItemCount > 0)
+        {
+            parts.Add($"{truncatedItemCount:N0} items beyond the bound");
+        }
+        return string.Join(" · ", parts);
+    }
+
     private static string FormatBytes(long bytes)
     {
         if (bytes >= BytesPerTebibyte)
@@ -3240,12 +4279,9 @@ public sealed partial class MainWindow : Window
         return $"{Math.Max(0, bounded.Seconds)}s";
     }
 
-    private void OnDashboardBackRequested(
-        NavigationView sender,
-        NavigationViewBackRequestedEventArgs args)
-    {
-        ReturnToAmbientPresence();
-    }
+    private void OnDashboardBackClicked(
+        object sender,
+        RoutedEventArgs args) => ReturnToAmbientPresence();
 
     private void OnDashboardCloseClicked(object sender, RoutedEventArgs args) =>
         DashboardChromeLayout.InvokeClose(Close);
@@ -3288,7 +4324,7 @@ public sealed partial class MainWindow : Window
 
         if (_detailsExpanded)
         {
-            DetailsPanel.SelectedItem = OverviewNavigationItem;
+            SelectNavigationButton(OverviewNavigationItem);
             ShowDashboardPage("overview");
             MainContent.DispatcherQueue.TryEnqueue(
                 DispatcherQueuePriority.Low,
@@ -3385,6 +4421,115 @@ public sealed partial class MainWindow : Window
         ApplyPresenceVisualMode(force: true);
     }
 
+    private void ApplyShellAtmosphere()
+    {
+        if (MainContent is null)
+        {
+            return;
+        }
+        var atmosphere = MatasuriShellAtmospherePolicy.Select(
+            GetPresentationState(),
+            IsGeneratingPresentation(),
+            _uiSettings.AnimationsEnabled);
+        if (atmosphere == _appliedShellAtmosphere)
+        {
+            return;
+        }
+        _appliedShellAtmosphere = atmosphere;
+        var atmosphereBrush = (SolidColorBrush)MainContent.Resources[
+            "MatasuriAtmosphereBrush"];
+        var accentBrush = (SolidColorBrush)MainContent.Resources[
+            "MatasuriStateAccentBrush"];
+        var targetAtmosphere = ToColor(atmosphere.Atmosphere);
+        var targetAccent = ToColor(atmosphere.Accent);
+        var currentAtmosphere = atmosphereBrush.Color;
+        var currentAccent = accentBrush.Color;
+        _shellAtmosphereStoryboard?.Stop();
+        _shellAtmosphereStoryboard = null;
+        atmosphereBrush.Color = currentAtmosphere;
+        accentBrush.Color = currentAccent;
+        if (atmosphere.TransitionDuration == TimeSpan.Zero)
+        {
+            atmosphereBrush.Color = targetAtmosphere;
+            accentBrush.Color = targetAccent;
+        }
+        else
+        {
+            var easing = new CubicEase
+            {
+                EasingMode = EasingMode.EaseInOut
+            };
+            var atmosphereAnimation = new ColorAnimation
+            {
+                To = targetAtmosphere,
+                Duration = atmosphere.TransitionDuration,
+                EasingFunction = easing
+            };
+            Storyboard.SetTarget(atmosphereAnimation, atmosphereBrush);
+            Storyboard.SetTargetProperty(atmosphereAnimation, "Color");
+            var accentAnimation = new ColorAnimation
+            {
+                To = targetAccent,
+                Duration = atmosphere.TransitionDuration,
+                EasingFunction = new CubicEase
+                {
+                    EasingMode = EasingMode.EaseInOut
+                }
+            };
+            Storyboard.SetTarget(accentAnimation, accentBrush);
+            Storyboard.SetTargetProperty(accentAnimation, "Color");
+            _shellAtmosphereStoryboard = new Storyboard();
+            _shellAtmosphereStoryboard.Children.Add(atmosphereAnimation);
+            _shellAtmosphereStoryboard.Children.Add(accentAnimation);
+            _shellAtmosphereStoryboard.Completed += (_, _) =>
+            {
+                atmosphereBrush.Color = targetAtmosphere;
+                accentBrush.Color = targetAccent;
+            };
+            _shellAtmosphereStoryboard.Begin();
+        }
+
+        _generatingAtmosphereStoryboard?.Stop();
+        _generatingAtmosphereStoryboard = null;
+        if (!atmosphere.IsGenerating)
+        {
+            GeneratingAtmosphereLayer.Opacity = 0d;
+        }
+        else if (!atmosphere.AnimateGeneratingOverlay)
+        {
+            GeneratingAtmosphereLayer.Opacity = 0.055d;
+        }
+        else
+        {
+            var animation = new DoubleAnimation
+            {
+                From = 0.035d,
+                To = 0.10d,
+                Duration = TimeSpan.FromMilliseconds(900),
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase
+                {
+                    EasingMode = EasingMode.EaseInOut
+                }
+            };
+            Storyboard.SetTarget(
+                animation,
+                GeneratingAtmosphereLayer);
+            Storyboard.SetTargetProperty(animation, "Opacity");
+            _generatingAtmosphereStoryboard = new Storyboard();
+            _generatingAtmosphereStoryboard.Children.Add(animation);
+            _generatingAtmosphereStoryboard.Begin();
+        }
+    }
+
+    private static global::Windows.UI.Color ToColor(
+        MatasuriColor color) => global::Windows.UI.Color.FromArgb(
+        color.Alpha,
+        color.Red,
+        color.Green,
+        color.Blue);
+
     private void ApplyPresenceVisualMode(bool force = false)
     {
         if (_windowCancellationTokenSource.IsCancellationRequested)
@@ -3393,8 +4538,8 @@ public sealed partial class MainWindow : Window
         }
 
         var mode = CompactPresenceLayout.SelectVisualMode(
-            _latestOverallState,
-            _isExplanationRequestRunning,
+            GetPresentationState(),
+            IsGeneratingPresentation(),
             _showNewInsightBloom);
 
         if (!force && _activePresenceVisualMode == mode)
@@ -3437,7 +4582,10 @@ public sealed partial class MainWindow : Window
         object args)
     {
         MainContent.DispatcherQueue.TryEnqueue(() =>
-            ApplyPresenceVisualMode(force: true));
+        {
+            ApplyShellAtmosphere();
+            ApplyPresenceVisualMode(force: true);
+        });
     }
 
     private void UpdateWindowChrome(bool isDashboardExpanded)
@@ -3516,24 +4664,63 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnDashboardNavigationSelectionChanged(
-        NavigationView sender,
-        NavigationViewSelectionChangedEventArgs args)
+    private void OnDashboardNavigationClicked(
+        object sender,
+        RoutedEventArgs args)
     {
-        if (OverviewPage is null)
+        if (OverviewPage is null || sender is not Button button)
         {
             return;
         }
 
-        var tag = (args.SelectedItemContainer as NavigationViewItem)?
-            .Tag?.ToString() ?? "overview";
+        var tag = button.Tag?.ToString() ?? "overview";
 
+        SelectNavigationButton(button);
         ShowDashboardPage(tag);
+    }
+
+    private void SelectNavigationButton(Button selected)
+    {
+        var buttons = new[]
+        {
+            OverviewNavigationItem,
+            HistoryNavigationItem,
+            LearningNavigationItem,
+            HealthNavigationItem,
+            NetworkNavigationItem,
+            HardwareNavigationItem,
+            StorageNavigationItem,
+            SoftwareNavigationItem,
+            StartupNavigationItem,
+            ServicesNavigationItem,
+            TasksNavigationItem,
+            DevicesNavigationItem,
+            RuntimeNavigationItem
+        };
+        var selectedBrush = (Brush)MainContent.Resources[
+            "MatasuriElevatedSurfaceBrush"];
+        foreach (var button in buttons)
+        {
+            var isSelected = ReferenceEquals(button, selected);
+            button.Background = isSelected
+                ? selectedBrush
+                : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            button.FontWeight = isSelected
+                ? Microsoft.UI.Text.FontWeights.SemiBold
+                : Microsoft.UI.Text.FontWeights.Normal;
+            button.Opacity = isSelected ? 1d : 0.72d;
+            AutomationProperties.SetName(
+                button,
+                $"{button.Content}{(isSelected ? ", selected" : string.Empty)}");
+        }
     }
 
     private void ShowDashboardPage(string tag)
     {
         OverviewPage.Visibility = tag == "overview"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        HistoryPage.Visibility = tag == "history"
             ? Visibility.Visible
             : Visibility.Collapsed;
         LearningPage.Visibility = tag == "learning"
@@ -3545,6 +4732,9 @@ public sealed partial class MainWindow : Window
         HealthPage.Visibility = tag == "health"
             ? Visibility.Visible
             : Visibility.Collapsed;
+        HardwarePage.Visibility = tag == "hardware"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         StoragePage.Visibility = tag == "storage"
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -3554,11 +4744,24 @@ public sealed partial class MainWindow : Window
         StartupPage.Visibility = tag == "startup"
             ? Visibility.Visible
             : Visibility.Collapsed;
+        ServicesPage.Visibility = tag == "services"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        TasksPage.Visibility = tag == "tasks"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        DevicesPage.Visibility = tag == "devices"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         RuntimePage.Visibility = tag == "runtime"
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        if (tag == "learning")
+        if (tag == "history")
+        {
+            UpdateHistoryDashboard();
+        }
+        else if (tag == "learning")
         {
             UpdateLearningDashboard();
         }
@@ -3686,6 +4889,12 @@ public sealed partial class MainWindow : Window
 
     internal void StopForApplicationShutdown()
     {
+        _shellAtmosphereStoryboard?.Stop();
+        _shellAtmosphereStoryboard = null;
+        _generatingAtmosphereStoryboard?.Stop();
+        _generatingAtmosphereStoryboard = null;
+        _powerBroadcastMonitor?.Dispose();
+        _powerBroadcastMonitor = null;
         _ambientOrbWindow.NewInsightCompleted -= OnNewInsightBloomCompleted;
         _ambientOrbWindow.Dispose();
         if (_isXamlRootChangeSubscribed && MainContent.XamlRoot is not null)
@@ -3797,3 +5006,32 @@ public sealed record ReliabilityIncidentDisplayItem(
 public sealed record RecurringFailureDisplayItem(
     string ApplicationName,
     string Details);
+
+public sealed record HistoryEventDisplayItem(
+    string Time,
+    string Title,
+    string? Detail,
+    Visibility DetailVisibility);
+
+public sealed record HistoryMetricAggregate(
+    double Mean,
+    double Maximum);
+
+public sealed record ServiceDisplayItem(
+    string DisplayName,
+    string Identity,
+    string State,
+    string StartDetails);
+
+public sealed record ScheduledTaskDisplayItem(
+    string Name,
+    string Path,
+    string State,
+    string ScheduleDetails,
+    string EvidenceDetails);
+
+public sealed record DeviceDisplayItem(
+    string DisplayName,
+    string Identity,
+    string DriverDetails,
+    string StatusDetails);

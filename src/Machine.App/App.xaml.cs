@@ -11,6 +11,7 @@ public partial class App : Application
     private HttpClient? _ollamaHttpClient;
     private HttpClient? _ollamaInferenceHttpClient;
     private IOllamaRuntimeBootstrapper? _ollamaRuntimeBootstrapper;
+    private IMachineGpuTelemetryProvider? _gpuTelemetryProvider;
     private readonly CancellationTokenSource _appCancellationTokenSource = new();
     private MachineShutdownCoordinator? _shutdownCoordinator;
 
@@ -50,11 +51,22 @@ public partial class App : Application
             new WindowsMachineRebootPendingProvider();
         IMachineReliabilityProvider reliabilityProvider =
             new WindowsMachineReliabilityProvider();
+        IMachineServiceInventoryProvider serviceInventoryProvider =
+            new WindowsMachineServiceInventoryProvider();
+        IMachineScheduledTaskInventoryProvider taskInventoryProvider =
+            new WindowsMachineScheduledTaskInventoryProvider();
+        IMachineDeviceInventoryProvider deviceInventoryProvider =
+            new WindowsMachineDeviceInventoryProvider();
+        IMachineGpuTelemetryProvider gpuTelemetryProvider =
+            new WindowsMachineGpuTelemetryProvider();
+        _gpuTelemetryProvider = gpuTelemetryProvider;
         var learningService = new MachineLearningService();
         IMachineLearningStore learningStore = new FileMachineLearningStore();
         var healthHistoryService = new MachineHealthHistoryService();
         IMachineHealthHistoryStore healthHistoryStore =
             new FileMachineHealthHistoryStore();
+        var historyService = new MachineHistoryService();
+        IMachineHistoryStore historyStore = new FileMachineHistoryStore();
         var ollamaHttpClient = new HttpClient
         {
             BaseAddress = new Uri(
@@ -80,6 +92,19 @@ public partial class App : Application
             new OllamaMachineStateExplainer(
                 inferenceHttpClient,
                 "qwen3.5:4b");
+        string? presentationValidationArguments = null;
+#if DEBUG
+        presentationValidationArguments = string.Join(
+            ' ',
+            Environment.GetCommandLineArgs().Skip(1));
+        if (!string.IsNullOrWhiteSpace(args.Arguments))
+        {
+            presentationValidationArguments = string.Join(
+                ' ',
+                presentationValidationArguments,
+                args.Arguments);
+        }
+#endif
 
         var window = new MainWindow(
             identityProvider,
@@ -101,7 +126,14 @@ public partial class App : Application
             learningService,
             learningStore,
             healthHistoryService,
-            healthHistoryStore);
+            healthHistoryStore,
+            historyService,
+            historyStore,
+            serviceInventoryProvider,
+            taskInventoryProvider,
+            deviceInventoryProvider,
+            gpuTelemetryProvider,
+            presentationValidationArguments);
         _window = window;
         _shutdownCoordinator = new MachineShutdownCoordinator(
             learningService,
@@ -111,7 +143,9 @@ public partial class App : Application
             window.StopForApplicationShutdown,
             DisposeHttpResources,
             healthHistoryService: healthHistoryService,
-            healthHistoryStore: healthHistoryStore);
+            healthHistoryStore: healthHistoryStore,
+            historyService: historyService,
+            historyStore: historyStore);
         window.Closed += OnWindowClosed;
         window.Activate();
         _ = BootstrapOllamaAsync();
@@ -174,5 +208,7 @@ public partial class App : Application
         _ollamaInferenceHttpClient?.Dispose();
         _ollamaInferenceHttpClient = null;
         _ollamaRuntimeBootstrapper = null;
+        _gpuTelemetryProvider?.Dispose();
+        _gpuTelemetryProvider = null;
     }
 }

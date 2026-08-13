@@ -1,57 +1,69 @@
-# Machine
+# Matasuri
 
-`Machine` is the temporary working name for this application.
+Matasuri is a local-first Windows machine intelligence layer. It observes verified local state, remembers what happened through bounded history, learns only from repeated deterministic evidence, and uses an optional local model to explain that evidence. Normal operation requires no cloud inference, paid API, internet access, remote Ollama, or automatic model download.
 
-## Technology stack
+`Machine.*` remains the internal project, assembly, namespace, solution, and process naming for now.
 
-C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
+## Technology
 
-## Current status
+C#, .NET 10, WinUI 3, Windows App SDK, and xUnit. The dependency direction remains `Machine.App -> Core, Windows, Ollama`, `Machine.Windows -> Core`, and `Machine.Ollama -> Core`.
 
-Machine now opens as a fixed, frameless Mica dashboard with no native title bar or outer border. Its minimal integrated top region supports DPI-aware dragging through the Windows App SDK non-client-region API, a subtle close action, Back navigation, and Esc return to ambient presence. Overview, Learning, Network, Health, Storage, Software, Startup, and Runtime use the existing dashboard navigation. The frameless window explicitly uses DWM's small rounded-corner clip to avoid the diagonal Mica composition seam seen with the default clip.
+## Current experience
 
-The dedicated 96×96 native layered orb retains its accepted transparent visuals and five-second Stable breathing cycle. Its native window now owns cadence with a bounded `WM_TIMER`, so animation continues while the WinUI dashboard HWND is hidden; visibility, reduced-motion, mode changes, and disposal start or stop exactly one timer without hover affecting breathing phase.
+Matasuri opens from its accepted transparent 96x96 ambient orb into a compact frameless Mica shell. A custom text-first rail separates Now, Memory, Observe, and System. The shell atmosphere follows only the current deterministic Stable, Attention, Warning, Critical, or Unknown state; local insight generation adds a restrained overlay without replacing severity. Semantic colors are centralized, transitions take 700 ms, and reduced-motion mode changes appearance immediately. The orb keeps native layered-window transparency, low-cost `WM_TIMER` cadence, its five-second Stable breath, and phase-preserving hover behavior.
 
-Live telemetry now includes active non-loopback network interfaces, cumulative receive/send counters, aggregate rates calculated from successive samples using monotonic elapsed time, and a conservative Quiet/Light/Active classification. The dedicated Network page exposes only local interface metadata and aggregate activity—never addresses, remote endpoints, packet contents, or configuration actions. Verified Windows uptime, Machine process-session uptime, current Active/Idle input state, and idle duration are also shown. Sleep/resume session boundaries remain deferred.
+Overview is a current machine brief. History answers what happened. Learning answers what repeated evidence allowed Matasuri to conclude. Provider pages expose deeper read-only evidence without turning the shell into a control surface.
 
-Telemetry records a compact local learning observation at most every 30 seconds from verified CPU, memory, Active/Idle input state, deterministic findings, available system-volume capacity, and aggregate network activity class/rates, regardless of dashboard visibility. Interface identity never enters learning. Layer 0 raw observations are bounded to 2,880 in memory and never persist. Hour, date, and activity changes close deterministic aggregate episodes, with only the latest 200 retained.
+## History
 
-Long-term learning is cumulative across Machine restarts. Layer 1 keeps at most 48 hour-by-Active/Idle baselines with lifetime Welford evidence plus CPU and memory behavior adapted by a deterministic 21-day time-aware half-life. Confidence remains Calibrating, Provisional after 12 samples, or Established after 168 samples across at least seven distinct local days; separate Fresh, Aging, and Stale states describe recency. Lifetime history remains intact while adaptive estimates can shift toward recent verified behavior.
+Accepted observations enter history at most once every 30 seconds. Incremental typed rollups retain 5-minute data for 48 hours (maximum 576), hourly data for 90 days (2,160), daily data for 730 days, and monthly data for 120 months. Numeric values retain count/min/max/mean; activity and deterministic state retain observed durations. Offline and suspended time remains missing rather than becoming zero, Active, or Idle.
 
-Layer 2 materializes at most one compact Provisional or Established profile per context, including bounded statistical ranges and aggregate network evidence but no raw samples. Layer 3 deterministically groups compatible adjacent non-stale Established hourly profiles into a small set of canonical recurring time windows, including intentional midnight wrapping. It uses transparent range-overlap and network-compatibility rules rather than model inference, clustering packages, embeddings, or semantic labels.
+`matasuri-history-v1.json` is separate from behavioral learning. It uses schema v1, atomic replacement, bounded collections, a 10-minute dirty-save cadence with backoff, and a bounded final shutdown save. A sparse normalized timeline retains at most 2,000 significant events for 730 days, deduplicates verified health identities, and groups repeated display events without storing raw Event Log payloads. The History page uses 5-minute resolution for 24h, hourly resolution for 7d and 30d, and monthly resolution for All; gaps remain missing data.
 
-The dedicated Learning page presents lifetime accepted observations and observed duration across Machine sessions, compact context profiles, broader patterns, the bounded recent journal and episodes, persistence health, and verified Ollama/model residency. Powered-off time is not observed or treated as Idle. Offline gaps create no samples and do not extend an episode or observed duration.
+## Learning and local explanation
 
-Learning persistence schema version 3 stores only cumulative sufficient statistics, adaptive state, compact profiles, broader patterns, session metadata, and bounded episodes. It safely migrates schema versions 1 and 2, initializes missing adaptive state from their best available lifetime baseline evidence, saves atomically on the existing 10-minute dirty interval with failure backoff, and performs a bounded final shutdown save. Storage remains bounded rather than growing with every observation.
+Hierarchical behavioral learning remains schema v3. Its bounded RAM-only 30-second journal, 48 hour-by-Active/Idle baselines, compact profiles, recurring patterns, and 200 aggregate episodes remain independent from History. Powered-off and suspended gaps add no learning evidence.
 
-Windows health observability is read-only. A cached local Windows Update Agent search exposes explicit update state, pending and important counts, successful scan/install timestamps, and at most 30 normalized history entries without installing or downloading anything; normal refresh is limited to once every 45 minutes. Dedicated reboot-pending aggregation combines Windows Update, component servicing, pending-file-rename, and computer-rename evidence without modifying the registry or clearing flags.
+Ollama integration remains transitional and local. Matasuri reuses an existing healthy local service or starts an already-installed `ollama serve`; it never downloads Ollama or a model. `qwen3.5:4b` is demand-loaded only after the existing insight policy authorizes an explanation. History, inventory refresh, GPU polling, palette changes, and learning updates never trigger inference. An authorized request adds at most one current historical aggregate, one recent comparison, one event, and four nullable current GPU values; services, tasks, and devices are excluded from model context.
 
-Bounded reliability acquisition queries only selected structured Windows Event Log providers and event IDs across the last 30 days. It retains at most 100 normalized incidents, summarizes 24-hour, 7-day, and 30-day application crashes, hangs, update failures, hardware-error records, and unexpected shutdowns, and deterministically deduplicates related application-error/WER events and Kernel-Power/EventLog shutdown evidence. It does not retain raw event XML, messages, command lines, document paths, dump data, or other personal text.
+## Observability coverage
 
-The Health page presents Windows Update, restart evidence, recent reliability incidents, and recurring application-failure aggregates; Overview carries only a compact deterministic Health card. Conservative findings keep a routine pending restart informational, leave isolated historical incidents in history, and elevate only documented recent recurrence thresholds. A separate bounded `health-history-v1.json` app-local memory stores compact verified summaries and continuity counters without changing schema-v3 behavioral baselines, Layer 0 sampling, the 48 hour-by-Active/Idle contexts, or Layer 3 pattern clustering.
+All capabilities below are read-only.
 
-When the existing insight policy already authorizes local Qwen inference, the model receives only the current verified state, current context baseline, one matching compact profile, one matching broader pattern, up to two relevant episode summaries, and a tiny verified health summary: current update state/count, reboot status with at most four reason codes, source freshness/completeness metadata, 7-day reliability counts, one significant incident, and one recurring application aggregate. Learning and health refreshes never wake the model. The model does not train, store memory, choose statistics, form patterns, or execute actions, and learned values never create severity, anomaly, cause, intent, recommendation, or action claims.
+| Observability v1 | Status |
+| --- | --- |
+| Resources and top processes | Complete |
+| Storage | Complete |
+| Traditional and packaged software | Complete |
+| Startup applications | Complete |
+| Network, uptime, and Active/Idle session state | Complete |
+| Windows Update, reboot pending, and reliability | Complete |
+| Services | Complete |
+| Scheduled tasks | Complete |
+| Devices and drivers | Complete |
+| Suspend/resume boundaries | Complete |
+| Local Ollama runtime | Complete |
+| Historical layer | Complete |
 
-Machine probes local Ollama at startup; it reuses a healthy service or starts its own local `ollama serve` only when the executable is already installed, then waits for `/api/version`. It never downloads Ollama or a model, pulls a model, or loads `qwen3.5:4b` until a justified insight needs inference. Ordinary deterministic learning performs no model call. A Machine-owned runtime is stopped at application shutdown; a pre-existing runtime is never terminated.
+`READ_ONLY_OBSERVABILITY_V1_COMPLETE`
 
-## Product direction
+| Observability v2 | Status |
+| --- | --- |
+| NVIDIA GPU telemetry through dynamically loaded local NVML | Initial implementation complete |
+| CPU hardware sensors | Planned |
+| Storage SMART and temperature | Planned |
+| Power, energy, and cost | Planned |
 
-Machine is a local-first Windows intelligence layer that observes, explains, and eventually performs controlled actions on the computer through deterministic Windows capabilities, with Ollama used later as an optional natural-language and personality layer.
+The GPU slice reads adapter name, utilization, VRAM, temperature, board power, graphics/memory clocks, and fan when the installed driver exposes them. Unsupported or unavailable values remain null; Matasuri adds no NVML package, download, control call, tuning, or severity policy.
+
+## Privacy and safety
+
+History never stores process names, interface identities, addresses, endpoints, URLs, document or window titles, commands, task arguments, device serials, raw Event Log XML, dumps, or generated prose. Windows inventories use bounded normalized fields and have no start/stop, run/edit, enable/disable, install, registry-write, hardware-tuning, or power-setting operations.
 
 ## Debugging in VS Code
 
-Install the .NET 10 SDK plus the workspace-recommended Microsoft C# Dev Kit and WinApp extensions. Open this repository folder in VS Code, then:
-
-1. Open `src/Machine.App/NativeAmbientOrbWindow.cs` and set a breakpoint in application code, such as the first line of `PresentCurrentFrame`.
-2. In Run and Debug, select `Machine.App: Debug x64` and press F5.
-3. The pre-launch task builds `Machine.App` in Debug for x64. The WinApp extension registers and launches the packaged app, then attaches the managed C# debugger with application symbols.
-4. Trigger the breakpoint by activating the compact presence surface, then continue debugging normally.
-5. Press Shift+F5 to stop. The post-debug task unregisters the development package and verifies that no `Machine.App` process remains.
-
-If a debug session is interrupted before cleanup runs, use **Terminal > Run Task > Machine.App: Remove debug package** before starting another session. This workflow does not require Visual Studio and does not claim XAML Hot Reload, Live Visual Tree, or designer support.
+Install the .NET 10 SDK plus the workspace-recommended Microsoft C# Dev Kit and WinApp extensions. Select `Machine.App: Debug x64`; the workspace task builds and registers the development package, the debugger attaches to the internal `Machine.App` process, and the post-debug task removes the package. If cleanup is interrupted, run `Machine.App: Remove debug package` before the next session.
 
 ## Next slice
 
-Add read-only services and scheduled-task observability.
-
-Remaining conceptual read-only observability v1 work includes services, scheduled tasks, device inventory, driver inventory, sleep/resume handling if still valuable, and a final coverage review.
+Add CPU/storage hardware telemetry and estimated power, energy, and electricity-cost observability.

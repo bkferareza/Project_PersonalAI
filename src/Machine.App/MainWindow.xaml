@@ -4,7 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Machine.App"
-    Title="Machine">
+    Title="Matasuri">
     <Window.SystemBackdrop>
         <MicaBackdrop Kind="BaseAlt" />
     </Window.SystemBackdrop>
@@ -14,16 +14,21 @@
         KeyDown="OnMainContentKeyDown"
         Loaded="OnMainContentLoaded">
         <Grid.Resources>
+            <SolidColorBrush x:Key="MatasuriAtmosphereBrush" Color="#263D5260" />
+            <SolidColorBrush x:Key="MatasuriStateAccentBrush" Color="#FF718A84" />
+            <SolidColorBrush x:Key="MatasuriSurfaceBrush" Color="#1FFFFFFF" />
+            <SolidColorBrush x:Key="MatasuriElevatedSurfaceBrush" Color="#2AFFFFFF" />
+            <SolidColorBrush x:Key="MatasuriHairlineBrush" Color="#22FFFFFF" />
             <Style x:Key="DashboardCardStyle" TargetType="Border">
                 <Setter
                     Property="Background"
-                    Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                    Value="{StaticResource MatasuriSurfaceBrush}" />
                 <Setter
                     Property="BorderBrush"
-                    Value="{ThemeResource CardStrokeColorDefaultBrush}" />
-                <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="12" />
-                <Setter Property="Padding" Value="14" />
+                    Value="{StaticResource MatasuriHairlineBrush}" />
+                <Setter Property="BorderThickness" Value="0,0,0,1" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="12,14" />
             </Style>
             <Style x:Key="PageTitleStyle" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="24" />
@@ -55,11 +60,39 @@
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="Width" Value="32" />
             </Style>
+            <Style x:Key="MatasuriNavigationButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="MinHeight" Value="34" />
+                <Setter Property="Padding" Value="10,5" />
+            </Style>
+            <Style x:Key="NavigationGroupStyle" TargetType="TextBlock">
+                <Setter Property="CharacterSpacing" Value="140" />
+                <Setter Property="FontSize" Value="9" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+                <Setter Property="Margin" Value="10,13,0,4" />
+            </Style>
         </Grid.Resources>
+
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+
+        <Border
+            x:Name="ShellAtmosphereLayer"
+            Grid.RowSpan="2"
+            Background="{StaticResource MatasuriAtmosphereBrush}"
+            IsHitTestVisible="False" />
+        <Border
+            x:Name="GeneratingAtmosphereLayer"
+            Grid.RowSpan="2"
+            Background="{StaticResource MatasuriStateAccentBrush}"
+            IsHitTestVisible="False"
+            Opacity="0" />
 
         <Grid
             x:Name="DashboardChrome"
@@ -78,104 +111,159 @@
             <Button
                 x:Name="DashboardCloseButton"
                 AutomationProperties.AutomationId="DashboardCloseButton"
-                AutomationProperties.Name="Close Machine"
+                AutomationProperties.Name="Close Matasuri"
                 Click="OnDashboardCloseClicked"
                 Grid.Column="1"
                 Style="{StaticResource DashboardCloseButtonStyle}"
-                ToolTipService.ToolTip="Close Machine">
+                ToolTipService.ToolTip="Close Matasuri">
                 <FontIcon FontSize="11" Glyph="&#xE8BB;" />
             </Button>
         </Grid>
 
-        <NavigationView
+        <Grid
             x:Name="DetailsPanel"
             AutomationProperties.AutomationId="DetailsPanel"
-            BackRequested="OnDashboardBackRequested"
-            CompactPaneLength="44"
             Grid.Row="1"
-            HorizontalContentAlignment="Stretch"
-            IsBackButtonVisible="Visible"
-            IsBackEnabled="True"
-            IsPaneOpen="False"
-            IsSettingsVisible="False"
             Margin="6,2,6,4"
-            OpenPaneLength="140"
-            PaneDisplayMode="LeftCompact"
-            SelectionChanged="OnDashboardNavigationSelectionChanged"
             Visibility="Collapsed">
-            <NavigationView.MenuItems>
-                <NavigationViewItem
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="154" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border
+                Background="{StaticResource MatasuriSurfaceBrush}"
+                BorderBrush="{StaticResource MatasuriHairlineBrush}"
+                BorderThickness="0,0,1,0"
+                CornerRadius="8,0,0,8">
+                <Grid Padding="8,8,8,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Margin="8,2,4,10" Spacing="1">
+                        <TextBlock
+                            AutomationProperties.Name="Matasuri"
+                            FontSize="18"
+                            FontWeight="SemiBold"
+                            Text="Matasuri" />
+                        <TextBlock
+                            FontSize="9"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="local machine intelligence" />
+                    </StackPanel>
+                    <ScrollViewer
+                        Grid.Row="1"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource NavigationGroupStyle}" Text="NOW" />
+                            <Button
                     x:Name="OverviewNavigationItem"
                     AutomationProperties.AutomationId="OverviewNavigationItem"
                     Content="Overview"
-                    IsSelected="True"
-                    Tag="overview">
-                    <NavigationViewItem.Icon>
-                        <SymbolIcon Symbol="Home" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="overview" />
+                            <TextBlock Style="{StaticResource NavigationGroupStyle}" Text="MEMORY" />
+                            <Button
+                    x:Name="HistoryNavigationItem"
+                    AutomationProperties.AutomationId="HistoryNavigationItem"
+                    Content="History"
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="history" />
+                            <Button
                     x:Name="LearningNavigationItem"
                     AutomationProperties.AutomationId="LearningNavigationItem"
                     Content="Learning"
-                    Tag="learning">
-                    <NavigationViewItem.Icon>
-                        <SymbolIcon Symbol="Library" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
-                    x:Name="NetworkNavigationItem"
-                    AutomationProperties.AutomationId="NetworkNavigationItem"
-                    Content="Network"
-                    Tag="network">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE774;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="learning" />
+                            <TextBlock Style="{StaticResource NavigationGroupStyle}" Text="OBSERVE" />
+                            <Button
                     x:Name="HealthNavigationItem"
                     AutomationProperties.AutomationId="HealthNavigationItem"
                     Content="Health"
-                    Tag="health">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE95E;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="health" />
+                            <Button
+                    x:Name="NetworkNavigationItem"
+                    AutomationProperties.AutomationId="NetworkNavigationItem"
+                    Content="Network"
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="network" />
+                            <Button
+                    x:Name="HardwareNavigationItem"
+                    AutomationProperties.AutomationId="HardwareNavigationItem"
+                    Content="Hardware"
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="hardware" />
+                            <Button
+                    x:Name="StorageNavigationItem"
                     AutomationProperties.AutomationId="StorageNavigationItem"
                     Content="Storage"
-                    Tag="storage">
-                    <NavigationViewItem.Icon>
-                        <SymbolIcon Symbol="Folder" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="storage" />
+                            <TextBlock Style="{StaticResource NavigationGroupStyle}" Text="SYSTEM" />
+                            <Button
+                    x:Name="SoftwareNavigationItem"
                     AutomationProperties.AutomationId="SoftwareNavigationItem"
                     Content="Software"
-                    Tag="software">
-                    <NavigationViewItem.Icon>
-                        <SymbolIcon Symbol="AllApps" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="software" />
+                            <Button
+                    x:Name="StartupNavigationItem"
                     AutomationProperties.AutomationId="StartupNavigationItem"
                     Content="Startup"
-                    Tag="startup">
-                    <NavigationViewItem.Icon>
-                        <SymbolIcon Symbol="Play" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="startup" />
+                            <Button
+                    x:Name="ServicesNavigationItem"
+                    AutomationProperties.AutomationId="ServicesNavigationItem"
+                    Content="Services"
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="services" />
+                            <Button
+                    x:Name="TasksNavigationItem"
+                    AutomationProperties.AutomationId="TasksNavigationItem"
+                    Content="Tasks"
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="tasks" />
+                            <Button
+                    x:Name="DevicesNavigationItem"
+                    AutomationProperties.AutomationId="DevicesNavigationItem"
+                    Content="Devices"
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="devices" />
+                            <Button
+                    x:Name="RuntimeNavigationItem"
                     AutomationProperties.AutomationId="RuntimeNavigationItem"
                     Content="Runtime"
-                    Tag="runtime">
-                    <NavigationViewItem.Icon>
-                        <SymbolIcon Symbol="Setting" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-            </NavigationView.MenuItems>
+                    Click="OnDashboardNavigationClicked"
+                    Style="{StaticResource MatasuriNavigationButtonStyle}"
+                    Tag="runtime" />
+                        </StackPanel>
+                    </ScrollViewer>
+                    <Button
+                        AutomationProperties.Name="Return to ambient Matasuri"
+                        Click="OnDashboardBackClicked"
+                        Content="Back to orb"
+                        Grid.Row="2"
+                        Style="{StaticResource MatasuriNavigationButtonStyle}" />
+                </Grid>
+            </Border>
 
-            <Grid>
+            <Grid Grid.Column="1">
                 <ScrollViewer
                     x:Name="OverviewPage"
                     AutomationProperties.AutomationId="OverviewPage"
@@ -188,17 +276,36 @@
                                 Text="Overview" />
                             <TextBlock
                                 Style="{StaticResource SecondaryTextStyle}"
-                                Text="Verified local machine context" />
+                                Text="A grounded brief of what is happening now" />
                         </StackPanel>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="5">
+                                <TextBlock
+                                    Style="{StaticResource MetricLabelStyle}"
+                                    Text="DETERMINISTIC STATE" />
+                                <TextBlock
+                                    x:Name="FindingsOverallStateText"
+                                    AutomationProperties.AutomationId="FindingsOverallStateText"
+                                    FontSize="30"
+                                    FontWeight="SemiBold"
+                                    Text="Unknown" />
+                                <TextBlock
+                                    x:Name="OverviewStatePostureText"
+                                    AutomationProperties.AutomationId="OverviewStatePostureText"
+                                    FontSize="16"
+                                    Text="Waiting for verified local evidence."
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
                         <Border Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="4">
                                 <TextBlock
                                     Style="{StaticResource MetricLabelStyle}"
-                                    Text="THIS MACHINE" />
+                                    Text="LOCAL CONTEXT" />
                                 <TextBlock
                                     x:Name="DeviceNameText"
                                     AutomationProperties.AutomationId="DeviceNameText"
-                                    FontSize="17"
+                                    FontSize="16"
                                     FontWeight="SemiBold"
                                     Text="Loading..."
                                     TextWrapping="Wrap" />
@@ -221,19 +328,6 @@
                                     x:Name="LoadStatusText"
                                     AutomationProperties.AutomationId="LoadStatusText"
                                     Style="{StaticResource SecondaryTextStyle}" />
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource DashboardCardStyle}">
-                            <StackPanel Spacing="8">
-                                <TextBlock
-                                    Style="{StaticResource MetricLabelStyle}"
-                                    Text="DETERMINISTIC STATE" />
-                                <TextBlock
-                                    x:Name="FindingsOverallStateText"
-                                    AutomationProperties.AutomationId="FindingsOverallStateText"
-                                    FontSize="24"
-                                    FontWeight="SemiBold"
-                                    Text="Unknown" />
                             </StackPanel>
                         </Border>
                         <Grid ColumnSpacing="10">
@@ -461,6 +555,202 @@
                 </ScrollViewer>
 
                 <ScrollViewer
+                    x:Name="HistoryPage"
+                    AutomationProperties.AutomationId="HistoryPage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="16,4,16,20" Spacing="16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock
+                                    Style="{StaticResource PageTitleStyle}"
+                                    Text="History" />
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="What happened, while Matasuri was observing" />
+                            </StackPanel>
+                            <StackPanel
+                                Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="2">
+                                <Button
+                                    x:Name="History24HourButton"
+                                    AutomationProperties.Name="Show last 24 hours"
+                                    Click="OnHistoryRangeClicked"
+                                    Content="24h"
+                                    Tag="24h" />
+                                <Button
+                                    x:Name="History7DayButton"
+                                    AutomationProperties.Name="Show last 7 days"
+                                    Click="OnHistoryRangeClicked"
+                                    Content="7d"
+                                    Tag="7d" />
+                                <Button
+                                    x:Name="History30DayButton"
+                                    AutomationProperties.Name="Show last 30 days"
+                                    Click="OnHistoryRangeClicked"
+                                    Content="30d"
+                                    Tag="30d" />
+                                <Button
+                                    x:Name="HistoryAllButton"
+                                    AutomationProperties.Name="Show all retained history"
+                                    Click="OnHistoryRangeClicked"
+                                    Content="All"
+                                    Tag="all" />
+                            </StackPanel>
+                        </Grid>
+
+                        <StackPanel Spacing="5">
+                            <TextBlock
+                                Style="{StaticResource MetricLabelStyle}"
+                                Text="OBSERVED" />
+                            <TextBlock
+                                x:Name="HistoryObservedDurationText"
+                                FontSize="26"
+                                FontWeight="SemiBold"
+                                Text="Beginning now" />
+                            <TextBlock
+                                x:Name="HistoryResolutionText"
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="5-minute rollups · offline time remains a gap" />
+                        </StackPanel>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        Style="{StaticResource SectionTitleStyle}"
+                                        Text="Resource posture" />
+                                    <TextBlock
+                                        x:Name="HistoryResourceSummaryText"
+                                        Grid.Column="1"
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Waiting for history" />
+                                </Grid>
+                                <Canvas
+                                    x:Name="HistoryTrendCanvas"
+                                    Height="112"
+                                    SizeChanged="OnHistoryTrendSizeChanged">
+                                    <Path
+                                        x:Name="HistoryCpuPolyline"
+                                        Stroke="{StaticResource MatasuriStateAccentBrush}"
+                                        StrokeLineJoin="Round"
+                                        StrokeThickness="1.5" />
+                                    <Path
+                                        x:Name="HistoryMemoryPolyline"
+                                        Opacity="0.5"
+                                        Stroke="{ThemeResource TextFillColorSecondaryBrush}"
+                                        StrokeLineJoin="Round"
+                                        StrokeThickness="1.2" />
+                                    <Path
+                                        x:Name="HistoryGpuPolyline"
+                                        Opacity="0.7"
+                                        Stroke="#FF9B8562"
+                                        StrokeLineJoin="Round"
+                                        StrokeThickness="1.2"
+                                        Visibility="Collapsed" />
+                                </Canvas>
+                                <StackPanel Orientation="Horizontal" Spacing="14">
+                                    <TextBlock Text="CPU" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="Memory" />
+                                    <TextBlock
+                                        x:Name="HistoryGpuLegendText"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="GPU when available"
+                                        Visibility="Collapsed" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                Style="{StaticResource SectionTitleStyle}"
+                                Text="Observed time" />
+                            <Grid Height="8" CornerRadius="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="HistoryActiveColumn" Width="1*" />
+                                    <ColumnDefinition x:Name="HistoryIdleColumn" Width="0*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Background="#806E8D87" CornerRadius="4,0,0,4" />
+                                <Border Grid.Column="1" Background="#60717A86" CornerRadius="0,4,4,0" />
+                            </Grid>
+                            <TextBlock
+                                x:Name="HistoryActivityText"
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Active and Idle evidence will appear here" />
+                            <Grid Height="6" CornerRadius="3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="HistoryStableColumn" Width="1*" />
+                                    <ColumnDefinition x:Name="HistoryAttentionColumn" Width="0*" />
+                                    <ColumnDefinition x:Name="HistoryWarningColumn" Width="0*" />
+                                    <ColumnDefinition x:Name="HistoryCriticalColumn" Width="0*" />
+                                    <ColumnDefinition x:Name="HistoryUnknownColumn" Width="0*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Background="#80718A84" CornerRadius="3,0,0,3" />
+                                <Border Grid.Column="1" Background="#809B8562" />
+                                <Border Grid.Column="2" Background="#80B37652" />
+                                <Border Grid.Column="3" Background="#80A45346" />
+                                <Border Grid.Column="4" Background="#806F7780" CornerRadius="0,3,3,0" />
+                            </Grid>
+                            <TextBlock
+                                x:Name="HistoryStateDurationText"
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="State-duration evidence will appear here" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                Style="{StaticResource SectionTitleStyle}"
+                                Text="Timeline" />
+                            <ListView
+                                x:Name="HistoryEventsList"
+                                AutomationProperties.AutomationId="HistoryEventsList"
+                                IsItemClickEnabled="False"
+                                SelectionMode="None">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="local:HistoryEventDisplayItem">
+                                        <Grid Margin="0,6" ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="50" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{x:Bind Time}" />
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Title}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind Detail}"
+                                                    Visibility="{x:Bind DetailVisibility}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <TextBlock
+                                x:Name="HistoryEventsEmptyText"
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Meaningful state transitions will appear here." />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer
                     x:Name="LearningPage"
                     AutomationProperties.AutomationId="LearningPage"
                     HorizontalScrollBarVisibility="Disabled"
@@ -470,17 +760,17 @@
                         <StackPanel Spacing="2">
                             <TextBlock
                                 Style="{StaticResource PageTitleStyle}"
-                                Text="Learning" />
+                                Text="What Matasuri has learned" />
                             <TextBlock
                                 Style="{StaticResource SecondaryTextStyle}"
-                                Text="Persistent verified behavioral memory" />
+                                Text="Conclusions from repeated verified evidence" />
                         </StackPanel>
 
                         <Border Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="10">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Long-term memory" />
+                                    Text="Current learned context" />
                                 <Grid ColumnSpacing="14" RowSpacing="10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -499,7 +789,7 @@
                                             x:Name="LearningPageObservedText"
                                             AutomationProperties.AutomationId="LearningPageObservedText"
                                             FontWeight="SemiBold"
-                                            Text="0m across 1 Machine session"
+                                            Text="0m across 1 Matasuri session"
                                             TextWrapping="Wrap" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Spacing="2">
@@ -531,7 +821,7 @@
                                             Text="0" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Grid.Row="2" Spacing="2">
-                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="MACHINE SESSIONS" />
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="MATASURI SESSIONS" />
                                         <TextBlock
                                             x:Name="LearningPageSessionCountText"
                                             AutomationProperties.AutomationId="LearningPageSessionCountText"
@@ -586,7 +876,7 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Calibration progress" />
+                                    Text="Early observations" />
                                 <Grid ColumnSpacing="14" RowSpacing="8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -624,7 +914,7 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Context profiles" />
+                                    Text="Learned contexts" />
                                 <TextBlock
                                     x:Name="LearningProfilesEmptyText"
                                     Style="{StaticResource SecondaryTextStyle}"
@@ -670,7 +960,7 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Broader patterns" />
+                                    Text="Established patterns" />
                                 <TextBlock
                                     x:Name="LearningPatternsEmptyText"
                                     Style="{StaticResource SecondaryTextStyle}"
@@ -713,7 +1003,7 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Learned items" />
+                                    Text="Learned evidence" />
                                 <TextBlock
                                     x:Name="LearningItemsEmptyText"
                                     Style="{StaticResource SecondaryTextStyle}"
@@ -946,7 +1236,7 @@
                                         <TextBlock x:Name="SessionSystemUptimeText" Text="Unavailable" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Spacing="2">
-                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="MACHINE UPTIME" />
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="MATASURI UPTIME" />
                                         <TextBlock x:Name="SessionMachineUptimeText" Text="Unavailable" />
                                     </StackPanel>
                                     <StackPanel Grid.Row="1" Spacing="2">
@@ -963,6 +1253,84 @@
                                     Text="Idle means no user input for at least five minutes. No absence or productivity inference." />
                             </StackPanel>
                         </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer
+                    x:Name="HardwarePage"
+                    AutomationProperties.AutomationId="HardwarePage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="18,4,18,20" Spacing="18">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                Style="{StaticResource PageTitleStyle}"
+                                Text="Hardware" />
+                            <TextBlock
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Local driver-provided telemetry" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock
+                                Style="{StaticResource MetricLabelStyle}"
+                                Text="GRAPHICS" />
+                            <TextBlock
+                                x:Name="GpuAdapterNameText"
+                                AutomationProperties.AutomationId="GpuAdapterNameText"
+                                FontSize="22"
+                                FontWeight="SemiBold"
+                                Text="Detecting graphics hardware"
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                x:Name="GpuProviderStatusText"
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Detailed GPU telemetry is loading" />
+                        </StackPanel>
+                        <Grid ColumnSpacing="22" RowSpacing="18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock x:Name="GpuUtilizationText" FontSize="28" FontWeight="SemiBold" Text="—" />
+                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="GPU load" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock x:Name="GpuMemoryText" FontSize="22" FontWeight="SemiBold" Text="—" TextWrapping="Wrap" />
+                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="VRAM used / total" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Spacing="2">
+                                <TextBlock x:Name="GpuTemperatureText" FontSize="22" FontWeight="SemiBold" Text="—" />
+                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Temperature" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
+                                <TextBlock x:Name="GpuPowerText" FontSize="22" FontWeight="SemiBold" Text="—" />
+                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Board power" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="2" Spacing="2">
+                                <TextBlock x:Name="GpuGraphicsClockText" FontSize="18" FontWeight="SemiBold" Text="—" />
+                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Graphics clock" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Grid.Row="2" Spacing="2">
+                                <TextBlock x:Name="GpuMemoryClockText" FontSize="18" FontWeight="SemiBold" Text="—" />
+                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Memory clock" />
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel Spacing="3">
+                            <TextBlock
+                                Style="{StaticResource MetricLabelStyle}"
+                                Text="COOLING" />
+                            <TextBlock x:Name="GpuFanText" FontSize="18" Text="—" />
+                            <TextBlock
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Unsupported values stay unavailable. Matasuri does not set thermal severity or tune hardware." />
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -1504,6 +1872,264 @@
                 </ScrollViewer>
 
                 <ScrollViewer
+                    x:Name="ServicesPage"
+                    AutomationProperties.AutomationId="ServicesPage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="16,4,16,20" Spacing="14">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock Style="{StaticResource PageTitleStyle}" Text="Services" />
+                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Read-only Service Control Manager inventory" />
+                            </StackPanel>
+                            <Button
+                                x:Name="RefreshServicesButton"
+                                AutomationProperties.Name="Refresh services"
+                                Click="OnRefreshServicesClicked"
+                                Content="Refresh"
+                                Grid.Column="1" />
+                        </Grid>
+                        <TextBox
+                            x:Name="ServiceSearchBox"
+                            AutomationProperties.Name="Search services"
+                            PlaceholderText="Search name or display name"
+                            TextChanged="OnServiceFilterChanged" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox
+                                x:Name="ServiceStateFilter"
+                                AutomationProperties.Name="Filter services by state"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="OnServiceFilterChanged">
+                                <ComboBoxItem Content="All states" Tag="all" />
+                                <ComboBoxItem Content="Running" Tag="Running" />
+                                <ComboBoxItem Content="Stopped" Tag="Stopped" />
+                                <ComboBoxItem Content="Pending" Tag="pending" />
+                                <ComboBoxItem Content="Paused" Tag="Paused" />
+                            </ComboBox>
+                            <ComboBox
+                                x:Name="ServiceStartTypeFilter"
+                                AutomationProperties.Name="Filter services by start type"
+                                Grid.Column="1"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="OnServiceFilterChanged">
+                                <ComboBoxItem Content="All start types" Tag="all" />
+                                <ComboBoxItem Content="Automatic" Tag="automatic" />
+                                <ComboBoxItem Content="Manual" Tag="Manual" />
+                                <ComboBoxItem Content="Disabled" Tag="Disabled" />
+                                <ComboBoxItem Content="Boot / system" Tag="boot" />
+                            </ComboBox>
+                        </Grid>
+                        <TextBlock x:Name="ServicesSummaryText" Style="{StaticResource SecondaryTextStyle}" Text="Loading services" />
+                        <ListView
+                            x:Name="ServicesList"
+                            AutomationProperties.AutomationId="ServicesList"
+                            MaxHeight="600"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="local:ServiceDisplayItem">
+                                    <Grid Margin="0,6" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="2">
+                                            <TextBlock FontWeight="SemiBold" Text="{x:Bind DisplayName}" TextWrapping="Wrap" />
+                                            <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Identity}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" HorizontalAlignment="Right" Spacing="2">
+                                            <TextBlock HorizontalAlignment="Right" Text="{x:Bind State}" />
+                                            <TextBlock HorizontalAlignment="Right" Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind StartDetails}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock x:Name="ServicesStatusText" Style="{StaticResource SecondaryTextStyle}" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer
+                    x:Name="TasksPage"
+                    AutomationProperties.AutomationId="TasksPage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="16,4,16,20" Spacing="14">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock Style="{StaticResource PageTitleStyle}" Text="Tasks" />
+                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Read-only Windows Task Scheduler inventory" />
+                            </StackPanel>
+                            <Button
+                                x:Name="RefreshTasksButton"
+                                AutomationProperties.Name="Refresh scheduled tasks"
+                                Click="OnRefreshTasksClicked"
+                                Content="Refresh"
+                                Grid.Column="1" />
+                        </Grid>
+                        <TextBox
+                            x:Name="TaskSearchBox"
+                            AutomationProperties.Name="Search scheduled tasks"
+                            PlaceholderText="Search name, path, author, or executable"
+                            TextChanged="OnTaskFilterChanged" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox
+                                x:Name="TaskEnabledFilter"
+                                AutomationProperties.Name="Filter scheduled tasks by enabled state"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="OnTaskFilterChanged">
+                                <ComboBoxItem Content="All" Tag="all" />
+                                <ComboBoxItem Content="Enabled" Tag="enabled" />
+                                <ComboBoxItem Content="Disabled" Tag="disabled" />
+                            </ComboBox>
+                            <ComboBox
+                                x:Name="TaskStateFilter"
+                                AutomationProperties.Name="Filter scheduled tasks by runtime state"
+                                Grid.Column="1"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="OnTaskFilterChanged">
+                                <ComboBoxItem Content="Any state" Tag="all" />
+                                <ComboBoxItem Content="Ready" Tag="Ready" />
+                                <ComboBoxItem Content="Running" Tag="Running" />
+                                <ComboBoxItem Content="Queued" Tag="Queued" />
+                                <ComboBoxItem Content="Disabled" Tag="Disabled" />
+                            </ComboBox>
+                            <ComboBox
+                                x:Name="TaskResultFilter"
+                                AutomationProperties.Name="Filter scheduled tasks by last result"
+                                Grid.Column="2"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="OnTaskFilterChanged">
+                                <ComboBoxItem Content="Any result" Tag="all" />
+                                <ComboBoxItem Content="Failed last run" Tag="failed" />
+                            </ComboBox>
+                        </Grid>
+                        <TextBlock x:Name="TasksSummaryText" Style="{StaticResource SecondaryTextStyle}" Text="Loading scheduled tasks" />
+                        <ListView
+                            x:Name="TasksList"
+                            AutomationProperties.AutomationId="TasksList"
+                            MaxHeight="600"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="local:ScheduledTaskDisplayItem">
+                                    <StackPanel Margin="0,6" Spacing="2">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock FontWeight="SemiBold" Text="{x:Bind Name}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind State}" />
+                                        </Grid>
+                                        <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Path}" TextWrapping="Wrap" />
+                                        <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind ScheduleDetails}" TextWrapping="Wrap" />
+                                        <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind EvidenceDetails}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock x:Name="TasksStatusText" Style="{StaticResource SecondaryTextStyle}" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer
+                    x:Name="DevicesPage"
+                    AutomationProperties.AutomationId="DevicesPage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="16,4,16,20" Spacing="14">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock Style="{StaticResource PageTitleStyle}" Text="Devices" />
+                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Windows-reported devices and associated drivers" />
+                            </StackPanel>
+                            <Button
+                                x:Name="RefreshDevicesButton"
+                                AutomationProperties.Name="Refresh devices"
+                                Click="OnRefreshDevicesClicked"
+                                Content="Refresh"
+                                Grid.Column="1" />
+                        </Grid>
+                        <TextBox
+                            x:Name="DeviceSearchBox"
+                            AutomationProperties.Name="Search devices"
+                            PlaceholderText="Search device, class, manufacturer, or driver"
+                            TextChanged="OnDeviceFilterChanged" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox
+                                x:Name="DeviceClassFilter"
+                                AutomationProperties.Name="Filter devices by class"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="OnDeviceFilterChanged" />
+                            <ComboBox
+                                x:Name="DeviceProblemFilter"
+                                AutomationProperties.Name="Filter devices by Windows-reported problem state"
+                                Grid.Column="1"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="OnDeviceFilterChanged">
+                                <ComboBoxItem Content="All devices" Tag="all" />
+                                <ComboBoxItem Content="Windows-reported problem" Tag="problem" />
+                            </ComboBox>
+                        </Grid>
+                        <TextBlock x:Name="DevicesSummaryText" Style="{StaticResource SecondaryTextStyle}" Text="Loading devices" />
+                        <ListView
+                            x:Name="DevicesList"
+                            AutomationProperties.AutomationId="DevicesList"
+                            MaxHeight="600"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="local:DeviceDisplayItem">
+                                    <StackPanel Margin="0,6" Spacing="2">
+                                        <TextBlock FontWeight="SemiBold" Text="{x:Bind DisplayName}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{x:Bind Identity}" TextWrapping="Wrap" />
+                                        <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind DriverDetails}" TextWrapping="Wrap" />
+                                        <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind StatusDetails}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock x:Name="DevicesStatusText" Style="{StaticResource SecondaryTextStyle}" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer
                     x:Name="RuntimePage"
                     AutomationProperties.AutomationId="RuntimePage"
                     HorizontalScrollBarVisibility="Disabled"
@@ -1614,6 +2240,6 @@
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
-        </NavigationView>
+        </Grid>
     </Grid>
 </Window>

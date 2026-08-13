@@ -401,14 +401,28 @@ public sealed class CompactPresencePresentationTests
         Assert.Contains("AutomationProperties.AutomationId=\"LearningPageLifetimeObservationsText\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"LearningProfilesList\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"LearningPatternsList\"", xaml);
-        Assert.Contains("Text=\"Long-term memory\"", xaml);
-        Assert.Contains("Text=\"Broader patterns\"", xaml);
+        Assert.Contains("Text=\"What Matasuri has learned\"", xaml);
+        Assert.Contains("Text=\"Learned contexts\"", xaml);
+        Assert.Contains("Text=\"Established patterns\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"NetworkNavigationItem\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"NetworkPage\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"HealthNavigationItem\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"HealthPage\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"WindowsUpdateHistoryList\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"ReliabilityIncidentsList\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"HistoryNavigationItem\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"HistoryPage\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"HardwareNavigationItem\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"HardwarePage\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"ServicesNavigationItem\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"TasksNavigationItem\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"DevicesNavigationItem\"", xaml);
+        Assert.Contains(
+            "AutomationProperties.Name=\"Filter scheduled tasks by enabled state\"",
+            xaml);
+        Assert.Contains(
+            "AutomationProperties.Name=\"Filter devices by Windows-reported problem state\"",
+            xaml);
         Assert.DoesNotContain("Maximize", xaml, StringComparison.OrdinalIgnoreCase);
     }
 

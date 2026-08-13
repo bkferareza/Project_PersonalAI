@@ -237,7 +237,7 @@ public sealed class AmbientOrbFrameSequence
                             dy - sweepY,
                             8d,
                             4d),
-                        new OrbColor(156, 238, 255));
+                        new OrbColor(180, 221, 211));
                 }
 
                 var offset = (y * CanvasSize + x) * 4;
@@ -285,34 +285,34 @@ public sealed class AmbientOrbFrameSequence
     {
         CompactPresenceVisualMode.Attention => new(
             38, true, 0.10d, 0.12d, 1.5d, 0.16d, 0.17d, 0.50d, 0.43d, 0.05d,
-            new(75, 135, 247), new(73, 208, 255), new(255, 187, 104),
-            new(166, 232, 255), new(248, 253, 255), new(199, 235, 255)),
+            new(134, 117, 92), new(176, 146, 101), new(151, 125, 105),
+            new(215, 187, 139), new(247, 240, 221), new(210, 176, 126)),
         CompactPresenceVisualMode.Warning => new(
             28, true, 0.11d, 0.13d, 1.2d, 0.19d, 0.22d, 0.62d, 0.55d, 0.07d,
-            new(240, 112, 47), new(255, 151, 53), new(255, 190, 91),
-            new(255, 191, 108), new(255, 246, 220), new(255, 181, 88)),
+            new(152, 82, 47), new(193, 112, 60), new(201, 143, 87),
+            new(220, 155, 95), new(250, 231, 204), new(205, 124, 67)),
         CompactPresenceVisualMode.Critical => new(
             20, true, 0.12d, 0.14d, 1d, 0.23d, 0.26d, 0.68d, 0.59d, 0.08d,
-            new(226, 66, 48), new(255, 84, 50), new(255, 139, 62),
-            new(255, 157, 92), new(255, 236, 210), new(255, 119, 71)),
+            new(133, 57, 47), new(172, 70, 51), new(190, 103, 70),
+            new(209, 123, 84), new(246, 222, 202), new(182, 84, 59)),
         CompactPresenceVisualMode.Unknown => new(
             50, true, 0.05d, 0.06d, 0.6d, 0.08d, 0.08d, 0.25d, 0.22d, 0.02d,
-            new(87, 111, 142), new(100, 130, 157), new(117, 128, 145),
-            new(154, 171, 184), new(209, 220, 226), new(147, 167, 185)),
+            new(82, 91, 101), new(105, 116, 126), new(113, 119, 126),
+            new(148, 159, 166), new(207, 216, 219), new(139, 151, 160)),
         CompactPresenceVisualMode.Generating => new(
             40, true, 0.10d, 0.12d, 1.4d, 0.16d, 0.17d, 0.48d, 0.40d, 0.05d,
-            new(73, 125, 240), new(69, 208, 255), new(104, 89, 226),
-            new(151, 226, 255), new(246, 253, 255), new(187, 235, 255),
+            new(92, 119, 130), new(112, 154, 156), new(111, 130, 140),
+            new(157, 186, 183), new(235, 243, 240), new(177, 204, 201),
             HasGeneratingSweep: true),
         CompactPresenceVisualMode.NewInsight => new(
             10, false, 0d, 0d, 1d, 0.19d, 0.22d, 0.62d, 0.54d, 0.07d,
-            new(92, 125, 248), new(81, 222, 255), new(148, 101, 244),
-            new(188, 239, 255), new(255, 255, 255), new(211, 238, 255),
+            new(101, 127, 134), new(120, 168, 165), new(126, 143, 151),
+            new(177, 203, 196), new(247, 250, 247), new(191, 216, 209),
             IsBloom: true),
         _ => new(
             FrameCount, true, 0.14d, 0.15d, 1.2d, 0.11d, 0.14d, 0.45d, 0.38d, 0d,
-            new(83, 124, 241), new(76, 219, 255), new(108, 76, 222),
-            new(156, 224, 255), new(244, 252, 255), new(193, 238, 255))
+            new(92, 119, 130), new(112, 154, 156), new(111, 130, 140),
+            new(157, 183, 188), new(235, 240, 244), new(177, 201, 205))
     };
 
     private static void AddLayer(

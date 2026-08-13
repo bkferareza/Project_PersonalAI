@@ -8,7 +8,8 @@
 
 ## Product Direction
 
-- The temporary product name is `Machine`.
+- `Matasuri` is the product-facing name.
+- `Machine.*` remains the current internal architecture naming.
 - Build a Windows-first, local-first intelligence layer.
 - Normal operation must not require cloud inference, paid APIs, internet access, remote Ollama, or automatic model downloads.
 - Production inference must eventually be owned and bundled by the application; the current local Ollama integration is transitional.
