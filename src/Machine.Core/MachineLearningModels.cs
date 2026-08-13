@@ -19,7 +19,8 @@ public enum MachineLearningMemoryLayer
     ContextBaseline,
     CompactProfile,
     BroaderPattern,
-    AggregateEpisode
+    AggregateEpisode,
+    HealthHistory
 }
 
 public enum MachineLearningDataHealth

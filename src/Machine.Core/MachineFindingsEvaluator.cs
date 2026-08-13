@@ -4,6 +4,11 @@ namespace Machine.Core;
 
 public static class MachineFindingsEvaluator
 {
+    public const int RecurringApplicationAttentionThreshold = 3;
+    public const int RepeatedUpdateFailureAttentionThreshold = 3;
+    public const int RepeatedUnexpectedShutdownAttentionThreshold = 2;
+    public const int RepeatedHardwareFailureAttentionThreshold = 2;
+
     private const double CpuAttentionPercent = 70d;
     private const double CpuWarningPercent = 90d;
     private const double MemoryAttentionPercent = 80d;
@@ -37,6 +42,7 @@ public static class MachineFindingsEvaluator
             EvaluateSystemVolume(systemVolume, findings);
         }
 
+        EvaluateHealth(input, findings);
         EvaluateDataQuality(input, findings);
 
         var orderedFindings = findings
@@ -237,6 +243,123 @@ public static class MachineFindingsEvaluator
                             "read failure",
                             "read failures") + "."
                     : "The inventory did not return a complete result."));
+        }
+
+        if (input.WindowsUpdate is { } update &&
+            (update.DataStatus != MachineHealthDataStatus.Complete ||
+             update.RefreshStatus ==
+                MachineWindowsUpdateRefreshStatus.CachedAfterFailure))
+        {
+            findings.Add(new MachineFinding(
+                Code: "data.windows-update.partial",
+                Severity: MachineFindingSeverity.Info,
+                Title: "Windows Update status is partial",
+                Detail: update.VerifiedAt is null
+                    ? "The current Windows Update state is unavailable."
+                    : update.RefreshStatus ==
+                        MachineWindowsUpdateRefreshStatus.CachedAfterFailure
+                        ? "The last verified Windows Update state was " +
+                            "preserved after a later refresh could not be " +
+                            "completed."
+                        : "Some Windows Update details could not be " +
+                            "verified."));
+        }
+
+        if (input.RebootPending is { IsPartial: true })
+        {
+            findings.Add(new MachineFinding(
+                Code: "data.reboot-pending.partial",
+                Severity: MachineFindingSeverity.Info,
+                Title: "Restart evidence is partial",
+                Detail: "Some restart indicators could not be verified."));
+        }
+
+        if (input.Reliability is { } reliability &&
+            reliability.DataStatus != MachineHealthDataStatus.Complete)
+        {
+            findings.Add(new MachineFinding(
+                Code: "data.reliability.partial",
+                Severity: MachineFindingSeverity.Info,
+                Title: "Reliability history is partial",
+                Detail: reliability.VerifiedAt is null
+                    ? "Windows reliability history is unavailable."
+                    : "Some reliability event sources could not be read."));
+        }
+    }
+
+    private static void EvaluateHealth(
+        MachineFindingsInput input,
+        ICollection<MachineFinding> findings)
+    {
+        if (input.RebootPending?.IsPending == true)
+        {
+            findings.Add(new MachineFinding(
+                Code: "health.restart.pending",
+                Severity: MachineFindingSeverity.Info,
+                Title: "Restart pending",
+                Detail: "Windows has recorded a pending restart."));
+        }
+
+        var reliability = input.Reliability;
+        if (reliability?.VerifiedAt is null)
+        {
+            return;
+        }
+
+        var recurring = reliability.Summary.RecurringApplications
+            .Where(application =>
+                application.IncidentCountLast7Days >=
+                    RecurringApplicationAttentionThreshold)
+            .OrderByDescending(application =>
+                application.IncidentCountLast7Days)
+            .ThenBy(application =>
+                application.ApplicationName,
+                StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+        if (recurring is not null)
+        {
+            findings.Add(new MachineFinding(
+                Code: "health.reliability.application-recurrence",
+                Severity: MachineFindingSeverity.Attention,
+                Title: "Application failures have recurred",
+                Detail: $"Windows recorded " +
+                    $"{recurring.IncidentCountLast7Days} crashes or hangs " +
+                    $"of {recurring.ApplicationName} during the last 7 days."));
+        }
+
+        var sevenDays = reliability.Summary.Last7Days;
+        if (sevenDays.UpdateFailureCount >=
+            RepeatedUpdateFailureAttentionThreshold)
+        {
+            findings.Add(new MachineFinding(
+                Code: "health.reliability.update-failures-repeated",
+                Severity: MachineFindingSeverity.Attention,
+                Title: "Update failures have recurred",
+                Detail: $"Windows recorded {sevenDays.UpdateFailureCount} " +
+                    "update failures during the last 7 days."));
+        }
+
+        if (sevenDays.UnexpectedShutdownCount >=
+            RepeatedUnexpectedShutdownAttentionThreshold)
+        {
+            findings.Add(new MachineFinding(
+                Code: "health.reliability.unexpected-shutdowns-repeated",
+                Severity: MachineFindingSeverity.Attention,
+                Title: "Unexpected shutdowns have recurred",
+                Detail: $"Windows recorded " +
+                    $"{sevenDays.UnexpectedShutdownCount} unexpected " +
+                    "shutdowns during the last 7 days."));
+        }
+
+        if (sevenDays.HardwareFailureCount >=
+            RepeatedHardwareFailureAttentionThreshold)
+        {
+            findings.Add(new MachineFinding(
+                Code: "health.reliability.hardware-errors-repeated",
+                Severity: MachineFindingSeverity.Attention,
+                Title: "Hardware-error records have recurred",
+                Detail: $"Windows recorded {sevenDays.HardwareFailureCount} " +
+                    "hardware-error events during the last 7 days."));
         }
     }
 

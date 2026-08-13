@@ -17,8 +17,8 @@ public sealed partial class OllamaMachineStateExplainer
 
         Use only the verified machine facts supplied by the application.
         The application renders the deterministic overall state separately. Generate only the short natural insight body; do not add a heading or state label.
-        Use one or two short sentences based only on supplied findings, CPU or memory values, the system-volume summary, bounded software or startup counts, bounded network/session context, or partial or unavailable data state.
-        Never mention a process name or infer anything from process activity.
+        Use one or two short sentences based only on supplied findings, CPU or memory values, the system-volume summary, bounded software or startup counts, bounded network/session context, bounded health context, or partial or unavailable data state.
+        Never mention a process name from current process telemetry or infer anything from process activity. A normalized application identity may be mentioned only when it appears in health.most_recent_significant_incident or health.recurring_application_failure.
         Never invent causes, diagnoses, temperatures, hardware details, emotions, processes, or actions.
         Do not claim that you changed, fixed, deleted, stopped, or optimized anything.
         In optional context, null means unavailable and is_complete false means partial; distinguish those states honestly when relevant.
@@ -32,6 +32,9 @@ public sealed partial class OllamaMachineStateExplainer
         Network activity is behavioral context only. Never treat it as a finding, severity, pressure, warning, anomaly, recommendation, or evidence of good or bad behavior.
         Never infer an application, remote host, connection, URL, download, upload, stream, game, suspicious activity, or cause from network activity or throughput.
         System uptime and Machine uptime are elapsed durations only. Never infer sleep, resume, absence, work, or productivity from them.
+        Health context is verified Windows history, not root-cause analysis. An unexpected shutdown does not identify a brownout, power loss, power-supply failure, forced shutdown, or any other cause. An application crash or hang identifies only the recorded application, not the cause or system-wide blame.
+        Never claim that an update caused a crash, that a driver caused a failure, that an application broke the system, or that restarting will fix anything. Never recommend restarting, installing updates, repairing, or changing configuration.
+        Historical incident severity describes reliability history only. Do not turn an isolated historical event into current Machine severity; use supplied deterministic findings and overall_state for current severity.
         Never recommend deletion, uninstalling, disabling, cleanup, or optimization.
         Treat supplied deterministic findings as authoritative.
         Never upgrade or downgrade a supplied finding severity.
@@ -152,7 +155,8 @@ public sealed partial class OllamaMachineStateExplainer
                 request.Storage,
                 request.Resources,
                 request.LearnedContext,
-                request.Network))
+                request.Network,
+                request.Health))
         {
             return CreateFallbackExplanation(request.Findings);
         }
@@ -195,7 +199,8 @@ public sealed partial class OllamaMachineStateExplainer
             Findings: CreateFindingsPayload(request.Findings),
             LearnedContext: CreateLearnedContextPayload(request.LearnedContext),
             Network: CreateNetworkPayload(request.Network),
-            Session: CreateSessionPayload(request.Session));
+            Session: CreateSessionPayload(request.Session),
+            Health: CreateHealthPayload(request.Health));
 
         var payloadJson = JsonSerializer.Serialize(
             payload,
@@ -415,6 +420,81 @@ public sealed partial class OllamaMachineStateExplainer
             ToElapsedSeconds(session.MachineUptime));
     }
 
+    private static HealthSnapshotPayload? CreateHealthPayload(
+        MachineHealthInsightContext? health)
+    {
+        if (health is null)
+        {
+            return null;
+        }
+
+        var recurringApplication =
+            health.RecurringApplicationFailure is null
+                ? null
+                : MachineReliabilityAggregator.NormalizeApplicationIdentity(
+                    health.RecurringApplicationFailure.ApplicationName);
+
+        return new HealthSnapshotPayload(
+            WindowsUpdateState: health.UpdateState?.ToString(),
+            PendingUpdateCount: health.PendingUpdateCount,
+            UpdateVerifiedAt: health.UpdateVerifiedAt?.ToUniversalTime()
+                .ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+            RebootPending: health.IsRebootPending,
+            RebootReasons: health.RebootReasons
+                .Take(MachineHealthInsightProjector.MaximumRebootReasonCount)
+                .Select(reason => reason.ToString())
+                .ToArray(),
+            RebootVerifiedAt: FormatVerifiedAt(health.RebootVerifiedAt),
+            RebootConfidence: health.RebootConfidence.ToString(),
+            ReliabilityLast7Days: health.ReliabilityLast7Days is null
+                ? null
+                : new ReliabilityCountsPayload(
+                    health.ReliabilityLast7Days.ApplicationCrashCount,
+                    health.ReliabilityLast7Days.ApplicationHangCount,
+                    health.ReliabilityLast7Days.UnexpectedShutdownCount,
+                    health.ReliabilityLast7Days.UpdateFailureCount,
+                    health.ReliabilityLast7Days.HardwareFailureCount,
+                    health.ReliabilityLast7Days.OtherFailureCount),
+            MostRecentSignificantIncident: CreateHealthIncidentPayload(
+                health.MostRecentSignificantIncident),
+            RecurringApplicationFailure:
+                health.RecurringApplicationFailure is null ||
+                recurringApplication is null
+                    ? null
+                    : new RecurringApplicationFailurePayload(
+                        recurringApplication,
+                        health.RecurringApplicationFailure
+                            .IncidentCountLast7Days,
+                        health.RecurringApplicationFailure
+                            .IncidentCountLast30Days),
+            ReliabilityDataStatus: health.ReliabilityDataStatus.ToString(),
+            ReliabilityVerifiedAt: FormatVerifiedAt(
+                health.ReliabilityVerifiedAt));
+    }
+
+    private static string? FormatVerifiedAt(DateTimeOffset? value) =>
+        value?.ToUniversalTime().ToString(
+            "O",
+            System.Globalization.CultureInfo.InvariantCulture);
+
+    private static HealthIncidentPayload? CreateHealthIncidentPayload(
+        MachineReliabilityIncident? incident)
+    {
+        var normalized = MachineReliabilityAggregator.NormalizeIncident(
+            incident);
+        return normalized is null
+            ? null
+            : new HealthIncidentPayload(
+            OccurredAt: normalized.OccurredAt.ToUniversalTime().ToString(
+                "O",
+                System.Globalization.CultureInfo.InvariantCulture),
+            Category: normalized.Category.ToString(),
+            Severity: normalized.Severity.ToString(),
+            ApplicationName: normalized.ApplicationName,
+            EventId: normalized.EventId,
+            SummaryCode: normalized.SummaryCode);
+    }
+
     private static bool HasNetworkLearningEvidence(
         MachineLearningContextProfile profile) =>
         profile.DominantNetworkActivityClass is
@@ -498,7 +578,9 @@ public sealed partial class OllamaMachineStateExplainer
         [property: JsonPropertyName("network")]
         NetworkSnapshotPayload? Network,
         [property: JsonPropertyName("session")]
-        SessionSnapshotPayload? Session);
+        SessionSnapshotPayload? Session,
+        [property: JsonPropertyName("health")]
+        HealthSnapshotPayload? Health);
 
     private sealed record LearnedContextPayload(
         [property: JsonPropertyName("current_baseline")]
@@ -607,6 +689,68 @@ public sealed partial class OllamaMachineStateExplainer
         long SystemUptimeSeconds,
         [property: JsonPropertyName("machine_uptime_seconds")]
         long MachineUptimeSeconds);
+
+    private sealed record HealthSnapshotPayload(
+        [property: JsonPropertyName("windows_update_state")]
+        string? WindowsUpdateState,
+        [property: JsonPropertyName("pending_update_count")]
+        int? PendingUpdateCount,
+        [property: JsonPropertyName("update_verified_at")]
+        string? UpdateVerifiedAt,
+        [property: JsonPropertyName("reboot_pending")]
+        bool? RebootPending,
+        [property: JsonPropertyName("reboot_reasons")]
+        string[] RebootReasons,
+        [property: JsonPropertyName("reboot_verified_at")]
+        string? RebootVerifiedAt,
+        [property: JsonPropertyName("reboot_confidence")]
+        string RebootConfidence,
+        [property: JsonPropertyName("reliability_last_7_days")]
+        ReliabilityCountsPayload? ReliabilityLast7Days,
+        [property: JsonPropertyName("most_recent_significant_incident")]
+        HealthIncidentPayload? MostRecentSignificantIncident,
+        [property: JsonPropertyName("recurring_application_failure")]
+        RecurringApplicationFailurePayload? RecurringApplicationFailure,
+        [property: JsonPropertyName("reliability_data_status")]
+        string ReliabilityDataStatus,
+        [property: JsonPropertyName("reliability_verified_at")]
+        string? ReliabilityVerifiedAt);
+
+    private sealed record ReliabilityCountsPayload(
+        [property: JsonPropertyName("application_crashes")]
+        int ApplicationCrashes,
+        [property: JsonPropertyName("application_hangs")]
+        int ApplicationHangs,
+        [property: JsonPropertyName("unexpected_shutdowns")]
+        int UnexpectedShutdowns,
+        [property: JsonPropertyName("update_failures")]
+        int UpdateFailures,
+        [property: JsonPropertyName("hardware_failures")]
+        int HardwareFailures,
+        [property: JsonPropertyName("other_failures")]
+        int OtherFailures);
+
+    private sealed record HealthIncidentPayload(
+        [property: JsonPropertyName("occurred_at")]
+        string OccurredAt,
+        [property: JsonPropertyName("category")]
+        string Category,
+        [property: JsonPropertyName("historical_severity")]
+        string Severity,
+        [property: JsonPropertyName("application_name")]
+        string? ApplicationName,
+        [property: JsonPropertyName("event_id")]
+        int? EventId,
+        [property: JsonPropertyName("summary_code")]
+        string SummaryCode);
+
+    private sealed record RecurringApplicationFailurePayload(
+        [property: JsonPropertyName("application_name")]
+        string ApplicationName,
+        [property: JsonPropertyName("incident_count_last_7_days")]
+        int IncidentCountLast7Days,
+        [property: JsonPropertyName("incident_count_last_30_days")]
+        int IncidentCountLast30Days);
 
     private sealed record LearnedEpisodePayload(
         [property: JsonPropertyName("activity_state")]

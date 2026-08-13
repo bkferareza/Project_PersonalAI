@@ -8,6 +8,8 @@ public sealed class MachineShutdownCoordinator
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(2);
     private readonly MachineLearningService _learningService;
     private readonly IMachineLearningStore _learningStore;
+    private readonly MachineHealthHistoryService? _healthHistoryService;
+    private readonly IMachineHealthHistoryStore? _healthHistoryStore;
     private readonly IOllamaRuntimeBootstrapper _runtimeBootstrapper;
     private readonly CancellationTokenSource _applicationCancellation;
     private readonly Action _stopWindowWork;
@@ -23,7 +25,9 @@ public sealed class MachineShutdownCoordinator
         CancellationTokenSource applicationCancellation,
         Action stopWindowWork,
         Action disposeHttpResources,
-        TimeSpan? timeout = null)
+        TimeSpan? timeout = null,
+        MachineHealthHistoryService? healthHistoryService = null,
+        IMachineHealthHistoryStore? healthHistoryStore = null)
     {
         ArgumentNullException.ThrowIfNull(learningService);
         ArgumentNullException.ThrowIfNull(learningStore);
@@ -31,8 +35,15 @@ public sealed class MachineShutdownCoordinator
         ArgumentNullException.ThrowIfNull(applicationCancellation);
         ArgumentNullException.ThrowIfNull(stopWindowWork);
         ArgumentNullException.ThrowIfNull(disposeHttpResources);
+        if ((healthHistoryService is null) != (healthHistoryStore is null))
+        {
+            throw new ArgumentException(
+                "Health history service and store must be supplied together.");
+        }
         _learningService = learningService;
         _learningStore = learningStore;
+        _healthHistoryService = healthHistoryService;
+        _healthHistoryStore = healthHistoryStore;
         _runtimeBootstrapper = runtimeBootstrapper;
         _applicationCancellation = applicationCancellation;
         _stopWindowWork = stopWindowWork;
@@ -67,7 +78,14 @@ public sealed class MachineShutdownCoordinator
                 timeout.Token);
             var runtimeShutdown = _runtimeBootstrapper.ShutdownAsync(
                 timeout.Token);
-            await Task.WhenAll(finalSave, runtimeShutdown)
+            var healthSave = _healthHistoryService is null ||
+                _healthHistoryStore is null
+                    ? Task.CompletedTask
+                    : _healthHistoryService.SaveFinalSnapshotAsync(
+                        _healthHistoryStore,
+                        DateTimeOffset.UtcNow,
+                        timeout.Token);
+            await Task.WhenAll(finalSave, healthSave, runtimeShutdown)
                 .WaitAsync(timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)

@@ -10,4 +10,5 @@ public sealed record MachineStateExplanationRequest(
     MachineFindingsSnapshot? Findings = null,
     MachineLearnedContext? LearnedContext = null,
     MachineNetworkInsightContext? Network = null,
-    MachineSessionInsightContext? Session = null);
+    MachineSessionInsightContext? Session = null,
+    MachineHealthInsightContext? Health = null);

@@ -6,4 +6,7 @@ public sealed record MachineFindingsInput(
     MachineFolderInspectionSnapshot? FolderInspection = null,
     MachineSoftwareInventorySnapshot? ClassicSoftware = null,
     MachinePackagedSoftwareInventorySnapshot? PackagedSoftware = null,
-    MachineStartupInventorySnapshot? Startup = null);
+    MachineStartupInventorySnapshot? Startup = null,
+    MachineWindowsUpdateSnapshot? WindowsUpdate = null,
+    MachineRebootPendingSnapshot? RebootPending = null,
+    MachineReliabilitySnapshot? Reliability = null);

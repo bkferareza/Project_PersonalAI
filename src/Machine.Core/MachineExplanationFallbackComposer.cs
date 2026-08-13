@@ -60,6 +60,14 @@ public static class MachineExplanationFallbackComposer
             "Partial ang latest packaged-software inventory.",
         "data.startup.partial" =>
             "Partial ang latest startup inventory.",
+        "health.restart.pending" =>
+            "May pending Windows restart na recorded.",
+        "data.windows-update.partial" =>
+            "Partial ang latest Windows Update status.",
+        "data.reboot-pending.partial" =>
+            "Partial ang latest restart evidence.",
+        "data.reliability.partial" =>
+            "Partial ang latest Windows reliability history.",
         _ => null
     };
 }

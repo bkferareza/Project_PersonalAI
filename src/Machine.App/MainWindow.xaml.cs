@@ -25,6 +25,9 @@ public sealed partial class MainWindow : Window
     private const int ExplanationStartupNameCount = 5;
     private const int FindingsDisplayCount = 8;
     private const int MaximumNetworkInterfaceCount = 12;
+    private const int MaximumUpdateHistoryDisplayCount = 12;
+    private const int MaximumReliabilityIncidentDisplayCount = 16;
+    private const int MaximumRecurringFailureDisplayCount = 4;
     private const string UnavailableValue = "Unavailable";
     private const double BytesPerMebibyte =
         1024d * 1024d;
@@ -39,6 +42,8 @@ public sealed partial class MainWindow : Window
         TimeSpan.FromSeconds(5);
     private static readonly TimeSpan OllamaRefreshInterval =
         TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan HealthRefreshInterval =
+        TimeSpan.FromMinutes(10);
     private static readonly TimeSpan LargeFolderScanTimeBudget =
         TimeSpan.FromSeconds(30);
     private readonly IMachineIdentityProvider _identityProvider;
@@ -58,8 +63,13 @@ public sealed partial class MainWindow : Window
     private readonly IMachineUserActivityProvider _userActivityProvider;
     private readonly IMachineNetworkProvider _networkProvider;
     private readonly IMachineSessionProvider _sessionProvider;
+    private readonly IMachineWindowsUpdateProvider _windowsUpdateProvider;
+    private readonly IMachineRebootPendingProvider _rebootPendingProvider;
+    private readonly IMachineReliabilityProvider _reliabilityProvider;
     private readonly MachineLearningService _learningService;
     private readonly IMachineLearningStore _learningStore;
+    private readonly MachineHealthHistoryService _healthHistoryService;
+    private readonly IMachineHealthHistoryStore _healthHistoryStore;
     private readonly MachineInsightTriggerPolicy
         _insightTriggerPolicy = new();
     private readonly CompactPresenceInteraction
@@ -88,6 +98,9 @@ public sealed partial class MainWindow : Window
         _latestStartupInventorySnapshot;
     private MachineNetworkSnapshot? _latestNetworkSnapshot;
     private MachineSessionSnapshot? _latestSessionSnapshot;
+    private MachineWindowsUpdateSnapshot? _latestWindowsUpdateSnapshot;
+    private MachineRebootPendingSnapshot? _latestRebootPendingSnapshot;
+    private MachineReliabilitySnapshot? _latestReliabilitySnapshot;
     private OllamaStatusSnapshot? _latestOllamaStatusSnapshot;
     private MachineFindingsSnapshot _latestFindingsSnapshot =
         MachineFindingsEvaluator.Evaluate(new());
@@ -103,6 +116,7 @@ public sealed partial class MainWindow : Window
     private bool _isSoftwareInventoryRequestRunning;
     private bool _isPackagedSoftwareInventoryRequestRunning;
     private bool _isStartupInventoryRequestRunning;
+    private bool _isHealthRequestRunning;
     private MachineOverallState _latestOverallState =
         MachineOverallState.Unknown;
     private CompactPresencePresentation?
@@ -128,8 +142,13 @@ public sealed partial class MainWindow : Window
         IMachineUserActivityProvider userActivityProvider,
         IMachineNetworkProvider networkProvider,
         IMachineSessionProvider sessionProvider,
+        IMachineWindowsUpdateProvider windowsUpdateProvider,
+        IMachineRebootPendingProvider rebootPendingProvider,
+        IMachineReliabilityProvider reliabilityProvider,
         MachineLearningService learningService,
-        IMachineLearningStore learningStore)
+        IMachineLearningStore learningStore,
+        MachineHealthHistoryService healthHistoryService,
+        IMachineHealthHistoryStore healthHistoryStore)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
         ArgumentNullException.ThrowIfNull(resourceProvider);
@@ -145,8 +164,13 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(userActivityProvider);
         ArgumentNullException.ThrowIfNull(networkProvider);
         ArgumentNullException.ThrowIfNull(sessionProvider);
+        ArgumentNullException.ThrowIfNull(windowsUpdateProvider);
+        ArgumentNullException.ThrowIfNull(rebootPendingProvider);
+        ArgumentNullException.ThrowIfNull(reliabilityProvider);
         ArgumentNullException.ThrowIfNull(learningService);
         ArgumentNullException.ThrowIfNull(learningStore);
+        ArgumentNullException.ThrowIfNull(healthHistoryService);
+        ArgumentNullException.ThrowIfNull(healthHistoryStore);
 
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
@@ -162,8 +186,13 @@ public sealed partial class MainWindow : Window
         _userActivityProvider = userActivityProvider;
         _networkProvider = networkProvider;
         _sessionProvider = sessionProvider;
+        _windowsUpdateProvider = windowsUpdateProvider;
+        _rebootPendingProvider = rebootPendingProvider;
+        _reliabilityProvider = reliabilityProvider;
         _learningService = learningService;
         _learningStore = learningStore;
+        _healthHistoryService = healthHistoryService;
+        _healthHistoryStore = healthHistoryStore;
 
         InitializeComponent();
         _dashboardBackdrop = SystemBackdrop!;
@@ -256,6 +285,7 @@ public sealed partial class MainWindow : Window
 
         await LoadIdentityAsync();
         await LoadLearningAsync();
+        await LoadHealthHistoryAsync();
 
         var cancellationToken =
             _windowCancellationTokenSource.Token;
@@ -266,6 +296,7 @@ public sealed partial class MainWindow : Window
             RunProcessLoopAsync(cancellationToken);
         var ollamaStatusLoop =
             RunOllamaStatusLoopAsync(cancellationToken);
+        var healthLoop = RunHealthLoopAsync(cancellationToken);
 
         await Task.WhenAll(
             LoadStorageAsync(
@@ -294,7 +325,8 @@ public sealed partial class MainWindow : Window
         await Task.WhenAll(
             telemetryLoop,
             processLoop,
-            ollamaStatusLoop);
+            ollamaStatusLoop,
+            healthLoop);
     }
 
     private async Task LoadIdentityAsync()
@@ -504,7 +536,10 @@ public sealed partial class MainWindow : Window
                 ClassicSoftware: _latestSoftwareInventorySnapshot,
                 PackagedSoftware:
                     _latestPackagedSoftwareInventorySnapshot,
-                Startup: _latestStartupInventorySnapshot));
+                Startup: _latestStartupInventorySnapshot,
+                WindowsUpdate: _latestWindowsUpdateSnapshot,
+                RebootPending: _latestRebootPendingSnapshot,
+                Reliability: _latestReliabilitySnapshot));
 
         _latestFindingsSnapshot = snapshot;
         UpdatePresenceState(snapshot.OverallState);
@@ -554,6 +589,203 @@ public sealed partial class MainWindow : Window
             Debug.WriteLine(exception);
             UpdateLearningDashboard();
         }
+    }
+
+    private async Task LoadHealthHistoryAsync()
+    {
+        try
+        {
+            await _healthHistoryService.LoadAsync(
+                _healthHistoryStore,
+                _windowCancellationTokenSource.Token);
+            UpdateHealthDashboard();
+            UpdateLearningDashboard();
+        }
+        catch (OperationCanceledException)
+            when (_windowCancellationTokenSource.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            UpdateHealthDashboard();
+        }
+    }
+
+    private async Task RunHealthLoopAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true)
+            {
+                await RefreshHealthAsync(
+                    isManualRefresh: false,
+                    cancellationToken);
+                await Task.Delay(
+                    HealthRefreshInterval,
+                    cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task RefreshHealthAsync(
+        bool isManualRefresh,
+        CancellationToken cancellationToken)
+    {
+        if (_isHealthRequestRunning)
+        {
+            return;
+        }
+
+        _isHealthRequestRunning = true;
+        UpdateRefreshHealthButtonState();
+        if (isManualRefresh)
+        {
+            RefreshHealthButton.Content = "Refreshing...";
+            await Task.Yield();
+        }
+
+        try
+        {
+            var updateTask = TryCaptureWindowsUpdateAsync(
+                cancellationToken);
+            var rebootTask = TryCaptureRebootPendingAsync(
+                cancellationToken);
+            var reliabilityTask = TryCaptureReliabilityAsync(
+                cancellationToken);
+            await Task.WhenAll(updateTask, rebootTask, reliabilityTask);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var update = await updateTask;
+            var reboot = await rebootTask;
+            var reliability = await reliabilityTask;
+            if (update is not null)
+            {
+                _latestWindowsUpdateSnapshot = update;
+            }
+            if (reboot is not null)
+            {
+                _latestRebootPendingSnapshot = reboot;
+            }
+            if (reliability is not null)
+            {
+                _latestReliabilitySnapshot = reliability;
+            }
+
+            var observedAt = DateTimeOffset.UtcNow;
+            _healthHistoryService.Observe(
+                update,
+                reboot,
+                reliability,
+                observedAt);
+            await _healthHistoryService.SaveIfDueAsync(
+                _healthHistoryStore,
+                observedAt,
+                cancellationToken);
+
+            UpdateHealthDashboard();
+            UpdateLearningDashboard();
+            ReevaluateFindings();
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            HealthStatusText.Text =
+                "Health context is temporarily unavailable.";
+            HealthStatusText.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            _isHealthRequestRunning = false;
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                RefreshHealthButton.Content = "Refresh health";
+                UpdateRefreshHealthButtonState();
+            }
+        }
+    }
+
+    private async Task<MachineWindowsUpdateSnapshot?>
+        TryCaptureWindowsUpdateAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _windowsUpdateProvider.GetAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            return null;
+        }
+    }
+
+    private async Task<MachineRebootPendingSnapshot?>
+        TryCaptureRebootPendingAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _rebootPendingProvider.GetAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            return null;
+        }
+    }
+
+    private async Task<MachineReliabilitySnapshot?>
+        TryCaptureReliabilityAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _reliabilityProvider.GetAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            return null;
+        }
+    }
+
+    private async void OnRefreshHealthClicked(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await RefreshHealthAsync(
+            isManualRefresh: true,
+            _windowCancellationTokenSource.Token);
+    }
+
+    private void UpdateRefreshHealthButtonState()
+    {
+        RefreshHealthButton.IsEnabled =
+            !_isHealthRequestRunning &&
+            !_windowCancellationTokenSource.IsCancellationRequested;
     }
 
     private async Task<bool> CaptureLearningObservationAsync(
@@ -627,16 +859,25 @@ public sealed partial class MainWindow : Window
             ? null
             : GetVerifiedRate(
                 network?.Aggregate.SendBytesPerSecond);
+        var behavioralFindings = MachineFindingsEvaluator.Evaluate(
+            new MachineFindingsInput(
+                Resources: _latestResourceSnapshot,
+                Storage: _latestStorageSnapshot,
+                FolderInspection: _latestFolderInspectionSnapshot,
+                ClassicSoftware: _latestSoftwareInventorySnapshot,
+                PackagedSoftware:
+                    _latestPackagedSoftwareInventorySnapshot,
+                Startup: _latestStartupInventorySnapshot));
         var observation = new MachineLearningObservation(
             resources.CapturedAt,
             resources.CpuUsagePercent,
             memoryPercent,
             activityState.Value,
-            _latestFindingsSnapshot.OverallState,
-            _latestFindingsSnapshot.Findings.Select(finding =>
+            behavioralFindings.OverallState,
+            behavioralFindings.Findings.Select(finding =>
                 $"{finding.Code}:{finding.Severity}").ToArray(),
             freePercent,
-            MachineInsightContextFingerprint.Create(_latestFindingsSnapshot),
+            MachineInsightContextFingerprint.Create(behavioralFindings),
             networkActivityClass,
             receiveBytesPerSecond,
             sendBytesPerSecond);
@@ -735,6 +976,331 @@ public sealed partial class MainWindow : Window
         SessionInputStateText.Text = snapshot.CurrentUserInputState.ToString();
         SessionIdleDurationText.Text =
             FormatInputAge(snapshot.CurrentUserIdleDuration);
+    }
+
+    private void UpdateHealthDashboard()
+    {
+        UpdateWindowsUpdateDashboard(_latestWindowsUpdateSnapshot);
+        UpdateRestartDashboard(_latestRebootPendingSnapshot);
+        UpdateReliabilityDashboard(_latestReliabilitySnapshot);
+
+        var statusMessages = new List<string>();
+        if (_latestWindowsUpdateSnapshot is { } update &&
+            update.DataStatus != MachineHealthDataStatus.Complete)
+        {
+            statusMessages.Add(update.VerifiedAt is null
+                ? "Windows Update status unavailable"
+                : update.RefreshStatus ==
+                    MachineWindowsUpdateRefreshStatus.CachedAfterFailure
+                    ? "Windows Update is showing its last verified state"
+                    : "some Windows Update details are unavailable");
+        }
+        if (_latestRebootPendingSnapshot?.IsPartial == true)
+        {
+            statusMessages.Add("restart evidence partial");
+        }
+        if (_latestReliabilitySnapshot is { } reliability &&
+            reliability.DataStatus != MachineHealthDataStatus.Complete)
+        {
+            statusMessages.Add(reliability.VerifiedAt is null
+                ? "reliability history unavailable"
+                : "reliability history partial");
+        }
+
+        HealthStatusText.Text = string.Join(" · ", statusMessages);
+        HealthStatusText.Visibility = statusMessages.Count == 0
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private void UpdateWindowsUpdateDashboard(
+        MachineWindowsUpdateSnapshot? snapshot)
+    {
+        if (snapshot?.VerifiedAt is null)
+        {
+            WindowsUpdateStateText.Text = "Status unavailable";
+            WindowsUpdateFreshnessText.Text = snapshot is null
+                ? "Waiting for local Windows Update state"
+                : "No verified state is available";
+            WindowsUpdatePendingText.Text = UnavailableValue;
+            WindowsUpdateImportantText.Text = UnavailableValue;
+            WindowsUpdateLastScanText.Text = UnavailableValue;
+            WindowsUpdateLastInstallText.Text = UnavailableValue;
+            WindowsUpdateHistoryList.ItemsSource =
+                Array.Empty<UpdateHistoryDisplayItem>();
+            WindowsUpdateHistoryEmptyText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        WindowsUpdateStateText.Text = FormatWindowsUpdateState(snapshot);
+        var age = DateTimeOffset.UtcNow - snapshot.VerifiedAt.Value;
+        WindowsUpdateFreshnessText.Text = snapshot.RefreshStatus ==
+                MachineWindowsUpdateRefreshStatus.CachedAfterFailure
+            ? $"Last verified {FormatRelativeAge(age)} ago · latest refresh failed"
+            : $"Verified {FormatRelativeAge(age)} ago";
+        WindowsUpdatePendingText.Text = snapshot.PendingUpdateCount is { } pending
+            ? $"{pending:N0}"
+            : UnavailableValue;
+        WindowsUpdateImportantText.Text =
+            snapshot.PendingImportantUpdateCount is { } important
+                ? $"{important:N0}"
+                : UnavailableValue;
+        WindowsUpdateLastScanText.Text = FormatHealthDateTime(
+            snapshot.LastSuccessfulUpdateScan,
+            UnavailableValue);
+        WindowsUpdateLastInstallText.Text = FormatHealthDateTime(
+            snapshot.LastSuccessfulUpdateInstall,
+            UnavailableValue);
+
+        var history = snapshot.RecentUpdateHistory
+            .Take(MaximumUpdateHistoryDisplayCount)
+            .Select(entry => new UpdateHistoryDisplayItem(
+                Header: $"{entry.OccurredAt.ToLocalTime():MMM d · h:mm tt} · " +
+                    FormatUpdateHistoryResult(entry.Result),
+                Title: entry.Title,
+                Details: string.Join(
+                    " · ",
+                    new[] { entry.KnowledgeBaseId, entry.Category }
+                        .Where(value => !string.IsNullOrWhiteSpace(value)))))
+            .ToArray();
+        WindowsUpdateHistoryList.ItemsSource = history;
+        WindowsUpdateHistoryEmptyText.Visibility = history.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void UpdateRestartDashboard(
+        MachineRebootPendingSnapshot? snapshot)
+    {
+        if (snapshot is null || snapshot.IsPending is null)
+        {
+            RestartStateText.Text = "Restart status unknown";
+            RestartReasonsText.Text = snapshot?.IsPartial == true
+                ? "Available restart indicators were inconclusive."
+                : "Waiting for local restart indicators.";
+            RestartDataStatusText.Text = snapshot is null
+                ? string.Empty
+                : $"Checked {FormatRelativeAge(DateTimeOffset.UtcNow - snapshot.CapturedAt)} ago";
+            OverviewHealthPrimaryText.Text = "Restart status unknown";
+            return;
+        }
+
+        RestartStateText.Text = snapshot.IsPending == true
+            ? "Restart pending"
+            : "No restart pending";
+        RestartReasonsText.Text = snapshot.IsPending == true
+            ? string.Join(
+                " · ",
+                snapshot.Reasons.Select(FormatRebootReason))
+            : "No verified restart indicator is currently set.";
+        RestartDataStatusText.Text =
+            $"Checked {FormatRelativeAge(DateTimeOffset.UtcNow - snapshot.CapturedAt)} ago" +
+            (snapshot.IsPartial ? " · partial evidence" : string.Empty);
+        OverviewHealthPrimaryText.Text = snapshot.IsPending == true
+            ? "Restart pending"
+            : "No restart pending";
+    }
+
+    private void UpdateReliabilityDashboard(
+        MachineReliabilitySnapshot? snapshot)
+    {
+        if (snapshot?.VerifiedAt is null)
+        {
+            SetReliabilityCounts(null);
+            ReliabilityFreshnessText.Text = snapshot is null
+                ? "Waiting for Windows reliability history"
+                : "Reliability history unavailable";
+            ReliabilityIncidentsList.ItemsSource =
+                Array.Empty<ReliabilityIncidentDisplayItem>();
+            ReliabilityIncidentsEmptyText.Visibility = Visibility.Visible;
+            RecurringFailuresList.ItemsSource =
+                Array.Empty<RecurringFailureDisplayItem>();
+            RecurringFailuresEmptyText.Visibility = Visibility.Visible;
+            OverviewHealthSecondaryText.Text =
+                "Reliability history unavailable";
+            return;
+        }
+
+        var sevenDays = snapshot.Summary.Last7Days;
+        SetReliabilityCounts(sevenDays);
+        ReliabilityFreshnessText.Text =
+            $"Last 7 days · verified " +
+            $"{FormatRelativeAge(DateTimeOffset.UtcNow - snapshot.VerifiedAt.Value)} ago" +
+            (snapshot.DataStatus == MachineHealthDataStatus.Complete
+                ? string.Empty
+                : " · partial");
+        var incidents = snapshot.Incidents
+            .Take(MaximumReliabilityIncidentDisplayCount)
+            .Select(incident => new ReliabilityIncidentDisplayItem(
+                Header: $"{incident.OccurredAt.ToLocalTime():MMM d · h:mm tt}",
+                Category: FormatReliabilityCategory(incident.Category),
+                Details: CreateReliabilityIncidentDetails(incident)))
+            .ToArray();
+        ReliabilityIncidentsList.ItemsSource = incidents;
+        ReliabilityIncidentsEmptyText.Visibility = incidents.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        var recurring = snapshot.Summary.RecurringApplications
+            .Take(MaximumRecurringFailureDisplayCount)
+            .Select(item =>
+            {
+                var thirtyDayNoun = item.IncidentCountLast30Days == 1
+                    ? "incident"
+                    : "incidents";
+                var sevenDayNoun = item.IncidentCountLast7Days == 1
+                    ? "incident"
+                    : "incidents";
+                return new RecurringFailureDisplayItem(
+                    ApplicationName: item.ApplicationName,
+                    Details:
+                        $"{item.IncidentCountLast30Days:N0} " +
+                        $"{thirtyDayNoun} in 30 days · " +
+                        $"{item.IncidentCountLast7Days:N0} " +
+                        $"{sevenDayNoun} in 7 days");
+            })
+            .ToArray();
+        RecurringFailuresList.ItemsSource = recurring;
+        RecurringFailuresEmptyText.Visibility = recurring.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        var appFailures = sevenDays.ApplicationCrashCount +
+            sevenDays.ApplicationHangCount;
+        OverviewHealthSecondaryText.Text = appFailures > 0
+            ? $"{appFailures:N0} app " +
+                (appFailures == 1 ? "failure" : "failures") +
+                " recorded in 7 days"
+            : sevenDays.UnexpectedShutdownCount > 0
+                ? $"{sevenDays.UnexpectedShutdownCount:N0} unexpected " +
+                    (sevenDays.UnexpectedShutdownCount == 1
+                        ? "shutdown"
+                        : "shutdowns") + " recorded in 7 days"
+                : sevenDays.TotalIncidentCount > 0
+                    ? $"{sevenDays.TotalIncidentCount:N0} reliability " +
+                        (sevenDays.TotalIncidentCount == 1
+                            ? "incident"
+                            : "incidents") + " recorded in 7 days"
+                : snapshot.DataStatus == MachineHealthDataStatus.Complete
+                    ? "No reliability incidents recorded in the verified 7-day window"
+                    : "Reliability history is partially available";
+    }
+
+    private void SetReliabilityCounts(
+        MachineReliabilityWindowSummary? summary)
+    {
+        ReliabilityCrashCountText.Text = summary is null
+            ? UnavailableValue
+            : $"{summary.ApplicationCrashCount:N0}";
+        ReliabilityHangCountText.Text = summary is null
+            ? UnavailableValue
+            : $"{summary.ApplicationHangCount:N0}";
+        ReliabilityShutdownCountText.Text = summary is null
+            ? UnavailableValue
+            : $"{summary.UnexpectedShutdownCount:N0}";
+        ReliabilityUpdateFailureCountText.Text = summary is null
+            ? UnavailableValue
+            : $"{summary.UpdateFailureCount:N0}";
+        ReliabilityHardwareFailureCountText.Text = summary is null
+            ? UnavailableValue
+            : $"{summary.HardwareFailureCount:N0}";
+    }
+
+    private static string FormatWindowsUpdateState(
+        MachineWindowsUpdateSnapshot snapshot) => snapshot.UpdateState switch
+    {
+        MachineWindowsUpdateState.UpToDate => "Up to date",
+        MachineWindowsUpdateState.UpdatesAvailable =>
+            snapshot.PendingUpdateCount is { } pending
+                ? $"{pending:N0} " +
+                    (pending == 1 ? "update available" : "updates available")
+                : "Updates available",
+        MachineWindowsUpdateState.InstallPending => "Installation pending",
+        MachineWindowsUpdateState.RestartRequired => "Restart required",
+        _ => "Status unavailable"
+    };
+
+    private static string FormatUpdateHistoryResult(
+        MachineWindowsUpdateHistoryResult result) => result switch
+    {
+        MachineWindowsUpdateHistoryResult.Succeeded => "Installed",
+        MachineWindowsUpdateHistoryResult.SucceededWithErrors =>
+            "Installed with errors",
+        MachineWindowsUpdateHistoryResult.Failed => "Failed",
+        MachineWindowsUpdateHistoryResult.Cancelled => "Cancelled",
+        MachineWindowsUpdateHistoryResult.InProgress => "In progress",
+        _ => "Result unavailable"
+    };
+
+    private static string FormatRebootReason(
+        MachineRebootPendingReason reason) => reason switch
+    {
+        MachineRebootPendingReason.WindowsUpdate => "Windows Update",
+        MachineRebootPendingReason.ComponentServicing =>
+            "Component servicing",
+        MachineRebootPendingReason.PendingFileRename =>
+            "Pending file rename",
+        MachineRebootPendingReason.ComputerRename => "Computer rename",
+        _ => "Other Windows indicator"
+    };
+
+    private static string FormatReliabilityCategory(
+        MachineReliabilityIncidentCategory category) => category switch
+    {
+        MachineReliabilityIncidentCategory.ApplicationCrash =>
+            "Application crash",
+        MachineReliabilityIncidentCategory.ApplicationHang =>
+            "Application hang",
+        MachineReliabilityIncidentCategory.UnexpectedShutdown =>
+            "Unexpected shutdown",
+        MachineReliabilityIncidentCategory.WindowsFailure =>
+            "Windows failure",
+        MachineReliabilityIncidentCategory.HardwareFailure =>
+            "Hardware-error record",
+        MachineReliabilityIncidentCategory.UpdateFailure =>
+            "Update failure",
+        MachineReliabilityIncidentCategory.InstallFailure =>
+            "Install failure",
+        _ => "Reliability incident"
+    };
+
+    private static string CreateReliabilityIncidentDetails(
+        MachineReliabilityIncident incident)
+    {
+        var details = new[]
+        {
+            incident.ApplicationName,
+            incident.UpdateIdentifier,
+            incident.FailureCode,
+            incident.EventId is { } eventId ? $"Event {eventId}" : null
+        }.Where(value => !string.IsNullOrWhiteSpace(value));
+        return string.Join(" · ", details);
+    }
+
+    private static string FormatHealthDateTime(
+        DateTimeOffset? value,
+        string unavailable) => value is null
+        ? unavailable
+        : value.Value.ToLocalTime().ToString(
+            "MMM d · h:mm tt",
+            CultureInfo.CurrentCulture);
+
+    private static string FormatRelativeAge(TimeSpan age)
+    {
+        var bounded = age < TimeSpan.Zero ? TimeSpan.Zero : age;
+        if (bounded.TotalDays >= 1d)
+        {
+            return $"{(int)bounded.TotalDays}d";
+        }
+        if (bounded.TotalHours >= 1d)
+        {
+            return $"{(int)bounded.TotalHours}h";
+        }
+        if (bounded.TotalMinutes >= 1d)
+        {
+            return $"{Math.Max(1, (int)bounded.TotalMinutes)}m";
+        }
+        return "under a minute";
     }
 
     private static NetworkInterfaceDisplayItem
@@ -844,8 +1410,12 @@ public sealed partial class MainWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        var learnedItems = snapshot.LearnedItems.Select(item =>
-            new LearnedItemDisplayItem(
+        var healthLearnedItems = MachineHealthLearnedItemProjector.Project(
+            _healthHistoryService.GetSnapshot());
+        var learnedItems = snapshot.LearnedItems
+            .Concat(healthLearnedItems)
+            .Take(MachineLearnedItemProjector.DefaultMaximumItemCount)
+            .Select(item => new LearnedItemDisplayItem(
                 $"{FormatLearningLayer(item.Layer)} · " +
                     (item.IsEarlyObservation
                         ? $"Early · {item.Confidence}"
@@ -854,7 +1424,10 @@ public sealed partial class MainWindow : Window
                             ? "Established"
                             : "Recorded"),
                 item.Text,
-                $"Evidence · {FormatSampleCount(item.EvidenceCount)}"))
+                item.Layer == MachineLearningMemoryLayer.HealthHistory
+                    ? $"Evidence · {item.EvidenceCount:N0} verified " +
+                        (item.EvidenceCount == 1 ? "record" : "records")
+                    : $"Evidence · {FormatSampleCount(item.EvidenceCount)}"))
             .ToArray();
         LearnedItemsList.ItemsSource = learnedItems;
         LearningItemsEmptyText.Visibility = learnedItems.Length == 0
@@ -960,6 +1533,7 @@ public sealed partial class MainWindow : Window
             MachineLearningMemoryLayer.CompactProfile => "Layer 2 profile",
             MachineLearningMemoryLayer.BroaderPattern => "Layer 3 pattern",
             MachineLearningMemoryLayer.AggregateEpisode => "Aggregate episode",
+            MachineLearningMemoryLayer.HealthHistory => "Health history",
             _ => "Learned evidence"
         };
 
@@ -1395,7 +1969,11 @@ public sealed partial class MainWindow : Window
                 Findings: findingsSnapshot,
                 LearnedContext: _learningService.GetLearnedContext(),
                 Network: CreateNetworkInsightContext(networkSnapshot),
-                Session: CreateSessionInsightContext(sessionSnapshot));
+                Session: CreateSessionInsightContext(sessionSnapshot),
+                Health: MachineHealthInsightProjector.Project(
+                    _latestWindowsUpdateSnapshot,
+                    _latestRebootPendingSnapshot,
+                    _latestReliabilitySnapshot));
             var explanation =
                 await _machineStateExplainer.ExplainAsync(
                     request,
@@ -2964,6 +3542,9 @@ public sealed partial class MainWindow : Window
         NetworkPage.Visibility = tag == "network"
             ? Visibility.Visible
             : Visibility.Collapsed;
+        HealthPage.Visibility = tag == "health"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         StoragePage.Visibility = tag == "storage"
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -2980,6 +3561,13 @@ public sealed partial class MainWindow : Window
         if (tag == "learning")
         {
             UpdateLearningDashboard();
+        }
+        else if (tag == "health")
+        {
+            UpdateHealthDashboard();
+            _ = RefreshHealthAsync(
+                isManualRefresh: false,
+                _windowCancellationTokenSource.Token);
         }
     }
 
@@ -3195,3 +3783,17 @@ public sealed record NetworkInterfaceDisplayItem(
     string LinkDetails,
     string ReceivedDetails,
     string SentDetails);
+
+public sealed record UpdateHistoryDisplayItem(
+    string Header,
+    string Title,
+    string Details);
+
+public sealed record ReliabilityIncidentDisplayItem(
+    string Header,
+    string Category,
+    string Details);
+
+public sealed record RecurringFailureDisplayItem(
+    string ApplicationName,
+    string Details);

@@ -74,6 +74,46 @@ public sealed class MachineShutdownCoordinatorTests
         Assert.Equal(1, disposed);
     }
 
+    [Fact]
+    public async Task FinalShutdownPersistsSeparateHealthHistory()
+    {
+        var learning = CreateDirtyService();
+        var learningStore = new ImmediateStore();
+        var health = new MachineHealthHistoryService();
+        var healthStore = new RecordingHealthStore();
+        var reliability = MachineReliabilityAggregator.Aggregate(
+        [
+            new MachineReliabilityIncident(
+                DateTimeOffset.UtcNow.AddMinutes(-1),
+                MachineReliabilityIncidentCategory.ApplicationCrash,
+                MachineReliabilityIncidentSeverity.Significant,
+                "Application Error",
+                "test.exe",
+                null,
+                null,
+                1000,
+                "application.crash")
+        ], DateTimeOffset.UtcNow);
+        health.Observe(null, null, reliability, DateTimeOffset.UtcNow);
+        using var cancellation = new CancellationTokenSource();
+        var coordinator = new MachineShutdownCoordinator(
+            learning,
+            learningStore,
+            new RecordingRuntime(),
+            cancellation,
+            () => { },
+            () => { },
+            TimeSpan.FromSeconds(1),
+            health,
+            healthStore);
+
+        await coordinator.BeginShutdown();
+
+        Assert.NotNull(healthStore.State);
+        Assert.Equal(1, healthStore.State.LifetimeObservedIncidentCount);
+        Assert.Single(healthStore.State.Reliability!.RecentIncidents);
+    }
+
     private static MachineLearningService CreateDirtyService()
     {
         var service = new MachineLearningService();
@@ -111,6 +151,35 @@ public sealed class MachineShutdownCoordinatorTests
         public Task SaveAsync(MachineLearningPersistedState state,
             CancellationToken cancellationToken = default) =>
             Task.FromException(new IOException("Simulated save failure."));
+    }
+
+    private sealed class ImmediateStore : IMachineLearningStore
+    {
+        public Task<MachineLearningPersistedState?> LoadAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<MachineLearningPersistedState?>(null);
+
+        public Task SaveAsync(
+            MachineLearningPersistedState state,
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class RecordingHealthStore : IMachineHealthHistoryStore
+    {
+        public MachineHealthHistoryPersistedState? State { get; private set; }
+
+        public Task<MachineHealthHistoryPersistedState?> LoadAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(State);
+
+        public Task SaveAsync(
+            MachineHealthHistoryPersistedState state,
+            CancellationToken cancellationToken = default)
+        {
+            State = state;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class RecordingRuntime : IOllamaRuntimeBootstrapper

@@ -405,6 +405,10 @@ public sealed class CompactPresencePresentationTests
         Assert.Contains("Text=\"Broader patterns\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"NetworkNavigationItem\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"NetworkPage\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"HealthNavigationItem\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"HealthPage\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"WindowsUpdateHistoryList\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"ReliabilityIncidentsList\"", xaml);
         Assert.DoesNotContain("Maximize", xaml, StringComparison.OrdinalIgnoreCase);
     }
 

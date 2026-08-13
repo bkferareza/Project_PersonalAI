@@ -91,6 +91,7 @@ public static class MachineExplanationValidator
         "because",
         "due to",
         "caused by",
+        "caused ",
         "causes",
         "triggered by",
         "driven by",
@@ -208,6 +209,59 @@ public static class MachineExplanationValidator
         "internet usage by"
     ];
 
+    private static readonly string[] UnsupportedHealthLanguage =
+    [
+        "brownout",
+        "power outage",
+        "power loss",
+        "power supply",
+        "psu",
+        "driver blame",
+        "driver failure caused",
+        "faulty driver",
+        "driver is faulty",
+        "driver problem",
+        "driver issue",
+        "update caused",
+        "caused the crash",
+        "broke the system",
+        " is broken",
+        " is unstable",
+        "sinira ang",
+        "nasira ang",
+        "sirang ",
+        "restart now",
+        "reboot now",
+        "restart immediately",
+        "reboot immediately",
+        "please restart",
+        "please reboot",
+        "restart your",
+        "reboot your",
+        "restart the computer",
+        "reboot the computer",
+        "restart windows",
+        "reboot windows",
+        "restart will fix",
+        "restarting will fix",
+        "rebooting will fix",
+        "repair windows",
+        "repair the app",
+        "repair the application",
+        "run repair",
+        "needs repair",
+        "fix windows",
+        "fix the app",
+        "fix the application",
+        "fix the crash",
+        "mag-restart",
+        "mag-reboot",
+        "i-restart",
+        "i-reboot",
+        "install updates",
+        "update windows now"
+    ];
+
     private static readonly Regex CpuThenPercentage = new(
         @"\bcpu\b[^.!?%]{0,60}?(?<value>\d{1,3}(?:\.\d+)?)\s*(?:%|percent|porsyento)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
@@ -278,6 +332,11 @@ public static class MachineExplanationValidator
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(100));
 
+    private static readonly Regex HealthCountClaim = new(
+        @"\b(?<value>\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:application\s+|app\s+)?(?<kind>pending\s+updates?|updates?\s+available|crashes?\s+or\s+hangs?|crashes?|hangs?|unexpected\s+shutdowns?|update\s+failures?|hardware\s+(?:errors?|failures?))\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
     public static bool IsValid(
         string? text,
         IReadOnlyList<string> currentProcessNames,
@@ -285,7 +344,8 @@ public static class MachineExplanationValidator
         MachineStorageExplanationContext? storage = null,
         MachineResourceSnapshot? resources = null,
         MachineLearnedContext? learnedContext = null,
-        MachineNetworkInsightContext? network = null)
+        MachineNetworkInsightContext? network = null,
+        MachineHealthInsightContext? health = null)
     {
         ArgumentNullException.ThrowIfNull(currentProcessNames);
 
@@ -297,7 +357,7 @@ public static class MachineExplanationValidator
             QuestionLanguage.IsMatch(text) ||
             ContainsAny(text, ProhibitedLanguage) ||
             AiReference.IsMatch(text) ||
-            ContainsProcessName(text, currentProcessNames) ||
+            ContainsProcessName(text, currentProcessNames, health) ||
             ContradictsVerifiedContext(text, findings) ||
             ConflatesMemoryAndStorage(text) ||
             InventsFolderScanResult(text, storage) ||
@@ -306,6 +366,8 @@ public static class MachineExplanationValidator
                 resources,
                 learnedContext) ||
             ContainsUnsupportedNetworkClaim(text, network) ||
+            ContainsUnsupportedHealthClaim(text, health) ||
+            ContainsIncorrectHealthCount(text, health) ||
             ContainsUnsupportedPersonalizedComparison(
                 text,
                 learnedContext,
@@ -456,6 +518,328 @@ public static class MachineExplanationValidator
                     "masama",
                     "maganda"
                 ]));
+    }
+
+    private static bool ContainsUnsupportedHealthClaim(
+        string text,
+        MachineHealthInsightContext? health)
+    {
+        if (ContainsAny(text, UnsupportedHealthLanguage))
+        {
+            return true;
+        }
+
+        var mentionsRestart = ContainsAny(
+            text,
+            ["restart", "reboot", "pending restart"]);
+        var mentionsUpdate = ContainsAny(
+            text,
+            ["windows update", "updates available", "pending update",
+             "update failure", "update failures", "up to date"]);
+        var mentionsReliability = ContainsAny(
+            text,
+            ["crash", "hang", "unexpected shutdown", "hardware error",
+             "hardware failure", "reliability"]);
+        var mentionsCombinedApplicationFailure = ContainsAny(
+            text,
+            ["crash or hang", "crashes or hangs"]);
+        if (health is null)
+        {
+            return mentionsRestart || mentionsUpdate || mentionsReliability;
+        }
+
+        if (mentionsRestart)
+        {
+            var claimsPending = ContainsAny(
+                text,
+                ["restart pending", "pending restart", "reboot pending",
+                 "pending windows restart",
+                 "requires restart", "restart required"]);
+            var claimsNoPending = ContainsAny(
+                text,
+                ["no restart pending", "no pending restart",
+                 "walang pending restart"]);
+            if (claimsPending && health.IsRebootPending != true ||
+                claimsNoPending && health.IsRebootPending != false)
+            {
+                return true;
+            }
+        }
+
+        if (text.Contains(
+                "up to date",
+                StringComparison.OrdinalIgnoreCase) &&
+            health.UpdateState != MachineWindowsUpdateState.UpToDate)
+        {
+            return true;
+        }
+
+        var claimsNoPendingUpdates = ContainsAny(
+            text,
+            ["no pending updates", "no updates available",
+             "walang pending update"]);
+        if (claimsNoPendingUpdates &&
+            (health.UpdateVerifiedAt is null ||
+             health.PendingUpdateCount != 0) ||
+            !claimsNoPendingUpdates &&
+            ContainsAny(text, ["updates available", "pending update"]) &&
+            (health.PendingUpdateCount is null or <= 0))
+        {
+            return true;
+        }
+
+        var counts = health.ReliabilityLast7Days;
+        var claimsNoCrashes = ContainsAny(
+            text,
+            ["no application crashes", "no app crashes", "no crashes",
+             "walang crash"]);
+        var claimsNoHangs = ContainsAny(
+            text,
+            ["no application hangs", "no app hangs", "no hangs",
+             "walang hang"]);
+        var claimsNoCombinedApplicationFailure = ContainsAny(
+            text,
+            ["no crashes or hangs", "no crash or hang",
+             "walang crash o hang"]);
+        var claimsNoUnexpectedShutdown = ContainsAny(
+            text,
+            ["no unexpected shutdown", "walang unexpected shutdown"]);
+        var claimsNoHardwareFailure = ContainsAny(
+            text,
+            ["no hardware errors", "no hardware failures",
+             "walang hardware error"]);
+        var claimsNoUpdateFailure = ContainsAny(
+            text,
+            ["no update failures", "walang update failure"]);
+        var claimsNoReliabilityIncident = ContainsAny(
+            text,
+            ["no reliability incidents"]);
+        var hasPositiveAbsenceClaim = claimsNoCrashes || claimsNoHangs ||
+            claimsNoCombinedApplicationFailure ||
+            claimsNoUnexpectedShutdown || claimsNoHardwareFailure ||
+            claimsNoUpdateFailure || claimsNoReliabilityIncident;
+        if (hasPositiveAbsenceClaim &&
+            health.ReliabilityDataStatus !=
+                MachineHealthDataStatus.Complete ||
+            claimsNoCrashes &&
+                (counts?.ApplicationCrashCount ?? -1) != 0 ||
+            claimsNoHangs &&
+                (counts?.ApplicationHangCount ?? -1) != 0 ||
+            claimsNoCombinedApplicationFailure &&
+                ((counts?.ApplicationCrashCount ?? -1) != 0 ||
+                 (counts?.ApplicationHangCount ?? -1) != 0) ||
+            claimsNoUnexpectedShutdown &&
+                (counts?.UnexpectedShutdownCount ?? -1) != 0 ||
+            claimsNoHardwareFailure &&
+                (counts?.HardwareFailureCount ?? -1) != 0 ||
+            claimsNoUpdateFailure &&
+                (counts?.UpdateFailureCount ?? -1) != 0 ||
+            claimsNoReliabilityIncident &&
+                (counts?.TotalIncidentCount ?? -1) != 0)
+        {
+            return true;
+        }
+
+        if (!claimsNoUnexpectedShutdown &&
+            ContainsAny(text, ["unexpected shutdown"]) &&
+            (counts?.UnexpectedShutdownCount ?? 0) == 0 &&
+            health.MostRecentSignificantIncident?.Category !=
+                MachineReliabilityIncidentCategory.UnexpectedShutdown)
+        {
+            return true;
+        }
+
+        if (!claimsNoHardwareFailure &&
+            ContainsAny(text, ["hardware error", "hardware failure"]) &&
+            (counts?.HardwareFailureCount ?? 0) == 0 &&
+            health.MostRecentSignificantIncident?.Category !=
+                MachineReliabilityIncidentCategory.HardwareFailure)
+        {
+            return true;
+        }
+
+        if (!claimsNoUpdateFailure &&
+            ContainsAny(text, ["update failure", "update failures"]) &&
+            (counts?.UpdateFailureCount ?? 0) == 0)
+        {
+            return true;
+        }
+
+        if (ContainsAny(text, ["crash", "crashes"]) &&
+            !claimsNoCrashes &&
+            !claimsNoCombinedApplicationFailure &&
+            !mentionsCombinedApplicationFailure &&
+            (counts?.ApplicationCrashCount ?? 0) == 0 &&
+            health.MostRecentSignificantIncident?.Category !=
+                MachineReliabilityIncidentCategory.ApplicationCrash)
+        {
+            return true;
+        }
+
+        if (ContainsAny(text, ["hang", "hangs"]) &&
+            !claimsNoHangs &&
+            !claimsNoCombinedApplicationFailure &&
+            !mentionsCombinedApplicationFailure &&
+            (counts?.ApplicationHangCount ?? 0) == 0 &&
+            health.MostRecentSignificantIncident?.Category !=
+                MachineReliabilityIncidentCategory.ApplicationHang)
+        {
+            return true;
+        }
+
+        if (mentionsCombinedApplicationFailure &&
+            !claimsNoCombinedApplicationFailure &&
+            (counts?.ApplicationCrashCount ?? 0) +
+                (counts?.ApplicationHangCount ?? 0) == 0 &&
+            health.MostRecentSignificantIncident?.Category is not
+                (MachineReliabilityIncidentCategory.ApplicationCrash or
+                 MachineReliabilityIncidentCategory.ApplicationHang) &&
+            health.RecurringApplicationFailure is null)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsIncorrectHealthCount(
+        string text,
+        MachineHealthInsightContext? health)
+    {
+        var matches = HealthCountClaim.Matches(text);
+        if (matches.Count == 0)
+        {
+            return false;
+        }
+
+        if (health is not { } verifiedHealth)
+        {
+            return true;
+        }
+        var counts = verifiedHealth.ReliabilityLast7Days;
+
+        foreach (Match match in matches)
+        {
+            if (!TryParseHealthCount(
+                    match.Groups["value"].Value,
+                    out var claimed))
+            {
+                return true;
+            }
+
+            var kind = match.Groups["kind"].Value;
+            if (kind.Contains("pending", StringComparison.OrdinalIgnoreCase) ||
+                kind.Contains("available", StringComparison.OrdinalIgnoreCase))
+            {
+                if (verifiedHealth.PendingUpdateCount is not
+                        { } pendingCount ||
+                    claimed != pendingCount)
+                {
+                    return true;
+                }
+                continue;
+            }
+
+            if (counts is null)
+            {
+                return true;
+            }
+
+            if (kind.Contains(" or ", StringComparison.OrdinalIgnoreCase))
+            {
+                var combined = counts.ApplicationCrashCount +
+                    counts.ApplicationHangCount;
+                var recurringApplication =
+                    verifiedHealth.RecurringApplicationFailure;
+                var mentionsRecurringApplication = recurringApplication is
+                        not null &&
+                    MentionsApplication(
+                        text,
+                        recurringApplication.ApplicationName);
+                var verifiedCombined = mentionsRecurringApplication
+                    ? recurringApplication!.IncidentCountLast7Days
+                    : combined;
+                if (claimed != verifiedCombined)
+                {
+                    return true;
+                }
+                continue;
+            }
+
+            var verified = kind.Contains(
+                    "unexpected",
+                    StringComparison.OrdinalIgnoreCase)
+                ? counts.UnexpectedShutdownCount
+                : kind.Contains(
+                    "update",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? counts.UpdateFailureCount
+                    : kind.Contains(
+                        "hardware",
+                        StringComparison.OrdinalIgnoreCase)
+                        ? counts.HardwareFailureCount
+                        : kind.StartsWith(
+                            "hang",
+                            StringComparison.OrdinalIgnoreCase)
+                            ? counts.ApplicationHangCount
+                            : counts.ApplicationCrashCount;
+            if (claimed != verified)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryParseHealthCount(
+        string value,
+        out int count)
+    {
+        if (int.TryParse(
+                value,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out count))
+        {
+            return true;
+        }
+
+        count = value.ToLowerInvariant() switch
+        {
+            "zero" => 0,
+            "one" => 1,
+            "two" => 2,
+            "three" => 3,
+            "four" => 4,
+            "five" => 5,
+            "six" => 6,
+            "seven" => 7,
+            "eight" => 8,
+            "nine" => 9,
+            "ten" => 10,
+            _ => -1
+        };
+        return count >= 0;
+    }
+
+    private static bool MentionsApplication(
+        string text,
+        string applicationName)
+    {
+        if (text.Contains(
+                applicationName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var withoutExtension = Path.GetFileNameWithoutExtension(
+            applicationName);
+        return !string.IsNullOrWhiteSpace(withoutExtension) &&
+            text.Contains(
+                withoutExtension,
+                StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool MentionsNetwork(string text) =>
@@ -927,13 +1311,35 @@ public static class MachineExplanationValidator
 
     private static bool ContainsProcessName(
         string text,
-        IReadOnlyList<string> currentProcessNames) =>
+        IReadOnlyList<string> currentProcessNames,
+        MachineHealthInsightContext? health)
+    {
+        var allowedApplicationNames = new[]
+        {
+            health?.MostRecentSignificantIncident?.ApplicationName,
+            health?.RecurringApplicationFailure?.ApplicationName
+        }
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!.Trim())
+            .ToArray();
+
+        return
         currentProcessNames
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(name => name.Trim())
+            .Where(name => !allowedApplicationNames.Any(allowed =>
+                string.Equals(
+                    allowed,
+                    name,
+                    StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(
+                    Path.GetFileNameWithoutExtension(allowed),
+                    name,
+                    StringComparison.OrdinalIgnoreCase)))
             .Any(name => text.Contains(
                 name,
                 StringComparison.OrdinalIgnoreCase));
+    }
 
     private sealed record PercentageClaim(double Value, string Text);
 }

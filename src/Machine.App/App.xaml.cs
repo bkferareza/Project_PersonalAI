@@ -44,8 +44,17 @@ public partial class App : Application
             new WindowsMachineNetworkProvider();
         IMachineSessionProvider sessionProvider =
             new WindowsMachineSessionProvider(userActivityProvider);
+        IMachineWindowsUpdateProvider windowsUpdateProvider =
+            new WindowsMachineUpdateProvider();
+        IMachineRebootPendingProvider rebootPendingProvider =
+            new WindowsMachineRebootPendingProvider();
+        IMachineReliabilityProvider reliabilityProvider =
+            new WindowsMachineReliabilityProvider();
         var learningService = new MachineLearningService();
         IMachineLearningStore learningStore = new FileMachineLearningStore();
+        var healthHistoryService = new MachineHealthHistoryService();
+        IMachineHealthHistoryStore healthHistoryStore =
+            new FileMachineHealthHistoryStore();
         var ollamaHttpClient = new HttpClient
         {
             BaseAddress = new Uri(
@@ -86,8 +95,13 @@ public partial class App : Application
             userActivityProvider,
             networkProvider,
             sessionProvider,
+            windowsUpdateProvider,
+            rebootPendingProvider,
+            reliabilityProvider,
             learningService,
-            learningStore);
+            learningStore,
+            healthHistoryService,
+            healthHistoryStore);
         _window = window;
         _shutdownCoordinator = new MachineShutdownCoordinator(
             learningService,
@@ -95,7 +109,9 @@ public partial class App : Application
             runtimeBootstrapper,
             _appCancellationTokenSource,
             window.StopForApplicationShutdown,
-            DisposeHttpResources);
+            DisposeHttpResources,
+            healthHistoryService: healthHistoryService,
+            healthHistoryStore: healthHistoryStore);
         window.Closed += OnWindowClosed;
         window.Activate();
         _ = BootstrapOllamaAsync();

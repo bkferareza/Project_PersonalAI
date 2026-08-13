@@ -133,6 +133,15 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
+                    x:Name="HealthNavigationItem"
+                    AutomationProperties.AutomationId="HealthNavigationItem"
+                    Content="Health"
+                    Tag="health">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE95E;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
                     AutomationProperties.AutomationId="StorageNavigationItem"
                     Content="Storage"
                     Tag="storage">
@@ -315,6 +324,25 @@
                             AutomationProperties.AutomationId="TelemetryStatusText"
                             Style="{StaticResource SecondaryTextStyle}"
                             Visibility="Collapsed" />
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="5">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Health" />
+                                <TextBlock
+                                    x:Name="OverviewHealthPrimaryText"
+                                    AutomationProperties.AutomationId="OverviewHealthPrimaryText"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Text="Loading restart status"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="OverviewHealthSecondaryText"
+                                    AutomationProperties.AutomationId="OverviewHealthSecondaryText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Loading reliability history" />
+                            </StackPanel>
+                        </Border>
                         <Border Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="5">
                                 <TextBlock
@@ -935,6 +963,215 @@
                                     Text="Idle means no user input for at least five minutes. No absence or productivity inference." />
                             </StackPanel>
                         </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer
+                    x:Name="HealthPage"
+                    AutomationProperties.AutomationId="HealthPage"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Padding="12,0,12,16" Spacing="10">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock
+                                    Style="{StaticResource PageTitleStyle}"
+                                    Text="Health" />
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Verified Windows maintenance and reliability history" />
+                            </StackPanel>
+                            <Button
+                                x:Name="RefreshHealthButton"
+                                AutomationProperties.AutomationId="RefreshHealthButton"
+                                Click="OnRefreshHealthClicked"
+                                Content="Refresh health"
+                                Grid.Column="1"
+                                VerticalAlignment="Center" />
+                        </Grid>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="9">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Windows Update" />
+                                <TextBlock
+                                    x:Name="WindowsUpdateStateText"
+                                    AutomationProperties.AutomationId="WindowsUpdateStateText"
+                                    FontSize="21"
+                                    FontWeight="SemiBold"
+                                    Text="Loading..."
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="WindowsUpdateFreshnessText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Waiting for local Windows Update state" />
+                                <Grid ColumnSpacing="12" RowSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="PENDING" />
+                                        <TextBlock x:Name="WindowsUpdatePendingText" FontWeight="SemiBold" Text="Unavailable" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="IMPORTANT" />
+                                        <TextBlock x:Name="WindowsUpdateImportantText" FontWeight="SemiBold" Text="Unavailable" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LAST SUCCESSFUL SCAN" />
+                                        <TextBlock x:Name="WindowsUpdateLastScanText" Text="Unavailable" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LAST SUCCESSFUL INSTALL" />
+                                        <TextBlock x:Name="WindowsUpdateLastInstallText" Text="Unavailable" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock
+                                    Margin="0,4,0,0"
+                                    FontWeight="SemiBold"
+                                    Text="Recent update history" />
+                                <TextBlock
+                                    x:Name="WindowsUpdateHistoryEmptyText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="No bounded update-history entries are available." />
+                                <ItemsControl
+                                    x:Name="WindowsUpdateHistoryList"
+                                    AutomationProperties.AutomationId="WindowsUpdateHistoryList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:UpdateHistoryDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Header}" />
+                                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Title}" TextWrapping="Wrap" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Details}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="6">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Restart status" />
+                                <TextBlock
+                                    x:Name="RestartStateText"
+                                    AutomationProperties.AutomationId="RestartStateText"
+                                    FontSize="19"
+                                    FontWeight="SemiBold"
+                                    Text="Loading..."
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="RestartReasonsText"
+                                    Text="Waiting for local restart indicators."
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="RestartDataStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Reliability" />
+                                <TextBlock
+                                    x:Name="ReliabilityFreshnessText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Waiting for Windows reliability history" />
+                                <Grid ColumnSpacing="10" RowSpacing="7">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Application crashes" />
+                                    <TextBlock x:Name="ReliabilityCrashCountText" Grid.Column="1" FontWeight="SemiBold" Text="Unavailable" />
+                                    <TextBlock Grid.Row="1" Text="Application hangs" />
+                                    <TextBlock x:Name="ReliabilityHangCountText" Grid.Column="1" Grid.Row="1" FontWeight="SemiBold" Text="Unavailable" />
+                                    <TextBlock Grid.Row="2" Text="Unexpected shutdowns" />
+                                    <TextBlock x:Name="ReliabilityShutdownCountText" Grid.Column="1" Grid.Row="2" FontWeight="SemiBold" Text="Unavailable" />
+                                    <TextBlock Grid.Row="3" Text="Update failures" />
+                                    <TextBlock x:Name="ReliabilityUpdateFailureCountText" Grid.Column="1" Grid.Row="3" FontWeight="SemiBold" Text="Unavailable" />
+                                    <TextBlock Grid.Row="4" Text="Hardware failures" />
+                                    <TextBlock x:Name="ReliabilityHardwareFailureCountText" Grid.Column="1" Grid.Row="4" FontWeight="SemiBold" Text="Unavailable" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Recent incidents" />
+                                <TextBlock
+                                    x:Name="ReliabilityIncidentsEmptyText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="No relevant incidents are available in the bounded history." />
+                                <ItemsControl
+                                    x:Name="ReliabilityIncidentsList"
+                                    AutomationProperties.AutomationId="ReliabilityIncidentsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:ReliabilityIncidentDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Header}" />
+                                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Category}" TextWrapping="Wrap" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Details}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Recurring failures" />
+                                <TextBlock
+                                    x:Name="RecurringFailuresEmptyText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="No application has two or more recorded crashes or hangs in 30 days." />
+                                <ItemsControl
+                                    x:Name="RecurringFailuresList"
+                                    AutomationProperties.AutomationId="RecurringFailuresList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:RecurringFailureDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock FontWeight="SemiBold" Text="{x:Bind ApplicationName}" TextWrapping="Wrap" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Details}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock
+                            x:Name="HealthStatusText"
+                            AutomationProperties.AutomationId="HealthStatusText"
+                            Style="{StaticResource SecondaryTextStyle}"
+                            Visibility="Collapsed" />
                     </StackPanel>
                 </ScrollViewer>
 

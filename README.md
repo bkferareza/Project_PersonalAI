@@ -8,7 +8,7 @@ C#, .NET 10, WinUI 3, Windows App SDK, and xUnit.
 
 ## Current status
 
-Machine now opens as a fixed, frameless Mica dashboard with no native title bar or outer border. Its minimal integrated top region supports DPI-aware dragging through the Windows App SDK non-client-region API, a subtle close action, Back navigation, and Esc return to ambient presence. Overview, Learning, Network, Storage, Software, Startup, and Runtime use the existing dashboard navigation. The frameless window explicitly uses DWM's small rounded-corner clip to avoid the diagonal Mica composition seam seen with the default clip.
+Machine now opens as a fixed, frameless Mica dashboard with no native title bar or outer border. Its minimal integrated top region supports DPI-aware dragging through the Windows App SDK non-client-region API, a subtle close action, Back navigation, and Esc return to ambient presence. Overview, Learning, Network, Health, Storage, Software, Startup, and Runtime use the existing dashboard navigation. The frameless window explicitly uses DWM's small rounded-corner clip to avoid the diagonal Mica composition seam seen with the default clip.
 
 The dedicated 96×96 native layered orb retains its accepted transparent visuals and five-second Stable breathing cycle. Its native window now owns cadence with a bounded `WM_TIMER`, so animation continues while the WinUI dashboard HWND is hidden; visibility, reduced-motion, mode changes, and disposal start or stop exactly one timer without hover affecting breathing phase.
 
@@ -24,7 +24,13 @@ The dedicated Learning page presents lifetime accepted observations and observed
 
 Learning persistence schema version 3 stores only cumulative sufficient statistics, adaptive state, compact profiles, broader patterns, session metadata, and bounded episodes. It safely migrates schema versions 1 and 2, initializes missing adaptive state from their best available lifetime baseline evidence, saves atomically on the existing 10-minute dirty interval with failure backoff, and performs a bounded final shutdown save. Storage remains bounded rather than growing with every observation.
 
-When the existing insight policy already authorizes local Qwen inference, the model receives only the current verified state, current context baseline, one matching compact profile, one matching broader pattern, and up to two relevant episode summaries. Learning changes never wake the model. The model does not train, store memory, choose statistics, form patterns, or execute actions, and learned values never create severity, anomaly, cause, intent, recommendation, or action claims.
+Windows health observability is read-only. A cached local Windows Update Agent search exposes explicit update state, pending and important counts, successful scan/install timestamps, and at most 30 normalized history entries without installing or downloading anything; normal refresh is limited to once every 45 minutes. Dedicated reboot-pending aggregation combines Windows Update, component servicing, pending-file-rename, and computer-rename evidence without modifying the registry or clearing flags.
+
+Bounded reliability acquisition queries only selected structured Windows Event Log providers and event IDs across the last 30 days. It retains at most 100 normalized incidents, summarizes 24-hour, 7-day, and 30-day application crashes, hangs, update failures, hardware-error records, and unexpected shutdowns, and deterministically deduplicates related application-error/WER events and Kernel-Power/EventLog shutdown evidence. It does not retain raw event XML, messages, command lines, document paths, dump data, or other personal text.
+
+The Health page presents Windows Update, restart evidence, recent reliability incidents, and recurring application-failure aggregates; Overview carries only a compact deterministic Health card. Conservative findings keep a routine pending restart informational, leave isolated historical incidents in history, and elevate only documented recent recurrence thresholds. A separate bounded `health-history-v1.json` app-local memory stores compact verified summaries and continuity counters without changing schema-v3 behavioral baselines, Layer 0 sampling, the 48 hour-by-Active/Idle contexts, or Layer 3 pattern clustering.
+
+When the existing insight policy already authorizes local Qwen inference, the model receives only the current verified state, current context baseline, one matching compact profile, one matching broader pattern, up to two relevant episode summaries, and a tiny verified health summary: current update state/count, reboot status with at most four reason codes, source freshness/completeness metadata, 7-day reliability counts, one significant incident, and one recurring application aggregate. Learning and health refreshes never wake the model. The model does not train, store memory, choose statistics, form patterns, or execute actions, and learned values never create severity, anomaly, cause, intent, recommendation, or action claims.
 
 Machine probes local Ollama at startup; it reuses a healthy service or starts its own local `ollama serve` only when the executable is already installed, then waits for `/api/version`. It never downloads Ollama or a model, pulls a model, or loads `qwen3.5:4b` until a justified insight needs inference. Ordinary deterministic learning performs no model call. A Machine-owned runtime is stopped at application shutdown; a pre-existing runtime is never terminated.
 
@@ -46,6 +52,6 @@ If a debug session is interrupted before cleanup runs, use **Terminal > Run Task
 
 ## Next slice
 
-Add Windows Update, reboot-pending, and reliability observability.
+Add read-only services and scheduled-task observability.
 
-Remaining conceptual read-only observability v1 work includes Windows Update/reboot state, services, scheduled tasks, reliability/crash history, device/driver inventory, and a final coverage review.
+Remaining conceptual read-only observability v1 work includes services, scheduled tasks, device inventory, driver inventory, sleep/resume handling if still valuable, and a final coverage review.
