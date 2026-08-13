@@ -24,7 +24,6 @@ public static class MachineHistoryRangePolicy
             _ => throw new ArgumentOutOfRangeException(nameof(range))
         };
 }
-
 public static class MachineHistoryEventGrouper
 {
     public static readonly TimeSpan DefaultApplicationFailureWindow =
@@ -444,4 +443,3 @@ internal static class MachineHistoryAggregation
             ? long.MaxValue
             : left + right;
 }
-

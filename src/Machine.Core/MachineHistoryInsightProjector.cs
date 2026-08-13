@@ -99,4 +99,3 @@ public static class MachineHistoryInsightProjector
         rollup.GpuTemperatureCelsius?.Mean,
         rollup.GpuBoardPowerWatts?.Mean);
 }
-

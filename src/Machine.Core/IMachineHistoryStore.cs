@@ -9,7 +9,6 @@ public interface IMachineHistoryStore
         MachineHistoryPersistedState state,
         CancellationToken cancellationToken = default);
 }
-
 public enum MachineHistoryStoreLoadStatus
 {
     NotAttempted,
@@ -23,4 +22,3 @@ public interface IMachineHistoryStoreDiagnostics
 {
     MachineHistoryStoreLoadStatus LastLoadStatus { get; }
 }
-
