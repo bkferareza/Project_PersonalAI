@@ -26,25 +26,30 @@
 
   <ItemGroup>
     <Compile
-      Include="..\..\src\Machine.App\CompactPresencePresentation.cs"
+      Include="..\..\src\Machine.App\Ambient\CompactPresencePresentation.cs"
       Link="CompactPresencePresentation.cs" />
     <Compile
-      Include="..\..\src\Machine.App\AmbientOrbFrameSequence.cs"
+      Include="..\..\src\Machine.App\Ambient\AmbientOrbFrameSequence.cs"
       Link="AmbientOrbFrameSequence.cs" />
     <Compile
-      Include="..\..\src\Machine.App\MachineShutdownCoordinator.cs"
+      Include="..\..\src\Machine.App\Lifecycle\MachineShutdownCoordinator.cs"
       Link="MachineShutdownCoordinator.cs" />
     <Compile
-      Include="..\..\src\Machine.App\MatasuriShellAtmosphere.cs"
+      Include="..\..\src\Machine.App\Shell\StateAtmosphere\MatasuriShellAtmosphere.cs"
       Link="MatasuriShellAtmosphere.cs" />
     <Compile
-      Include="..\..\src\Machine.App\MatasuriPresentationValidation.cs"
+      Include="..\..\src\Machine.App\Shell\PresentationValidation\MatasuriPresentationValidation.cs"
       Link="MatasuriPresentationValidation.cs" />
     <None
       Include="..\..\src\Machine.App\MainWindow.xaml"
       Link="Fixtures\MainWindow.xaml"
       CopyToOutputDirectory="PreserveNewest"
       TargetPath="MainWindow.xaml" />
+    <None
+      Include="..\..\src\Machine.App\Features\**\*.xaml"
+      Link="Fixtures\FeatureViews\%(RecursiveDir)%(Filename)%(Extension)"
+      CopyToOutputDirectory="PreserveNewest"
+      TargetPath="FeatureViews\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

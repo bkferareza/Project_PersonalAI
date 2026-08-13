@@ -37,6 +37,16 @@ Machine.Ollama → Core
 
 Do not reverse these dependencies.
 
+## Source Map
+
+- `Machine.Core` groups platform-neutral contracts and deterministic policy by `Observability`, `History`, `Learning`, `Intelligence`, and `Runtime` domains.
+- `Machine.Windows` keeps read-only Windows acquisition under `Observability`, native boundaries under `Interop`, and process-owned facilities under `Runtime`.
+- `Machine.Ollama` separates local runtime ownership, explanation/context construction, and wire payloads.
+- `Machine.App` keeps window composition in `MainWindow`, ambient presence under `Ambient`, shell behavior under `Shell`, lifecycle coordination under `Lifecycle`, and each complete page under `Features`.
+- `Machine.Tests` mirrors the same production domains.
+
+New code should live with its domain or feature rather than in project-wide `Models`, `Services`, or `Helpers` buckets.
+
 ## Engineering Rules
 
 - Inspect current code, README, Git state, and nearby patterns before editing.

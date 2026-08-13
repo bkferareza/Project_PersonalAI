@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Machine.App.Features.DevicesView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Machine.App.Features"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch">
+<ScrollViewer
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Padding="16,4,16,20" Spacing="14">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock Style="{StaticResource PageTitleStyle}" Text="Devices" />
+                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Windows-reported devices and associated drivers" />
+                            </StackPanel>
+                            <Button
+                                x:Name="RefreshDevicesButton" x:FieldModifier="internal"
+                                AutomationProperties.Name="Refresh devices"
+                                Content="Refresh"
+                                Grid.Column="1" />
+                        </Grid>
+                        <TextBox
+                            x:Name="DeviceSearchBox" x:FieldModifier="internal"
+                            AutomationProperties.Name="Search devices"
+                            PlaceholderText="Search device, class, manufacturer, or driver" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox
+                                x:Name="DeviceClassFilter" x:FieldModifier="internal"
+                                AutomationProperties.Name="Filter devices by class"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0" />
+                            <ComboBox
+                                x:Name="DeviceProblemFilter" x:FieldModifier="internal"
+                                AutomationProperties.Name="Filter devices by Windows-reported problem state"
+                                Grid.Column="1"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0">
+                                <ComboBoxItem Content="All devices" Tag="all" />
+                                <ComboBoxItem Content="Windows-reported problem" Tag="problem" />
+                            </ComboBox>
+                        </Grid>
+                        <TextBlock x:Name="DevicesSummaryText" x:FieldModifier="internal" Style="{StaticResource SecondaryTextStyle}" Text="Loading devices" />
+                        <ListView
+                            x:Name="DevicesList" x:FieldModifier="internal"
+                            AutomationProperties.AutomationId="DevicesList"
+                            MaxHeight="600"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="local:DeviceDisplayItem">
+                                    <StackPanel Margin="0,6" Spacing="2">
+                                        <TextBlock FontWeight="SemiBold" Text="{x:Bind DisplayName}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{x:Bind Identity}" TextWrapping="Wrap" />
+                                        <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind DriverDetails}" TextWrapping="Wrap" />
+                                        <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind StatusDetails}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock x:Name="DevicesStatusText" x:FieldModifier="internal" Style="{StaticResource SecondaryTextStyle}" />
+                    </StackPanel>
+                </ScrollViewer>
+</UserControl>

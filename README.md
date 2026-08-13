@@ -8,6 +8,10 @@ Matasuri is a local-first Windows machine intelligence layer. It observes verifi
 
 C#, .NET 10, WinUI 3, Windows App SDK, and xUnit. The dependency direction remains `Machine.App -> Core, Windows, Ollama`, `Machine.Windows -> Core`, and `Machine.Ollama -> Core`.
 
+## Architecture
+
+The solution is organized by domain inside its existing assembly boundaries. `Machine.Core` owns platform-neutral observability contracts plus History, Learning, Intelligence, and Runtime policy. `Machine.Windows` owns deterministic Windows acquisition and isolates native interop. `Machine.Ollama` separates local runtime ownership from grounded explanation and payload construction. `Machine.App` composes the shell and lifecycle while feature views own their page presentation. Tests mirror these domains. New code belongs with its domain or feature instead of a project-wide technical-type bucket.
+
 ## Current experience
 
 Matasuri opens from its accepted transparent 96x96 ambient orb into a compact frameless Mica shell. A custom text-first rail separates Now, Memory, Observe, and System. The shell atmosphere follows only the current deterministic Stable, Attention, Warning, Critical, or Unknown state; local insight generation adds a restrained overlay without replacing severity. Semantic colors are centralized, transitions take 700 ms, and reduced-motion mode changes appearance immediately. The orb keeps native layered-window transparency, low-cost `WM_TIMER` cadence, its five-second Stable breath, and phase-preserving hover behavior.

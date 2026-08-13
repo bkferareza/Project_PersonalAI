@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Machine.App.Features.OverviewView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Machine.App.Features"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch">
+<ScrollViewer
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Padding="12,0,12,16" Spacing="10">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                Style="{StaticResource PageTitleStyle}"
+                                Text="Overview" />
+                            <TextBlock
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="A grounded brief of what is happening now" />
+                        </StackPanel>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="5">
+                                <TextBlock
+                                    Style="{StaticResource MetricLabelStyle}"
+                                    Text="DETERMINISTIC STATE" />
+                                <TextBlock
+                                    x:Name="FindingsOverallStateText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="FindingsOverallStateText"
+                                    FontSize="30"
+                                    FontWeight="SemiBold"
+                                    Text="Unknown" />
+                                <TextBlock
+                                    x:Name="OverviewStatePostureText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="OverviewStatePostureText"
+                                    FontSize="16"
+                                    Text="Waiting for verified local evidence."
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="4">
+                                <TextBlock
+                                    Style="{StaticResource MetricLabelStyle}"
+                                    Text="LOCAL CONTEXT" />
+                                <TextBlock
+                                    x:Name="DeviceNameText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="DeviceNameText"
+                                    FontSize="16"
+                                    FontWeight="SemiBold"
+                                    Text="Loading..."
+                                    TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock
+                                        x:Name="OperatingSystemText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="OperatingSystemText"
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Loading..." />
+                                    <TextBlock
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="&#x00B7;" />
+                                    <TextBlock
+                                        x:Name="ArchitectureText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="ArchitectureText"
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Loading..." />
+                                </StackPanel>
+                                <TextBlock
+                                    x:Name="LoadStatusText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LoadStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}" />
+                            </StackPanel>
+                        </Border>
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource DashboardCardStyle}">
+                                <StackPanel Spacing="4">
+                                    <TextBlock
+                                        Style="{StaticResource MetricLabelStyle}"
+                                        Text="CPU" />
+                                    <TextBlock
+                                        x:Name="CpuUsageText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="CpuUsageText"
+                                        FontSize="23"
+                                        FontWeight="SemiBold"
+                                        Text="Loading..."
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Current usage" />
+                                </StackPanel>
+                            </Border>
+                            <Border
+                                Grid.Column="1"
+                                Style="{StaticResource DashboardCardStyle}">
+                                <StackPanel Spacing="4">
+                                    <TextBlock
+                                        Style="{StaticResource MetricLabelStyle}"
+                                        Text="MEMORY" />
+                                    <TextBlock
+                                        x:Name="MemoryUsageText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="MemoryUsageText"
+                                        FontSize="19"
+                                        FontWeight="SemiBold"
+                                        Text="Loading..."
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Used / total" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="5">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Network" />
+                                <TextBlock
+                                    x:Name="OverviewNetworkActivityText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="OverviewNetworkActivityText"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Text="Unavailable" />
+                                <Grid ColumnSpacing="14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        x:Name="OverviewNetworkReceiveText" x:FieldModifier="internal"
+                                        Text="Unavailable"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        x:Name="OverviewNetworkSendText" x:FieldModifier="internal"
+                                        Grid.Column="1"
+                                        Text="Unavailable"
+                                        TextWrapping="Wrap" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="OverviewNetworkInterfaceText" x:FieldModifier="internal"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Interface status unavailable" />
+                                <TextBlock
+                                    x:Name="OverviewSessionUptimeText" x:FieldModifier="internal"
+                                    Margin="0,3,0,0"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Session uptime unavailable" />
+                                <TextBlock
+                                    x:Name="OverviewSessionActivityText" x:FieldModifier="internal"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Input state unavailable" />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock
+                            x:Name="TelemetryStatusText" x:FieldModifier="internal"
+                            AutomationProperties.AutomationId="TelemetryStatusText"
+                            Style="{StaticResource SecondaryTextStyle}" />
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="5">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Health" />
+                                <TextBlock
+                                    x:Name="OverviewHealthPrimaryText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="OverviewHealthPrimaryText"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Text="Loading restart status"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="OverviewHealthSecondaryText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="OverviewHealthSecondaryText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Loading reliability history" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="5">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Learning" />
+                                <TextBlock
+                                    x:Name="LearningConfidenceText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningConfidenceText"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Text="Calibrating" />
+                                <TextBlock
+                                    x:Name="LearningObservedDurationText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningObservedDurationText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="0m observed" />
+                                <TextBlock
+                                    x:Name="LearningObservationText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningObservationText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="0 samples" />
+                                <TextBlock
+                                    Margin="0,3,0,0"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="See Learning page for details." />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Current findings" />
+                                <TextBlock
+                                    x:Name="FindingsSummaryText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="FindingsSummaryText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Resource telemetry and readable system-volume data are unavailable." />
+                                <ItemsControl
+                                    x:Name="CurrentFindingsList" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="CurrentFindingsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:MachineFindingDisplayItem">
+                                            <StackPanel Margin="0,3" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Header}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind Detail}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="9">
+                                <Grid>
+                                    <TextBlock
+                                        Style="{StaticResource SectionTitleStyle}"
+                                        Text="Local insight" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        HorizontalAlignment="Right"
+                                        Text="Event-driven" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="MachineExplanationText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="MachineExplanationText"
+                                    FontSize="16"
+                                    LineHeight="23"
+                                    Text="Watching for a meaningful change."
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="MachineExplanationStatusText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="MachineExplanationStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        x:Name="MachineExplanationMetadataText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="MachineExplanationMetadataText"
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        TextWrapping="Wrap"
+                                        VerticalAlignment="Center" />
+                                    <ProgressRing
+                                        x:Name="MachineExplanationProgressRing" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="MachineExplanationProgressRing"
+                                        Grid.Column="1"
+                                        Height="18"
+                                        IsActive="False"
+                                        VerticalAlignment="Center"
+                                        Width="18" />
+                                    <Button
+                                        x:Name="ExplainMachineStateButton" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="ExplainMachineStateButton"
+                                        Content="Refresh insight"
+                                        FontSize="12"
+                                        Grid.Column="2"
+                                        HorizontalAlignment="Right"
+                                        IsEnabled="False" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+</UserControl>

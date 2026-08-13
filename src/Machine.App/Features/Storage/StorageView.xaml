@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Machine.App.Features.StorageView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Machine.App.Features"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch">
+<ScrollViewer
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Padding="12,0,12,16" Spacing="10">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                Style="{StaticResource PageTitleStyle}"
+                                Text="Storage" />
+                            <TextBlock
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="Read-only volume and folder inspection" />
+                        </StackPanel>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Volumes" />
+                                <TextBlock
+                                    x:Name="SystemStorageSummaryText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="SystemStorageSummaryText"
+                                    Text="Loading..."
+                                    TextWrapping="Wrap" />
+                                <ItemsControl
+                                    x:Name="StorageVolumesList" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="StorageVolumesList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:StorageVolumeDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Header}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind VolumeDetails}" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind CapacityDetails}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock
+                                    x:Name="StorageStatusText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="StorageStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Loading..." />
+                                <Button
+                                    x:Name="RefreshStorageButton" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="RefreshStorageButton"
+                                    Content="Refresh storage"
+                                    HorizontalAlignment="Left"
+                                    IsEnabled="False" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    x:Name="LargeFolderRootText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LargeFolderRootText"
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Largest folders on system volume" />
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Read-only inspection of top-level folders with a 30-second time budget." />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button
+                                        x:Name="ScanLargeFoldersButton" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="ScanLargeFoldersButton"
+                                        Content="Scan large folders"
+                                        IsEnabled="False" />
+                                    <Button
+                                        x:Name="CancelLargeFolderScanButton" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="CancelLargeFolderScanButton"
+                                        Content="Cancel"
+                                        IsEnabled="False" />
+                                    <ProgressRing
+                                        x:Name="LargeFolderScanProgressRing" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LargeFolderScanProgressRing"
+                                        Height="20"
+                                        IsActive="False"
+                                        VerticalAlignment="Center"
+                                        Width="20" />
+                                </StackPanel>
+                                <ItemsControl
+                                    x:Name="LargeFoldersList" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LargeFoldersList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:LargeFolderDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Path}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SecondaryTextStyle}"
+                                                    Text="{x:Bind Details}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock
+                                    x:Name="LargeFolderScanStatusText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LargeFolderScanStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="No folder scan yet." />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+</UserControl>
