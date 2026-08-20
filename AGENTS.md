@@ -17,6 +17,7 @@
 - Application code owns policy, validation, and safety.
 - A language model may interpret or explain verified data, but must never invent machine state or directly execute arbitrary commands.
 - Matasuri is a persistent single-instance Windows presence: startup enters the ambient orb; user interactions only expand or collapse the dashboard; secondary activations redirect to the primary; Esc, normal close, and sustained focus loss return to ambient presence. Real shutdown is reserved for Windows lifecycle and controlled development/test paths.
+- DEBUG builds may invoke that controlled shutdown only through the redirected `matasuri-dev://shutdown` activation; it is never a product command or UI affordance.
 
 ## Repository Layout
 

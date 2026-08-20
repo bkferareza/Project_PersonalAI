@@ -38,6 +38,9 @@
       Include="..\..\src\Machine.App\Lifecycle\MatasuriActivationPolicy.cs"
       Link="MatasuriActivationPolicy.cs" />
     <Compile
+      Include="..\..\src\Machine.App\Lifecycle\MatasuriDevelopmentShutdownGate.cs"
+      Link="MatasuriDevelopmentShutdownGate.cs" />
+    <Compile
       Include="..\..\src\Machine.App\Shell\StateAtmosphere\MatasuriShellAtmosphere.cs"
       Link="MatasuriShellAtmosphere.cs" />
     <Compile

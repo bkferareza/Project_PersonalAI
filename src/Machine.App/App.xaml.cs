@@ -152,10 +152,10 @@ public partial class App : Application
             activationDisposition ==
                 MatasuriActivationDisposition.EstablishAmbientPresence);
         _ = BootstrapOllamaAsync();
+        MatasuriActivationRouter.ProcessPendingRedirectedActivation(this);
 #if DEBUG
-        if (presentationValidationArguments?.Contains(
-                "--matasuri-graceful-shutdown",
-                StringComparison.OrdinalIgnoreCase) == true)
+        if (activationDisposition ==
+                MatasuriActivationDisposition.DevelopmentShutdown)
         {
             _ = RequestControlledShutdownAsync();
         }
@@ -165,6 +165,21 @@ public partial class App : Application
     internal void HandleRedirectedActivation(
         MatasuriActivationDisposition disposition)
     {
+        var window = _window;
+        if (window is not null && !window.DispatcherQueue.HasThreadAccess)
+        {
+            window.DispatcherQueue.TryEnqueue(
+                () => HandleRedirectedActivation(disposition));
+            return;
+        }
+
+#if DEBUG
+        if (disposition == MatasuriActivationDisposition.DevelopmentShutdown)
+        {
+            _ = RequestControlledShutdownAsync();
+            return;
+        }
+#endif
         if (disposition == MatasuriActivationDisposition.SummonDashboard)
         {
             _window?.SummonDashboard();
@@ -176,17 +191,42 @@ public partial class App : Application
         var window = _window;
         if (window is not null)
         {
-            await window.RuntimeInitialization;
+            await MatasuriDevelopmentShutdownGate
+                .WaitForRuntimeRestorationAsync(
+                    window.RuntimeInitialization);
         }
 
+        if (window is not null && !window.DispatcherQueue.HasThreadAccess)
+        {
+            window.DispatcherQueue.TryEnqueue(
+                () => BeginControlledShutdown(window));
+            return;
+        }
+
+        BeginControlledShutdown(window);
+    }
+
+    private void BeginControlledShutdown(MainWindow? window)
+    {
         var shutdown = _shutdownCoordinator?.BeginShutdown();
         if (shutdown is null)
         {
             return;
         }
 
-        await shutdown;
-        window?.CloseForControlledShutdown();
+        _ = CloseWhenShutdownCompletesAsync(window, shutdown);
+    }
+
+    private async Task CloseWhenShutdownCompletesAsync(
+        MainWindow? window,
+        Task shutdown)
+    {
+        await shutdown.ConfigureAwait(false);
+        if (window is not null)
+        {
+            window.DispatcherQueue.TryEnqueue(
+                window.CloseForControlledShutdown);
+        }
     }
 
     private async Task BootstrapOllamaAsync()
