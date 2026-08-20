@@ -23,6 +23,18 @@ public sealed partial class MainWindow
         object sender,
         WindowActivatedEventArgs args)
     {
+        ConfigureWindowPresentation();
+        if (args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            ScheduleFocusLossCollapse();
+            return;
+        }
+
+        CancelFocusLossCollapse();
+    }
+
+    private void ConfigureWindowPresentation()
+    {
         if (_windowPresentationConfigured)
         {
             return;
@@ -48,6 +60,7 @@ public sealed partial class MainWindow
             _powerBroadcastMonitor ??= new(
                 WinRT.Interop.WindowNative.GetWindowHandle(this),
                 OnPowerTransition);
+            AppWindow.Closing += OnDashboardWindowClosing;
         }
         catch (Exception exception)
         {
@@ -101,7 +114,7 @@ public sealed partial class MainWindow
         RoutedEventArgs args) => ReturnToAmbientPresence();
 
     private void OnDashboardCloseClicked(object sender, RoutedEventArgs args) =>
-        DashboardChromeLayout.InvokeClose(Close);
+        ReturnToAmbientPresence();
 
     private void OnMainContentKeyDown(object sender, KeyRoutedEventArgs args)
     {
@@ -117,6 +130,7 @@ public sealed partial class MainWindow
 
     private bool ReturnToAmbientPresence()
     {
+        CancelFocusLossCollapse();
         if (!_compactPresenceInteraction.CloseDashboard())
         {
             return false;
@@ -225,6 +239,82 @@ public sealed partial class MainWindow
         }
 
         SetDashboardExpanded(true);
+        Activate();
+    }
+
+    internal void StartPresence(bool startInAmbient)
+    {
+        ConfigureWindowPresentation();
+        OnMainContentLoaded(this, new RoutedEventArgs());
+        if (startInAmbient)
+        {
+            ApplyCompactPresentation(force: true);
+            return;
+        }
+
+        OpenDashboardFromAmbientOrb();
+    }
+
+    internal void SummonDashboard()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            CancelFocusLossCollapse();
+            if (!_detailsExpanded)
+            {
+                OpenDashboardFromAmbientOrb();
+                return;
+            }
+
+            Activate();
+        });
+    }
+
+    internal void CloseForControlledShutdown()
+    {
+        _isApplicationShutdownRequested = true;
+        CancelFocusLossCollapse();
+        Close();
+    }
+
+    private void OnDashboardWindowClosing(
+        AppWindow sender,
+        AppWindowClosingEventArgs args)
+    {
+        if (_isApplicationShutdownRequested || Environment.HasShutdownStarted)
+        {
+            return;
+        }
+
+        args.Cancel = true;
+        ReturnToAmbientPresence();
+    }
+
+    private void ScheduleFocusLossCollapse()
+    {
+        if (!_detailsExpanded || _isApplicationShutdownRequested)
+        {
+            return;
+        }
+
+        _focusLossCollapseTimer ??= DispatcherQueue.CreateTimer();
+        _focusLossCollapseTimer.Interval = TimeSpan.FromSeconds(4);
+        _focusLossCollapseTimer.IsRepeating = false;
+        _focusLossCollapseTimer.Tick -= OnFocusLossCollapseTimerTick;
+        _focusLossCollapseTimer.Tick += OnFocusLossCollapseTimerTick;
+        _focusLossCollapseTimer.Start();
+    }
+
+    private void CancelFocusLossCollapse() => _focusLossCollapseTimer?.Stop();
+
+    private void OnFocusLossCollapseTimerTick(
+        DispatcherQueueTimer sender,
+        object args)
+    {
+        if (_detailsExpanded && !_isApplicationShutdownRequested)
+        {
+            ReturnToAmbientPresence();
+        }
     }
 
     private void BeginNewInsightBloom()
@@ -706,6 +796,14 @@ public sealed partial class MainWindow
 
     internal void StopForApplicationShutdown()
     {
+        _isApplicationShutdownRequested = true;
+        CancelFocusLossCollapse();
+        if (_focusLossCollapseTimer is not null)
+        {
+            _focusLossCollapseTimer.Tick -= OnFocusLossCollapseTimerTick;
+            _focusLossCollapseTimer = null;
+        }
+        AppWindow.Closing -= OnDashboardWindowClosing;
         _shellAtmosphereStoryboard?.Stop();
         _shellAtmosphereStoryboard = null;
         _generatingAtmosphereStoryboard?.Stop();

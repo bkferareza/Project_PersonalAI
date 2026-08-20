@@ -84,6 +84,7 @@ public sealed partial class MainWindow
             _latestFindingsSnapshot);
         _initialContextHydrationCompleted = true;
         TryRequestDashboardInsight();
+        _runtimeInitializationCompletion.TrySetResult();
 
         await Task.WhenAll(
             telemetryLoop,

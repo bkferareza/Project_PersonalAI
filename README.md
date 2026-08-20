@@ -16,6 +16,8 @@ The solution is organized by domain inside its existing assembly boundaries. `Ma
 
 Matasuri opens from its accepted transparent 96x96 ambient orb into a compact frameless Mica shell. A custom text-first rail separates Now, Memory, Observe, and System. The shell atmosphere follows only the current deterministic Stable, Attention, Warning, Critical, or Unknown state; local insight generation adds a restrained overlay without replacing severity. Semantic colors are centralized, transitions take 700 ms, and reduced-motion mode changes appearance immediately. The orb keeps native layered-window transparency, low-cost `WM_TIMER` cadence, its five-second Stable breath, and phase-preserving hover behavior.
 
+Matasuri is a single resident instance. Its packaged Windows startup task (`MatasuriStartup`) establishes the orb without opening the dashboard; a normal later launch redirects to that resident instance and summons the dashboard. Esc, the dashboard return control, standard window close, and four seconds of sustained dashboard focus loss return quietly to the orb. There is no product Exit command. Windows and the user remain authoritative through normal Startup settings, Task Manager, shutdown/restart, update, and uninstall controls.
+
 Overview is a current machine brief. History answers what happened. Learning answers what repeated evidence allowed Matasuri to conclude. Provider pages expose deeper read-only evidence without turning the shell into a control surface.
 
 ## History

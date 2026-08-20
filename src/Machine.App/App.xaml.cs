@@ -7,7 +7,7 @@ namespace Machine.App;
 
 public partial class App : Application
 {
-    private Window? _window;
+    private MainWindow? _window;
     private HttpClient? _ollamaHttpClient;
     private HttpClient? _ollamaInferenceHttpClient;
     private IOllamaRuntimeBootstrapper? _ollamaRuntimeBootstrapper;
@@ -22,6 +22,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        var activationDisposition = MatasuriActivationRouter.Connect(this);
         IMachineIdentityProvider identityProvider =
             new WindowsMachineIdentityProvider();
         IMachineResourceProvider resourceProvider =
@@ -147,8 +148,45 @@ public partial class App : Application
             historyService: historyService,
             historyStore: historyStore);
         window.Closed += OnWindowClosed;
-        window.Activate();
+        window.StartPresence(
+            activationDisposition ==
+                MatasuriActivationDisposition.EstablishAmbientPresence);
         _ = BootstrapOllamaAsync();
+#if DEBUG
+        if (presentationValidationArguments?.Contains(
+                "--matasuri-graceful-shutdown",
+                StringComparison.OrdinalIgnoreCase) == true)
+        {
+            _ = RequestControlledShutdownAsync();
+        }
+#endif
+    }
+
+    internal void HandleRedirectedActivation(
+        MatasuriActivationDisposition disposition)
+    {
+        if (disposition == MatasuriActivationDisposition.SummonDashboard)
+        {
+            _window?.SummonDashboard();
+        }
+    }
+
+    internal async Task RequestControlledShutdownAsync()
+    {
+        var window = _window;
+        if (window is not null)
+        {
+            await window.RuntimeInitialization;
+        }
+
+        var shutdown = _shutdownCoordinator?.BeginShutdown();
+        if (shutdown is null)
+        {
+            return;
+        }
+
+        await shutdown;
+        window?.CloseForControlledShutdown();
     }
 
     private async Task BootstrapOllamaAsync()

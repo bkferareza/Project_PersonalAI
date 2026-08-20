@@ -66,6 +66,8 @@ public sealed partial class MainWindow : Window
         _compactPresenceInteraction = new();
     private readonly CancellationTokenSource
         _windowCancellationTokenSource = new();
+    private readonly TaskCompletionSource _runtimeInitializationCompletion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly SystemBackdrop _dashboardBackdrop;
     private readonly UISettings _uiSettings = new();
     private readonly NativeAmbientOrbWindow _ambientOrbWindow;
@@ -102,6 +104,8 @@ public sealed partial class MainWindow : Window
     private bool _showNewInsightBloom;
     private bool _isAnimationSettingsChangeSubscribed;
     private bool _isXamlRootChangeSubscribed;
+    private bool _isApplicationShutdownRequested;
+    private DispatcherQueueTimer? _focusLossCollapseTimer;
     private Storyboard? _shellAtmosphereStoryboard;
     private Storyboard? _generatingAtmosphereStoryboard;
     private MatasuriShellAtmosphere? _appliedShellAtmosphere;
@@ -109,6 +113,9 @@ public sealed partial class MainWindow : Window
     private readonly MatasuriPresentationValidationOptions
         _presentationValidationOptions;
 #endif
+
+    internal Task RuntimeInitialization =>
+        _runtimeInitializationCompletion.Task;
 
     public MainWindow(
         IMachineIdentityProvider identityProvider,

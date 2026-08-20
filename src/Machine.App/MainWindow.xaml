@@ -49,12 +49,12 @@
             <Button
                 x:Name="DashboardCloseButton"
                 AutomationProperties.AutomationId="DashboardCloseButton"
-                AutomationProperties.Name="Close Matasuri"
+                AutomationProperties.Name="Return Matasuri to ambient presence"
                 Click="OnDashboardCloseClicked"
                 Grid.Column="1"
                 Style="{StaticResource DashboardCloseButtonStyle}"
-                ToolTipService.ToolTip="Close Matasuri">
-                <FontIcon FontSize="11" Glyph="&#xE8BB;" />
+                ToolTipService.ToolTip="Return to orb">
+                <FontIcon FontSize="11" Glyph="&#xE72B;" />
             </Button>
         </Grid>
 
