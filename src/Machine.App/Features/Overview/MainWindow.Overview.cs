@@ -43,7 +43,10 @@ public sealed partial class MainWindow
         var displayItems = snapshot.Findings
             .Take(FindingsDisplayCount)
             .Select(finding => new MachineFindingDisplayItem(
-                Header: $"{finding.Severity} · {finding.Title}",
+                Header: finding.PostureImpact ==
+                    MachineFindingPostureImpact.Local
+                    ? $"{finding.Severity} - localized issue - {finding.Title}"
+                    : $"{finding.Severity} - {finding.Title}",
                 Detail: finding.Detail))
             .ToArray();
 
@@ -54,7 +57,15 @@ public sealed partial class MainWindow
                     "system-volume data are unavailable."
                 : displayItems.Length == 0
                     ? "No deterministic issues currently detected."
-                    : string.Empty;
+                    : snapshot.OverallState == MachineOverallState.Stable &&
+                      snapshot.Findings.Any(finding =>
+                          finding.PostureImpact ==
+                              MachineFindingPostureImpact.Local)
+                        ? $"{snapshot.Findings.Count(finding =>
+                            finding.PostureImpact ==
+                                MachineFindingPostureImpact.Local)} localized " +
+                          "reliability issue remains visible."
+                        : string.Empty;
         OverviewPage.FindingsSummaryText.Visibility =
             OverviewPage.FindingsSummaryText.Text.Length == 0
                 ? Visibility.Collapsed

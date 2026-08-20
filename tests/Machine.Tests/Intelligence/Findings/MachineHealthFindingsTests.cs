@@ -45,9 +45,9 @@ public sealed class MachineHealthFindingsTests
     [Theory]
     [InlineData(2, false)]
     [InlineData(3, true)]
-    public void RepeatedApplicationFailureUsesExactSevenDayThreshold(
+    public void RepeatedApplicationFailureRemainsLocalizedOutsideCrashLoop(
         int count,
-        bool expectedAttention)
+        bool expectedFinding)
     {
         var incidents = Enumerable.Range(0, count)
             .Select(index => Incident(
@@ -58,20 +58,26 @@ public sealed class MachineHealthFindingsTests
         var findings = Evaluate(incidents);
 
         Assert.Equal(
-            expectedAttention,
+            expectedFinding,
             findings.Findings.Any(finding => finding.Code ==
                 "health.reliability.application-recurrence"));
         Assert.Equal(
-            expectedAttention
-                ? MachineOverallState.Attention
-                : MachineOverallState.Stable,
+            MachineOverallState.Stable,
             findings.OverallState);
+
+        var recurrence = findings.Findings.SingleOrDefault(finding =>
+            finding.Code == "health.reliability.application-recurrence");
+        Assert.Equal(
+            expectedFinding
+                ? MachineFindingPostureImpact.Local
+                : (MachineFindingPostureImpact?)null,
+            recurrence?.PostureImpact);
     }
 
     [Theory]
     [InlineData(2, false)]
     [InlineData(3, true)]
-    public void RepeatedUpdateFailureUsesExactSevenDayThreshold(
+    public void RepeatedUpdateFailureRemainsLocalizedOutsideCurrentFailure(
         int count,
         bool expectedAttention)
     {
@@ -87,19 +93,27 @@ public sealed class MachineHealthFindingsTests
             expectedAttention,
             findings.Findings.Any(finding => finding.Code ==
                 "health.reliability.update-failures-repeated"));
+        Assert.Equal(MachineOverallState.Stable, findings.OverallState);
+        var recurrence = findings.Findings.SingleOrDefault(finding =>
+            finding.Code == "health.reliability.update-failures-repeated");
+        Assert.Equal(
+            expectedAttention
+                ? MachineFindingPostureImpact.Local
+                : (MachineFindingPostureImpact?)null,
+            recurrence?.PostureImpact);
     }
 
     [Theory]
     [InlineData(1, false)]
     [InlineData(2, true)]
-    public void UnexpectedShutdownUsesExactRepeatThreshold(
+    public void UnexpectedShutdownRemainsLocalizedOutsideCurrentWindow(
         int count,
         bool expectedAttention)
     {
         var incidents = Enumerable.Range(0, count)
             .Select(index => Incident(
                 MachineReliabilityIncidentCategory.UnexpectedShutdown,
-                Now.AddHours(-(index + 1))));
+                Now.AddDays(-1).AddHours(-(index + 1))));
 
         var findings = Evaluate(incidents);
 
@@ -107,6 +121,14 @@ public sealed class MachineHealthFindingsTests
             expectedAttention,
             findings.Findings.Any(finding => finding.Code ==
                 "health.reliability.unexpected-shutdowns-repeated"));
+        Assert.Equal(MachineOverallState.Stable, findings.OverallState);
+        var recurrence = findings.Findings.SingleOrDefault(finding =>
+            finding.Code == "health.reliability.unexpected-shutdowns-repeated");
+        Assert.Equal(
+            expectedAttention
+                ? MachineFindingPostureImpact.Local
+                : (MachineFindingPostureImpact?)null,
+            recurrence?.PostureImpact);
     }
 
     [Theory]
@@ -196,6 +218,121 @@ public sealed class MachineHealthFindingsTests
     }
 
     [Fact]
+    public void ActiveApplicationCrashLoopElevatesGlobalPosture()
+    {
+        var findings = Evaluate(
+        [
+            Incident(MachineReliabilityIncidentCategory.ApplicationCrash,
+                Now.AddMinutes(-2), "loop.exe"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationHang,
+                Now.AddMinutes(-8), "loop.exe"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationCrash,
+                Now.AddMinutes(-14), "loop.exe")
+        ]);
+
+        Assert.Equal(MachineOverallState.Attention, findings.OverallState);
+        Assert.Contains(findings.Findings, finding => finding.Code ==
+            "health.reliability.application-crash-loop");
+    }
+
+    [Fact]
+    public void IndependentRecentApplicationFailuresElevateGlobalPosture()
+    {
+        var findings = Evaluate(
+        [
+            Incident(MachineReliabilityIncidentCategory.ApplicationCrash,
+                Now.AddMinutes(-2), "one.exe"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationHang,
+                Now.AddMinutes(-8), "one.exe"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationCrash,
+                Now.AddMinutes(-3), "two.exe"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationHang,
+                Now.AddMinutes(-9), "two.exe")
+        ]);
+
+        Assert.Equal(MachineOverallState.Attention, findings.OverallState);
+        Assert.Contains(findings.Findings, finding => finding.Code ==
+            "health.reliability.independent-application-failures");
+    }
+
+    [Fact]
+    public void RepeatedRecentResidentApplicationFailuresElevatePosture()
+    {
+        var findings = MachineFindingsEvaluator.Evaluate(
+            new MachineFindingsInput(
+                Resources: StableResources(),
+                Reliability: MachineReliabilityAggregator.Aggregate(
+                [
+                    Incident(MachineReliabilityIncidentCategory.ApplicationCrash,
+                        Now.AddMinutes(-2), "Machine.App.exe"),
+                    Incident(MachineReliabilityIncidentCategory.ApplicationHang,
+                        Now.AddMinutes(-12), "Machine.App.exe")
+                ], Now),
+                ResidentApplicationIdentity: "Machine.App.exe"));
+
+        Assert.Equal(MachineOverallState.Attention, findings.OverallState);
+        Assert.Contains(findings.Findings, finding => finding.Code ==
+            "health.reliability.resident-application-crash-loop");
+    }
+
+    [Fact]
+    public void CurrentRepeatedUpdateFailureElevatesGlobalPosture()
+    {
+        var findings = MachineFindingsEvaluator.Evaluate(
+            new MachineFindingsInput(
+                Resources: StableResources(),
+                WindowsUpdate: CurrentUpdateFailure(),
+                Reliability: MachineReliabilityAggregator.Aggregate(
+                [
+                    Incident(MachineReliabilityIncidentCategory.UpdateFailure,
+                        Now.AddMinutes(-10), updateIdentifier: "KB5001001"),
+                    Incident(MachineReliabilityIncidentCategory.UpdateFailure,
+                        Now.AddMinutes(-25), updateIdentifier: "KB5001002"),
+                    Incident(MachineReliabilityIncidentCategory.InstallFailure,
+                        Now.AddMinutes(-40), updateIdentifier: "KB5001003")
+                ], Now)));
+
+        Assert.Equal(MachineOverallState.Attention, findings.OverallState);
+        Assert.Contains(findings.Findings, finding => finding.Code ==
+            "health.reliability.update-failures-current");
+    }
+
+    [Fact]
+    public void VeryRecentUnexpectedShutdownElevatesGlobalPosture()
+    {
+        var findings = Evaluate(
+        [
+            Incident(MachineReliabilityIncidentCategory.UnexpectedShutdown,
+                Now.AddHours(-2))
+        ]);
+
+        Assert.Equal(MachineOverallState.Attention, findings.OverallState);
+        Assert.Contains(findings.Findings, finding => finding.Code ==
+            "health.reliability.unexpected-shutdowns-current");
+    }
+
+    [Fact]
+    public void HistoricReliabilityFindingDoesNotChangeIncidentAccounting()
+    {
+        var incidents = Enumerable.Range(0, 12)
+            .Select(index => Incident(
+                MachineReliabilityIncidentCategory.ApplicationCrash,
+                Now.AddDays(-index / 2d).AddHours(-1), "historic.exe"))
+            .ToArray();
+        var reliability = MachineReliabilityAggregator.Aggregate(incidents, Now);
+        var findings = MachineFindingsEvaluator.Evaluate(
+            new MachineFindingsInput(
+                Resources: StableResources(), Reliability: reliability));
+
+        Assert.Equal(incidents.Length, reliability.Incidents.Count);
+        Assert.Equal(MachineOverallState.Stable, findings.OverallState);
+        var recurrence = Assert.Single(findings.Findings, finding =>
+            finding.Code == "health.reliability.application-recurrence");
+        Assert.Equal(MachineFindingPostureImpact.Local,
+            recurrence.PostureImpact);
+    }
+
+    [Fact]
     public void PassiveHealthChangeDoesNotWakeInsightPolicy()
     {
         var policy = new MachineInsightTriggerPolicy();
@@ -237,6 +374,20 @@ public sealed class MachineHealthFindingsTests
         1_000,
         500,
         Now);
+
+    private static MachineWindowsUpdateSnapshot CurrentUpdateFailure() => new(
+        CapturedAt: Now,
+        VerifiedAt: Now,
+        UpdateServiceAvailable: false,
+        LastSuccessfulUpdateScan: null,
+        LastSuccessfulUpdateInstall: null,
+        PendingUpdateCount: null,
+        PendingImportantUpdateCount: null,
+        UpdateState: MachineWindowsUpdateState.Unknown,
+        RecentUpdateHistory: [],
+        DataStatus: MachineHealthDataStatus.Complete,
+        RefreshStatus: MachineWindowsUpdateRefreshStatus.Verified,
+        FailureCode: "0x8024001E");
 
     private static MachineReliabilityIncident Incident(
         MachineReliabilityIncidentCategory category,

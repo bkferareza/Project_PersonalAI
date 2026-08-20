@@ -18,6 +18,8 @@
 - A language model may interpret or explain verified data, but must never invent machine state or directly execute arbitrary commands.
 - Matasuri is a persistent single-instance Windows presence: startup enters the ambient orb; user interactions only expand or collapse the dashboard; secondary activations redirect to the primary; Esc, normal close, and sustained focus loss return to ambient presence. Real shutdown is reserved for Windows lifecycle and controlled development/test paths.
 - DEBUG builds may invoke that controlled shutdown only through the redirected `matasuri-dev://shutdown` activation; it is never a product command or UI affordance.
+- Finding severity and global machine posture are distinct. Localized historical reliability issues remain visible but do not automatically elevate the whole machine; posture is deterministic and reflects current machine-wide significance.
+- Startup uses the packaged `MatasuriStartup` task and must respect Windows and user control.
 
 ## Repository Layout
 

@@ -152,6 +152,7 @@ public partial class App : Application
             activationDisposition ==
                 MatasuriActivationDisposition.EstablishAmbientPresence);
         _ = BootstrapOllamaAsync();
+        _ = EnsureStartupTaskEnabledAsync();
         MatasuriActivationRouter.ProcessPendingRedirectedActivation(this);
 #if DEBUG
         if (activationDisposition ==
@@ -246,6 +247,18 @@ public partial class App : Application
         catch
         {
             // The regular Ollama status flow reports an unavailable runtime.
+        }
+    }
+
+    private static async Task EnsureStartupTaskEnabledAsync()
+    {
+        try
+        {
+            await MatasuriStartupTaskEnabler.EnsureEnabledAsync();
+        }
+        catch
+        {
+            // Windows and user policy remain authoritative for startup.
         }
     }
 

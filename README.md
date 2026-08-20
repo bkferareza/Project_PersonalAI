@@ -20,6 +20,10 @@ Matasuri is a single resident instance. Its packaged Windows startup task (`Mata
 
 Overview is a current machine brief. History answers what happened. Learning answers what repeated evidence allowed Matasuri to conclude. Provider pages expose deeper read-only evidence without turning the shell into a control surface.
 
+Stable means no current machine-wide degradation was verified; it does not erase localized reliability findings, which remain visible in Health and History.
+
+Reliability history remains localized by default. Global Attention requires a current deterministic signal: an application loop with fresh repeated failures in 30 minutes (15-minute freshness), a verified Windows Update error with three failures in 24 hours (four-hour freshness), or an unexpected shutdown in the last four hours. Historical update and shutdown evidence remains retained without pinning the live posture.
+
 ## History
 
 Accepted observations enter history at most once every 30 seconds. Incremental typed rollups retain 5-minute data for 48 hours (maximum 576), hourly data for 90 days (2,160), daily data for 730 days, and monthly data for 120 months. Numeric values retain count/min/max/mean; activity and deterministic state retain observed durations. Offline and suspended time remains missing rather than becoming zero, Active, or Idle.

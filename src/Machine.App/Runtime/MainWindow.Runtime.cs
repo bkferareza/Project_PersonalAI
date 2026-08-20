@@ -365,7 +365,9 @@ public sealed partial class MainWindow
                 Startup: StartupPage.LatestSnapshot,
                 WindowsUpdate: _latestWindowsUpdateSnapshot,
                 RebootPending: _latestRebootPendingSnapshot,
-                Reliability: _latestReliabilitySnapshot));
+                Reliability: _latestReliabilitySnapshot,
+                ResidentApplicationIdentity: Path.GetFileName(
+                    Environment.ProcessPath)));
 
         _latestFindingsSnapshot = snapshot;
         UpdatePresenceState(snapshot.OverallState);

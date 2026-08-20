@@ -8,6 +8,22 @@ public static class MachineFindingsEvaluator
     public const int RepeatedUpdateFailureAttentionThreshold = 3;
     public const int RepeatedUnexpectedShutdownAttentionThreshold = 2;
     public const int RepeatedHardwareFailureAttentionThreshold = 2;
+    public const int ActiveApplicationCrashLoopMinimumIncidentCount = 3;
+    public const int ResidentApplicationCrashLoopMinimumIncidentCount = 2;
+    public const int IndependentApplicationFailureMinimumIncidentCount = 2;
+    public const int IndependentApplicationFailureMinimumApplicationCount = 2;
+    public static readonly TimeSpan ReliabilityCurrentWindow =
+        TimeSpan.FromMinutes(30);
+    public static readonly TimeSpan ReliabilityFreshnessWindow =
+        TimeSpan.FromMinutes(15);
+    public static readonly TimeSpan UpdateFailureCurrentWindow =
+        TimeSpan.FromHours(24);
+    public static readonly TimeSpan UpdateFailureFreshnessWindow =
+        TimeSpan.FromHours(4);
+    public static readonly TimeSpan UnexpectedShutdownCurrentWindow =
+        TimeSpan.FromHours(24);
+    public static readonly TimeSpan UnexpectedShutdownFreshnessWindow =
+        TimeSpan.FromHours(4);
 
     private const double CpuAttentionPercent = 70d;
     private const double CpuWarningPercent = 90d;
@@ -324,8 +340,14 @@ public static class MachineFindingsEvaluator
                 Title: "Application failures have recurred",
                 Detail: $"Windows recorded " +
                     $"{recurring.IncidentCountLast7Days} crashes or hangs " +
-                    $"of {recurring.ApplicationName} during the last 7 days."));
+                    $"of {recurring.ApplicationName} during the last 7 days.",
+                PostureImpact: MachineFindingPostureImpact.Local));
         }
+
+        EvaluateCurrentReliabilityPosture(
+            reliability,
+            input.ResidentApplicationIdentity,
+            findings);
 
         var sevenDays = reliability.Summary.Last7Days;
         if (sevenDays.UpdateFailureCount >=
@@ -336,7 +358,8 @@ public static class MachineFindingsEvaluator
                 Severity: MachineFindingSeverity.Attention,
                 Title: "Update failures have recurred",
                 Detail: $"Windows recorded {sevenDays.UpdateFailureCount} " +
-                    "update failures during the last 7 days."));
+                    "update failures during the last 7 days.",
+                PostureImpact: MachineFindingPostureImpact.Local));
         }
 
         if (sevenDays.UnexpectedShutdownCount >=
@@ -348,7 +371,8 @@ public static class MachineFindingsEvaluator
                 Title: "Unexpected shutdowns have recurred",
                 Detail: $"Windows recorded " +
                     $"{sevenDays.UnexpectedShutdownCount} unexpected " +
-                    "shutdowns during the last 7 days."));
+                    "shutdowns during the last 7 days.",
+                PostureImpact: MachineFindingPostureImpact.Local));
         }
 
         if (sevenDays.HardwareFailureCount >=
@@ -360,6 +384,174 @@ public static class MachineFindingsEvaluator
                 Title: "Hardware-error records have recurred",
                 Detail: $"Windows recorded {sevenDays.HardwareFailureCount} " +
                     "hardware-error events during the last 7 days."));
+        }
+
+        EvaluateCurrentUpdateFailurePosture(
+            reliability,
+            input.WindowsUpdate,
+            findings);
+        EvaluateCurrentUnexpectedShutdownPosture(reliability, findings);
+    }
+
+    private static void EvaluateCurrentUpdateFailurePosture(
+        MachineReliabilitySnapshot reliability,
+        MachineWindowsUpdateSnapshot? update,
+        ICollection<MachineFinding> findings)
+    {
+        if (update is not
+            {
+                DataStatus: MachineHealthDataStatus.Complete,
+                RefreshStatus: MachineWindowsUpdateRefreshStatus.Verified,
+                UpdateState: MachineWindowsUpdateState.Unknown,
+                FailureCode: not null
+            })
+        {
+            return;
+        }
+
+        var currentWindowStart = reliability.CapturedAt -
+            UpdateFailureCurrentWindow;
+        var freshnessStart = reliability.CapturedAt -
+            UpdateFailureFreshnessWindow;
+        var recentFailures = reliability.Incidents
+            .Where(incident => incident.Category is
+                MachineReliabilityIncidentCategory.UpdateFailure or
+                MachineReliabilityIncidentCategory.InstallFailure)
+            .Where(incident =>
+                incident.OccurredAt >= currentWindowStart &&
+                incident.OccurredAt <= reliability.CapturedAt)
+            .ToArray();
+        if (recentFailures.Length < RepeatedUpdateFailureAttentionThreshold ||
+            !recentFailures.Any(incident =>
+                incident.OccurredAt >= freshnessStart))
+        {
+            return;
+        }
+
+        findings.Add(new MachineFinding(
+            Code: "health.reliability.update-failures-current",
+            Severity: MachineFindingSeverity.Attention,
+            Title: "Windows Update is currently failing repeatedly",
+            Detail: "Windows reports a current update failure after " +
+                "repeated recent installation failures."));
+    }
+
+    private static void EvaluateCurrentUnexpectedShutdownPosture(
+        MachineReliabilitySnapshot reliability,
+        ICollection<MachineFinding> findings)
+    {
+        var currentWindowStart = reliability.CapturedAt -
+            UnexpectedShutdownCurrentWindow;
+        var freshnessStart = reliability.CapturedAt -
+            UnexpectedShutdownFreshnessWindow;
+        var recentShutdowns = reliability.Incidents
+            .Where(incident => incident.Category ==
+                MachineReliabilityIncidentCategory.UnexpectedShutdown)
+            .Where(incident =>
+                incident.OccurredAt >= currentWindowStart &&
+                incident.OccurredAt <= reliability.CapturedAt)
+            .ToArray();
+        if (!recentShutdowns.Any(incident =>
+            incident.OccurredAt >= freshnessStart))
+        {
+            return;
+        }
+
+        findings.Add(new MachineFinding(
+            Code: "health.reliability.unexpected-shutdowns-current",
+            Severity: MachineFindingSeverity.Attention,
+            Title: "The machine has shut down unexpectedly very recently",
+            Detail: "Windows recorded an unexpected shutdown in the " +
+                "current reliability window."));
+    }
+
+    private static void EvaluateCurrentReliabilityPosture(
+        MachineReliabilitySnapshot reliability,
+        string? residentApplicationIdentity,
+        ICollection<MachineFinding> findings)
+    {
+        var currentWindowStart = reliability.CapturedAt -
+            ReliabilityCurrentWindow;
+        var freshnessStart = reliability.CapturedAt -
+            ReliabilityFreshnessWindow;
+        var recentFailures = reliability.Incidents
+            .Where(incident =>
+                incident.Category is
+                    MachineReliabilityIncidentCategory.ApplicationCrash or
+                    MachineReliabilityIncidentCategory.ApplicationHang)
+            .Where(incident =>
+                incident.OccurredAt >= currentWindowStart &&
+                incident.OccurredAt <= reliability.CapturedAt &&
+                incident.ApplicationName is not null)
+            .GroupBy(
+                incident => incident.ApplicationName!,
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => new
+            {
+                ApplicationName = group.Key,
+                Count = group.Count(),
+                MostRecent = group.Max(incident => incident.OccurredAt)
+            })
+            .Where(group => group.MostRecent >= freshnessStart)
+            .ToArray();
+
+        var residentIdentity =
+            MachineReliabilityAggregator.NormalizeApplicationIdentity(
+                residentApplicationIdentity);
+        var residentCrashLoop = residentIdentity is null
+            ? null
+            : recentFailures.FirstOrDefault(group =>
+                string.Equals(
+                    group.ApplicationName,
+                    residentIdentity,
+                    StringComparison.OrdinalIgnoreCase) &&
+                group.Count >= ResidentApplicationCrashLoopMinimumIncidentCount);
+        if (residentCrashLoop is not null)
+        {
+            findings.Add(new MachineFinding(
+                Code: "health.reliability.resident-application-crash-loop",
+                Severity: MachineFindingSeverity.Attention,
+                Title: "Matasuri has recently failed repeatedly",
+                Detail: "Windows recorded repeated recent failures of the " +
+                    "resident Matasuri process."));
+            return;
+        }
+
+        var crashLoop = recentFailures
+            .Where(group =>
+                group.Count >= ActiveApplicationCrashLoopMinimumIncidentCount)
+            .OrderByDescending(group => group.Count)
+            .ThenByDescending(group => group.MostRecent)
+            .ThenBy(group => group.ApplicationName,
+                StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+        if (crashLoop is not null)
+        {
+            findings.Add(new MachineFinding(
+                Code: "health.reliability.application-crash-loop",
+                Severity: MachineFindingSeverity.Attention,
+                Title: "An application is failing repeatedly right now",
+                Detail: $"Windows recorded {crashLoop.Count} recent crashes " +
+                    $"or hangs of {crashLoop.ApplicationName}."));
+            return;
+        }
+
+        var independentFailures = recentFailures
+            .Where(group =>
+                group.Count >= IndependentApplicationFailureMinimumIncidentCount)
+            .OrderBy(group => group.ApplicationName,
+                StringComparer.OrdinalIgnoreCase)
+            .Take(IndependentApplicationFailureMinimumApplicationCount)
+            .ToArray();
+        if (independentFailures.Length >=
+            IndependentApplicationFailureMinimumApplicationCount)
+        {
+            findings.Add(new MachineFinding(
+                Code: "health.reliability.independent-application-failures",
+                Severity: MachineFindingSeverity.Attention,
+                Title: "Several applications are failing repeatedly right now",
+                Detail: "Windows recorded repeated recent failures across " +
+                    $"{independentFailures.Length} distinct applications."));
         }
     }
 
@@ -387,7 +579,9 @@ public static class MachineFindingsEvaluator
     {
         var highestSeverity = findings
             .Where(finding =>
-                finding.Severity != MachineFindingSeverity.Info)
+                finding.Severity != MachineFindingSeverity.Info &&
+                finding.PostureImpact ==
+                    MachineFindingPostureImpact.Machine)
             .Select(finding => (MachineFindingSeverity?)finding.Severity)
             .FirstOrDefault();
 

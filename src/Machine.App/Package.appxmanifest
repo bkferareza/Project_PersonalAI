@@ -51,7 +51,7 @@
       <Extensions>
         <desktop:Extension
           Category="windows.startupTask"
-          Executable="$targetnametoken$.exe"
+          Executable="Machine.App.exe"
           EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask
             TaskId="MatasuriStartup"
@@ -60,7 +60,7 @@
         </desktop:Extension>
         <uap3:Extension
           Category="windows.protocol"
-          Executable="$targetnametoken$.exe"
+          Executable="Machine.App.exe"
           EntryPoint="Windows.FullTrustApplication">
           <uap3:Protocol
             Name="matasuri-dev"

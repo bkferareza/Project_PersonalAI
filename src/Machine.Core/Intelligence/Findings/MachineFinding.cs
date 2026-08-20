@@ -4,4 +4,6 @@ public sealed record MachineFinding(
     string Code,
     MachineFindingSeverity Severity,
     string Title,
-    string Detail);
+    string Detail,
+    MachineFindingPostureImpact PostureImpact =
+        MachineFindingPostureImpact.Machine);
