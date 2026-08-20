@@ -20,6 +20,25 @@
                         </StackPanel>
 
                         <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Learning activity" />
+                                <TextBlock x:Name="LearningActivityStatusText" x:FieldModifier="internal" FontWeight="SemiBold" Text="Starting" />
+                                <ListView x:Name="LearningActivityEventsList" x:FieldModifier="internal" MaxHeight="260" SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:LearningActivityDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="1">
+                                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Header}" TextWrapping="Wrap" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Detail}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="10">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"

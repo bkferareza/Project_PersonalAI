@@ -23,3 +23,8 @@ public interface IMachineLearningStoreDiagnostics
 {
     MachineLearningStoreLoadStatus LastLoadStatus { get; }
 }
+
+public interface IMachineLearningStoreSaveDiagnostics
+{
+    long? LastSavedByteCount { get; }
+}

@@ -27,6 +27,7 @@ public sealed class MachineLearningService
     private readonly Dictionary<MachineLearningContextKey,
         MachineLearningContextProfile> _profiles = new();
     private readonly SemaphoreSlim _persistenceGate = new(1, 1);
+    private readonly MachineLearningActivityLog _activityLog;
     private IReadOnlyList<MachineLearningRecurringPattern> _patterns = [];
     private ActiveEpisode? _activeEpisode;
     private DateTimeOffset? _lastObservationAt;
@@ -51,10 +52,16 @@ public sealed class MachineLearningService
     private MachineLearningDataHealth _dataHealth =
         MachineLearningDataHealth.NotYetPersisted;
 
-    public MachineLearningService(DateTimeOffset? sessionStartedAt = null)
+    public MachineLearningService(DateTimeOffset? sessionStartedAt = null,
+        MachineLearningActivityLog? activityLog = null)
     {
         _currentSessionStartedAt = sessionStartedAt ?? DateTimeOffset.UtcNow;
+        _activityLog = activityLog ?? new MachineLearningActivityLog();
+        _activityLog.Record(MachineLearningActivityKind.RuntimeStarted,
+            _currentSessionStartedAt);
     }
+
+    public MachineLearningActivityLog ActivityLog => _activityLog;
 
     public IReadOnlyList<MachineLearningObservation> Journal =>
         _journal.ToArray();
@@ -88,6 +95,8 @@ public sealed class MachineLearningService
         {
             _throttledObservationCount = SaturatingIncrement(
                 _throttledObservationCount);
+            _activityLog.Record(MachineLearningActivityKind.ObservationSkipped,
+                timestamp, detail: "Throttled");
             return false;
         }
 
@@ -99,6 +108,8 @@ public sealed class MachineLearningService
     {
         _missingPrerequisiteCount = SaturatingIncrement(
             _missingPrerequisiteCount);
+        _activityLog.Record(MachineLearningActivityKind.ObservationSkipped,
+            DateTimeOffset.UtcNow, detail: "Missing prerequisite");
     }
 
     public bool Observe(MachineLearningObservation observation)
@@ -109,6 +120,8 @@ public sealed class MachineLearningService
         {
             _missingPrerequisiteCount = SaturatingIncrement(
                 _missingPrerequisiteCount);
+            _activityLog.Record(MachineLearningActivityKind.ObservationSkipped,
+                observation.Timestamp, detail: "Invalid observation");
             return false;
         }
 
@@ -117,6 +130,8 @@ public sealed class MachineLearningService
         {
             _missingPrerequisiteCount = SaturatingIncrement(
                 _missingPrerequisiteCount);
+            _activityLog.Record(MachineLearningActivityKind.ObservationSkipped,
+                observation.Timestamp, detail: "Out-of-order observation");
             return false;
         }
 
@@ -124,6 +139,8 @@ public sealed class MachineLearningService
         {
             _throttledObservationCount = SaturatingIncrement(
                 _throttledObservationCount);
+            _activityLog.Record(MachineLearningActivityKind.ObservationSkipped,
+                observation.Timestamp, detail: "Throttled");
             return false;
         }
 
@@ -158,13 +175,27 @@ public sealed class MachineLearningService
         }
 
         baseline.Add(observation);
+        var episodeCount = _episodes.Count;
         UpdateEpisodes(observation, localTimestamp);
         if (UpdateProfile(key, baseline, observation.Timestamp))
         {
             RecomputePatterns(observation.Timestamp);
+            _activityLog.Record(MachineLearningActivityKind.ProfileUpdated,
+                observation.Timestamp, _observationCount, _profiles.Count,
+                _episodes.Count);
+        }
+
+        if (_episodes.Count != episodeCount)
+        {
+            _activityLog.Record(MachineLearningActivityKind.EpisodeUpdated,
+                observation.Timestamp, _observationCount, _profiles.Count,
+                _episodes.Count);
         }
 
         MarkDirty();
+        _activityLog.Record(MachineLearningActivityKind.ObservationAccepted,
+            observation.Timestamp, _observationCount, _profiles.Count,
+            _episodes.Count);
         return true;
     }
 
@@ -260,6 +291,8 @@ public sealed class MachineLearningService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
+        _activityLog.Record(MachineLearningActivityKind.RestoreStarted,
+            _currentSessionStartedAt);
         var state = await store.LoadAsync(cancellationToken)
             .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
@@ -278,6 +311,14 @@ public sealed class MachineLearningService
                     MachineLearningDataHealth.PersistenceTemporarilyUnavailable,
                 _ => MachineLearningDataHealth.NotYetPersisted
             };
+            _activityLog.Record(loadStatus switch
+            {
+                MachineLearningStoreLoadStatus.Corrupt =>
+                    MachineLearningActivityKind.RestoreCorrupt,
+                MachineLearningStoreLoadStatus.Unavailable =>
+                    MachineLearningActivityKind.RestoreUnavailable,
+                _ => MachineLearningActivityKind.RestoreMissing
+            }, _currentSessionStartedAt);
             return;
         }
 
@@ -289,6 +330,8 @@ public sealed class MachineLearningService
         {
             _recoveredFromCorruptState = true;
             _dataHealth = MachineLearningDataHealth.RecoveredFromCorruptState;
+            _activityLog.Record(MachineLearningActivityKind.RestoreCorrupt,
+                _currentSessionStartedAt, schemaVersion: state.SchemaVersion);
             return;
         }
 
@@ -443,6 +486,25 @@ public sealed class MachineLearningService
         _dataHealth = _recoveredFromCorruptState
             ? MachineLearningDataHealth.RecoveredFromCorruptState
             : MachineLearningDataHealth.Healthy;
+        var lastAuditedCount = _activityLog.LastSuccessfulPersistenceObservationCount;
+        if (lastAuditedCount is not null && _observationCount < lastAuditedCount)
+        {
+            _activityLog.Record(
+                MachineLearningActivityKind.LearningContinuityRegressionDetected,
+                _currentSessionStartedAt, _observationCount,
+                detail: "Persisted count is lower than the last audit summary");
+        }
+        if (state.SchemaVersion != PersistenceSchemaVersion)
+        {
+            _activityLog.Record(MachineLearningActivityKind.RestoreMigrated,
+                _currentSessionStartedAt, _observationCount, _profiles.Count,
+                _episodes.Count, state.SchemaVersion);
+        }
+        _activityLog.Record(MachineLearningActivityKind.RestoreSucceeded,
+            _currentSessionStartedAt, _observationCount, _profiles.Count,
+            _episodes.Count, state.SchemaVersion);
+        _activityLog.Record(MachineLearningActivityKind.SessionStarted,
+            _currentSessionStartedAt, _observationCount);
     }
 
     public async Task<bool> SaveIfDueAsync(
@@ -474,6 +536,7 @@ public sealed class MachineLearningService
             state,
             snapshotVersion,
             now,
+            "Periodic",
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -484,6 +547,8 @@ public sealed class MachineLearningService
     {
         ArgumentNullException.ThrowIfNull(store);
         RefreshFreshness(now);
+        _activityLog.Record(MachineLearningActivityKind.ShutdownStarted, now,
+            _observationCount, _profiles.Count, _episodes.Count);
         FinalizeCurrentSession(now);
         if (!_isDirty)
         {
@@ -492,12 +557,20 @@ public sealed class MachineLearningService
 
         var snapshotVersion = _changeVersion;
         var state = CreatePersistedState(now);
-        return await SaveSnapshotAsync(
+        var saved = await SaveSnapshotAsync(
             store,
             state,
             snapshotVersion,
             now,
+            "Shutdown",
             cancellationToken).ConfigureAwait(false);
+        _activityLog.Record(saved
+                ? MachineLearningActivityKind.ShutdownSucceeded
+                : MachineLearningActivityKind.ShutdownFailed,
+            now, _observationCount, _profiles.Count, _episodes.Count);
+        _activityLog.Record(MachineLearningActivityKind.RuntimeStopped, now,
+            _observationCount);
+        return saved;
     }
 
     private async Task<bool> SaveSnapshotAsync(
@@ -505,16 +578,25 @@ public sealed class MachineLearningService
         MachineLearningPersistedState state,
         long snapshotVersion,
         DateTimeOffset now,
+        string persistenceReason,
         CancellationToken cancellationToken)
     {
         await _persistenceGate.WaitAsync(cancellationToken)
             .ConfigureAwait(false);
         try
         {
+            var stopwatch = new Stopwatch();
             try
             {
+                _activityLog.Record(MachineLearningActivityKind.PersistenceStarted,
+                    now, state.Metadata?.LifetimeAcceptedObservationCount ??
+                        state.ObservationCount,
+                    state.ContextProfiles?.Count, state.Episodes.Count,
+                    state.SchemaVersion, detail: persistenceReason);
+                stopwatch.Start();
                 await store.SaveAsync(state, cancellationToken)
                     .ConfigureAwait(false);
+                stopwatch.Stop();
             }
             catch (OperationCanceledException)
                 when (cancellationToken.IsCancellationRequested)
@@ -528,6 +610,10 @@ public sealed class MachineLearningService
                     MachineLearningDataHealth.PersistenceTemporarilyUnavailable;
                 _nextPersistenceAttemptAt =
                     now + PersistenceFailureRetryInterval;
+                _activityLog.Record(MachineLearningActivityKind.PersistenceFailed,
+                    now, state.Metadata?.LifetimeAcceptedObservationCount ??
+                        state.ObservationCount,
+                    detail: persistenceReason + " store unavailable");
                 return false;
             }
 
@@ -541,6 +627,14 @@ public sealed class MachineLearningService
             {
                 _isDirty = false;
             }
+            _activityLog.Record(MachineLearningActivityKind.PersistenceSucceeded,
+                now, state.Metadata?.LifetimeAcceptedObservationCount ??
+                    state.ObservationCount, state.ContextProfiles?.Count,
+                state.Episodes.Count, state.SchemaVersion,
+                detail: persistenceReason,
+                byteCount: (store as IMachineLearningStoreSaveDiagnostics)?
+                    .LastSavedByteCount,
+                durationMilliseconds: stopwatch.ElapsedMilliseconds);
             return true;
         }
         finally
@@ -892,6 +986,8 @@ public sealed class MachineLearningService
     {
         _changeVersion = SaturatingIncrement(_changeVersion);
         _isDirty = true;
+        _activityLog.Record(MachineLearningActivityKind.MarkedDirty,
+            DateTimeOffset.UtcNow, _observationCount);
     }
 
     private static bool IsValidObservation(

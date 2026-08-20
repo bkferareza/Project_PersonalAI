@@ -55,6 +55,7 @@ public sealed partial class MainWindow : Window
     private readonly IMachineReliabilityProvider _reliabilityProvider;
     private readonly MachineLearningService _learningService;
     private readonly IMachineLearningStore _learningStore;
+    private readonly IMachineLearningActivityStore _learningActivityStore;
     private readonly MachineHealthHistoryService _healthHistoryService;
     private readonly IMachineHealthHistoryStore _healthHistoryStore;
     private readonly MachineHistoryService _historyService;
@@ -137,6 +138,7 @@ public sealed partial class MainWindow : Window
         IMachineReliabilityProvider reliabilityProvider,
         MachineLearningService learningService,
         IMachineLearningStore learningStore,
+        IMachineLearningActivityStore learningActivityStore,
         MachineHealthHistoryService healthHistoryService,
         IMachineHealthHistoryStore healthHistoryStore,
         MachineHistoryService historyService,
@@ -166,6 +168,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(reliabilityProvider);
         ArgumentNullException.ThrowIfNull(learningService);
         ArgumentNullException.ThrowIfNull(learningStore);
+        ArgumentNullException.ThrowIfNull(learningActivityStore);
         ArgumentNullException.ThrowIfNull(healthHistoryService);
         ArgumentNullException.ThrowIfNull(healthHistoryStore);
         ArgumentNullException.ThrowIfNull(historyService);
@@ -188,6 +191,7 @@ public sealed partial class MainWindow : Window
         _reliabilityProvider = reliabilityProvider;
         _learningService = learningService;
         _learningStore = learningStore;
+        _learningActivityStore = learningActivityStore;
         _healthHistoryService = healthHistoryService;
         _healthHistoryStore = healthHistoryStore;
         _historyService = historyService;

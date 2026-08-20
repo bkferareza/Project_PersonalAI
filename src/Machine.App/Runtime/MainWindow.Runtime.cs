@@ -206,6 +206,10 @@ public sealed partial class MainWindow
                 _learningStore,
                 DateTimeOffset.UtcNow,
                 cancellationToken: cancellationToken);
+            await _learningService.ActivityLog.SaveIfDueAsync(
+                _learningActivityStore,
+                DateTimeOffset.UtcNow,
+                cancellationToken: cancellationToken);
             if (learningChanged || persisted ||
                 previousLearningHealth != _learningService.DataHealth ||
                 previousLastPersistence != _learningService.LastPersistedAt)
@@ -402,6 +406,9 @@ public sealed partial class MainWindow
     {
         try
         {
+            await _learningService.ActivityLog.LoadAsync(
+                _learningActivityStore,
+                _windowCancellationTokenSource.Token);
             await _learningService.LoadAsync(
                 _learningStore,
                 _windowCancellationTokenSource.Token);

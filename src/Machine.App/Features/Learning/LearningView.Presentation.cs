@@ -21,11 +21,13 @@ public sealed partial class LearningView
 {
     internal void Update(
         MachineLearningDashboardSnapshot snapshot,
+        MachineLearningActivitySnapshot activity,
         MachineHealthHistorySnapshot healthHistory,
         OllamaStatusSnapshot? ollamaStatus,
         OverviewView overview)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(activity);
         ArgumentNullException.ThrowIfNull(healthHistory);
         ArgumentNullException.ThrowIfNull(overview);
         var current = snapshot.CurrentObservation;
@@ -162,7 +164,62 @@ public sealed partial class LearningView
             "Not yet persisted");
         LearningSchemaText.Text =
             $"v{snapshot.Metadata.PersistedSchemaVersion}";
+        LearningActivityStatusText.Text = FormatLearningActivityStatus(
+            activity.Status);
+        LearningActivityEventsList.ItemsSource = activity.RecentEvents
+            .Select(item => new LearningActivityDisplayItem(
+                $"{item.OccurredAt.ToLocalTime():MMM d HH:mm:ss} · {FormatActivityKind(item.Kind)}",
+                FormatActivityDetail(item)))
+            .ToArray();
         UpdateRuntimeStatus(ollamaStatus);
+    }
+
+    private static string FormatLearningActivityStatus(
+        MachineLearningActivityStatus status) => status switch
+        {
+            MachineLearningActivityStatus.Active => "Active",
+            MachineLearningActivityStatus.Waiting => "Waiting for a verified observation",
+            MachineLearningActivityStatus.PersistenceDelayed => "Persistence delayed",
+            MachineLearningActivityStatus.Unavailable => "Unavailable",
+            _ => "Starting"
+        };
+
+    private static string FormatActivityKind(MachineLearningActivityKind kind) =>
+        string.Concat(kind.ToString().Select((character, index) =>
+            index > 0 && char.IsUpper(character) ? " " + character : character.ToString()));
+
+    private static string FormatActivityDetail(MachineLearningActivityEvent item)
+    {
+        var details = new List<string>();
+        if (item.ObservationCount is not null)
+        {
+            details.Add($"{item.ObservationCount:N0} observations");
+        }
+        if (item.ProfileCount is not null)
+        {
+            details.Add($"{item.ProfileCount:N0} profiles");
+        }
+        if (item.EpisodeCount is not null)
+        {
+            details.Add($"{item.EpisodeCount:N0} episodes");
+        }
+        if (item.Count > 1)
+        {
+            details.Add($"{item.Count:N0} coalesced");
+        }
+        if (!string.IsNullOrWhiteSpace(item.Detail))
+        {
+            details.Add(item.Detail);
+        }
+        if (item.ByteCount is not null)
+        {
+            details.Add($"{item.ByteCount:N0} bytes");
+        }
+        if (item.DurationMilliseconds is not null)
+        {
+            details.Add($"{item.DurationMilliseconds:N0} ms");
+        }
+        return details.Count == 0 ? "Lifecycle event" : string.Join(" · ", details);
     }
 
     private static LearningProfileDisplayItem

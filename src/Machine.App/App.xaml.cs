@@ -61,8 +61,12 @@ public partial class App : Application
         IMachineGpuTelemetryProvider gpuTelemetryProvider =
             new WindowsMachineGpuTelemetryProvider();
         _gpuTelemetryProvider = gpuTelemetryProvider;
-        var learningService = new MachineLearningService();
+        var learningActivityLog = new MachineLearningActivityLog();
+        var learningService = new MachineLearningService(
+            activityLog: learningActivityLog);
         IMachineLearningStore learningStore = new FileMachineLearningStore();
+        IMachineLearningActivityStore learningActivityStore =
+            new FileMachineLearningActivityStore();
         var healthHistoryService = new MachineHealthHistoryService();
         IMachineHealthHistoryStore healthHistoryStore =
             new FileMachineHealthHistoryStore();
@@ -126,6 +130,7 @@ public partial class App : Application
             reliabilityProvider,
             learningService,
             learningStore,
+            learningActivityStore,
             healthHistoryService,
             healthHistoryStore,
             historyService,
@@ -146,7 +151,8 @@ public partial class App : Application
             healthHistoryService: healthHistoryService,
             healthHistoryStore: healthHistoryStore,
             historyService: historyService,
-            historyStore: historyStore);
+            historyStore: historyStore,
+            learningActivityStore: learningActivityStore);
         window.Closed += OnWindowClosed;
         window.StartPresence(
             activationDisposition ==

@@ -38,3 +38,7 @@ public sealed record LearningEpisodeDisplayItem(
     string CpuDetails,
     string MemoryDetails,
     string OutcomeAndFindings);
+
+public sealed record LearningActivityDisplayItem(
+    string Header,
+    string Detail);

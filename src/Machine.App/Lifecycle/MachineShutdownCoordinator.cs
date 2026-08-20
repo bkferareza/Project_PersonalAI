@@ -8,6 +8,7 @@ public sealed class MachineShutdownCoordinator
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(2);
     private readonly MachineLearningService _learningService;
     private readonly IMachineLearningStore _learningStore;
+    private readonly IMachineLearningActivityStore? _learningActivityStore;
     private readonly MachineHealthHistoryService? _healthHistoryService;
     private readonly IMachineHealthHistoryStore? _healthHistoryStore;
     private readonly MachineHistoryService? _historyService;
@@ -31,7 +32,8 @@ public sealed class MachineShutdownCoordinator
         MachineHealthHistoryService? healthHistoryService = null,
         IMachineHealthHistoryStore? healthHistoryStore = null,
         MachineHistoryService? historyService = null,
-        IMachineHistoryStore? historyStore = null)
+        IMachineHistoryStore? historyStore = null,
+        IMachineLearningActivityStore? learningActivityStore = null)
     {
         ArgumentNullException.ThrowIfNull(learningService);
         ArgumentNullException.ThrowIfNull(learningStore);
@@ -51,6 +53,7 @@ public sealed class MachineShutdownCoordinator
         }
         _learningService = learningService;
         _learningStore = learningStore;
+        _learningActivityStore = learningActivityStore;
         _healthHistoryService = healthHistoryService;
         _healthHistoryStore = healthHistoryStore;
         _historyService = historyService;
@@ -109,6 +112,13 @@ public sealed class MachineShutdownCoordinator
                     historySave,
                     runtimeShutdown)
                 .WaitAsync(timeout.Token).ConfigureAwait(false);
+            if (_learningActivityStore is not null)
+            {
+                await _learningService.ActivityLog.SaveIfDueAsync(
+                    _learningActivityStore, DateTimeOffset.UtcNow,
+                    force: true, cancellationToken: timeout.Token)
+                    .ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException)
             when (timeout.IsCancellationRequested)

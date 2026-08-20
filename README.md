@@ -34,6 +34,8 @@ Accepted observations enter history at most once every 30 seconds. Incremental t
 
 Hierarchical behavioral learning remains schema v3. Its bounded RAM-only 30-second journal, 48 hour-by-Active/Idle baselines, compact profiles, recurring patterns, and 200 aggregate episodes remain independent from History. Powered-off and suspended gaps add no learning evidence.
 
+`learning-activity.json` is a separate bounded local diagnostic trail. It records safe lifecycle, restore, observation, and persistence summaries (not raw telemetry, process, URL, or command data), retains detailed observation events for 48 hours and important lifecycle events for 14 days, and cannot repair or block behavioral learning.
+
 Ollama integration remains transitional and local. Matasuri reuses an existing healthy local service or starts an already-installed `ollama serve`; it never downloads Ollama or a model. `qwen3.5:4b` is demand-loaded only after the existing insight policy authorizes an explanation. History, inventory refresh, GPU polling, palette changes, and learning updates never trigger inference. An authorized request adds at most one current historical aggregate, one recent comparison, one event, and four nullable current GPU values; services, tasks, and devices are excluded from model context.
 
 ## Observability coverage

@@ -4,7 +4,8 @@ namespace Machine.Core;
 
 public sealed class FileMachineLearningStore :
     IMachineLearningStore,
-    IMachineLearningStoreDiagnostics
+    IMachineLearningStoreDiagnostics,
+    IMachineLearningStoreSaveDiagnostics
 {
     private const string FileName = "learning-state.json";
     private readonly string _filePath;
@@ -23,6 +24,8 @@ public sealed class FileMachineLearningStore :
     }
 
     public MachineLearningStoreLoadStatus LastLoadStatus { get; private set; }
+
+    public long? LastSavedByteCount { get; private set; }
 
     public async Task<MachineLearningPersistedState?> LoadAsync(
         CancellationToken cancellationToken = default)
@@ -69,5 +72,6 @@ public sealed class FileMachineLearningStore :
                 cancellationToken).ConfigureAwait(false);
         }
         File.Move(temporaryPath, _filePath, overwrite: true);
+        LastSavedByteCount = new FileInfo(_filePath).Length;
     }
 }

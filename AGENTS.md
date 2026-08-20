@@ -65,6 +65,7 @@ New code should live with its domain or feature rather than in project-wide `Mod
 - Never execute arbitrary commands supplied by a model.
 - Never silently download or load a model unless explicitly required.
 - Keep automated tests deterministic and offline.
+- Learning activity auditing is diagnostic-only: keep it separately bounded and persistence failures must never alter, repair, or block learning state.
 - Avoid subagents for normal feature slices; use them only when explicitly requested or when independent parallel work clearly justifies the cost.
 - Read only relevant files, and keep command output and final reporting concise.
 
