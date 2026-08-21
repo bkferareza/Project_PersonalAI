@@ -9,3 +9,5 @@ public sealed partial class HardwareView : UserControl
         InitializeComponent();
     }
 }
+
+public sealed record StorageDeviceDisplayItem(string Name, string Identity, string Health);
