@@ -160,7 +160,7 @@ public sealed class ElectricityRateEnrichmentTests : IDisposable
 
     private static ElectricityRateSnapshot Rate(DateTimeOffset now) => new(1,
         "Meralco", "PHP", 14.1234m, new DateOnly(2026, 8, 1), now,
-        now.AddMonths(1), "https://company.meralco.com.ph/news", 
+        now.AddMonths(1), "https://company.meralco.com.ph/news",
         MachinePowerEstimateConfidence.HighEstimate,
         MachinePowerEstimateConfidence.HighEstimate);
 
