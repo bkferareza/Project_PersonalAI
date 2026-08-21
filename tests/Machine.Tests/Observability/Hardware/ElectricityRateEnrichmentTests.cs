@@ -62,6 +62,29 @@ public sealed class ElectricityRateEnrichmentTests : IDisposable
         Assert.DoesNotContain("14.6,120.9", persisted);
     }
 
+    [Fact]
+    public async Task CurrentOverallRateIsSelectedOverPreviousRateAndChangeAmount()
+    {
+        var now = new DateTimeOffset(2026, 8, 21, 12, 0, 0,
+            TimeSpan.Zero);
+        var handler = new FixtureHandler(request => request.RequestUri!.Host == "ipinfo.io"
+            ? """{"country":"PH","region":"Cavite"}"""
+            : """
+                <title>Lower Rates this August 2026</title>
+                <p>The overall rate for a typical household went down by P0.0428 per kWh, bringing the overall rate to P14.7833 from P14.8261 per kWh in July 2026.</p>
+                <p>The generation charge is P9.2504 per kWh.</p>
+                """);
+        using var client = new HttpClient(handler);
+        var service = new ElectricityRateEnrichmentService(client,
+            new FileElectricityRateCache(_directory));
+
+        var result = await service.GetCurrentAsync(now);
+
+        Assert.Equal(14.7833m, result.Rate?.RatePerKWh);
+        Assert.Equal(new DateOnly(2026, 8, 1), result.Rate?.EffectiveMonth);
+        Assert.Contains("lower-rates-august-2026", result.Rate?.SourceIdentity);
+    }
+
     [Theory]
     [InlineData("{\"country\":\"PH\",\"region\":\"Calabarzon\"}")]
     [InlineData("{\"country\":\"US\",\"region\":\"California\"}")]
