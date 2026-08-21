@@ -21,6 +21,19 @@
                         <StackPanel Spacing="4">
                             <TextBlock
                                 Style="{StaticResource MetricLabelStyle}"
+                                Text="PROCESSOR" />
+                            <TextBlock x:Name="CpuProcessorNameText" x:FieldModifier="internal" FontSize="20" FontWeight="SemiBold" Text="Detecting processor" TextWrapping="Wrap" />
+                            <Grid ColumnSpacing="22" RowSpacing="12">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <StackPanel Spacing="2"><TextBlock x:Name="CpuLoadText" x:FieldModifier="internal" FontSize="22" FontWeight="SemiBold" Text="—" /><TextBlock Style="{StaticResource SecondaryTextStyle}" Text="CPU load" /></StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="2"><TextBlock x:Name="CpuClockText" x:FieldModifier="internal" FontSize="22" FontWeight="SemiBold" Text="—" /><TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Effective frequency" /></StackPanel>
+                                <StackPanel Grid.Row="1" Spacing="2"><TextBlock x:Name="CpuPowerText" x:FieldModifier="internal" FontSize="18" FontWeight="SemiBold" Text="—" /><TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Package power" /></StackPanel>
+                                <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2"><TextBlock x:Name="CpuTemperatureText" x:FieldModifier="internal" FontSize="14" Text="—" TextWrapping="Wrap" /><TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Temperature" /></StackPanel>
+                            </Grid>
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock
+                                Style="{StaticResource MetricLabelStyle}"
                                 Text="GRAPHICS" />
                             <TextBlock
                                 x:Name="GpuAdapterNameText" x:FieldModifier="internal"
@@ -69,6 +82,17 @@
                                 <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Memory clock" />
                             </StackPanel>
                         </Grid>
+                        <StackPanel Spacing="3">
+                            <TextBlock Style="{StaticResource MetricLabelStyle}" Text="POWER" />
+                            <TextBlock x:Name="PowerWallText" x:FieldModifier="internal" FontSize="24" FontWeight="SemiBold" Text="Estimated wall power unavailable" />
+                            <TextBlock x:Name="PowerRangeText" x:FieldModifier="internal" Style="{StaticResource SecondaryTextStyle}" Text="Measured GPU board power is used when the driver provides it; CPU and wall draw remain estimates." TextWrapping="Wrap" />
+                            <TextBlock x:Name="EnergySessionText" x:FieldModifier="internal" Style="{StaticResource SecondaryTextStyle}" Text="Energy begins after an observed power interval" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Spacing="3">
+                            <TextBlock Style="{StaticResource MetricLabelStyle}" Text="STORAGE HEALTH" />
+                            <TextBlock x:Name="StorageHealthText" x:FieldModifier="internal" FontSize="18" Text="Loading Windows-reported storage health" TextWrapping="Wrap" />
+                            <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="Missing reliability fields are unavailable, not healthy readings. Windows-reported device health is distinct from estimates." TextWrapping="Wrap" />
+                        </StackPanel>
                         <StackPanel Spacing="3">
                             <TextBlock
                                 Style="{StaticResource MetricLabelStyle}"

@@ -10,4 +10,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Official Windows WMI API for typed, read-only Storage Management data;
+       no PowerShell subprocess or hardware-monitoring package is used. -->
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="10.0.0" />
+  </ItemGroup>
+
 </Project>

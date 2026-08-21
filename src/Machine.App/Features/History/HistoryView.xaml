@@ -75,8 +75,8 @@
                                     <TextBlock
                                         Style="{StaticResource SectionTitleStyle}"
                                         Text="Resource posture" />
-                                    <TextBlock
-                                        x:Name="HistoryResourceSummaryText" x:FieldModifier="internal"
+                                <TextBlock
+                                    x:Name="HistoryResourceSummaryText" x:FieldModifier="internal"
                                         Grid.Column="1"
                                         Style="{StaticResource SecondaryTextStyle}"
                                         Text="Waiting for history" />
@@ -112,6 +112,14 @@
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                         Text="GPU when available" />
                                 </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Estimated power and energy" />
+                                <TextBlock x:Name="HistoryPowerSummaryText" x:FieldModifier="internal" Text="Estimated power begins with new observations" TextWrapping="Wrap" />
+                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="GPU board power is measured only when the driver reports it. CPU and wall power are estimates; offline and suspend gaps are excluded." TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 

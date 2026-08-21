@@ -66,6 +66,7 @@ New code should live with its domain or feature rather than in project-wide `Mod
 - Never silently download or load a model unless explicitly required.
 - Keep automated tests deterministic and offline.
 - Learning activity auditing is diagnostic-only: keep it separately bounded and persistence failures must never alter, repair, or block learning state.
+- Hardware evidence must distinguish measured sensors, Windows-reported state, and software estimates; power and energy estimates never change Learning or posture.
 - Avoid subagents for normal feature slices; use them only when explicitly requested or when independent parallel work clearly justifies the cost.
 - Read only relevant files, and keep command output and final reporting concise.
 

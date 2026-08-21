@@ -61,8 +61,13 @@ public sealed partial class MainWindow : Window
     private readonly MachineHistoryService _historyService;
     private readonly IMachineHistoryStore _historyStore;
     private readonly IMachineGpuTelemetryProvider _gpuTelemetryProvider;
+    private readonly IMachineCpuHardwareProvider _cpuHardwareProvider;
+    private readonly IMachineStorageDeviceHealthProvider
+        _storageDeviceHealthProvider;
     private readonly MachineInsightTriggerPolicy
         _insightTriggerPolicy = new();
+    private readonly MachineEnergyAccumulator _energyAccumulator = new(
+        Stopwatch.Frequency);
     private readonly CompactPresenceInteraction
         _compactPresenceInteraction = new();
     private readonly CancellationTokenSource
@@ -85,6 +90,9 @@ public sealed partial class MainWindow : Window
     private MachineRebootPendingSnapshot? _latestRebootPendingSnapshot;
     private MachineReliabilitySnapshot? _latestReliabilitySnapshot;
     private MachineGpuTelemetrySnapshot? _latestGpuTelemetrySnapshot;
+    private MachineCpuHardwareSnapshot? _latestCpuHardwareSnapshot;
+    private MachineStorageDeviceHealthCollection? _latestStorageHealthSnapshot;
+    private DateTimeOffset? _lastStorageHealthRefreshAt;
     private OllamaStatusSnapshot? _latestOllamaStatusSnapshot;
     private MachineFindingsSnapshot _latestFindingsSnapshot =
         MachineFindingsEvaluator.Evaluate(new());
@@ -147,6 +155,8 @@ public sealed partial class MainWindow : Window
         IMachineScheduledTaskInventoryProvider taskInventoryProvider,
         IMachineDeviceInventoryProvider deviceInventoryProvider,
         IMachineGpuTelemetryProvider gpuTelemetryProvider,
+        IMachineCpuHardwareProvider cpuHardwareProvider,
+        IMachineStorageDeviceHealthProvider storageDeviceHealthProvider,
         string? presentationValidationArguments = null)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
@@ -177,6 +187,8 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(taskInventoryProvider);
         ArgumentNullException.ThrowIfNull(deviceInventoryProvider);
         ArgumentNullException.ThrowIfNull(gpuTelemetryProvider);
+        ArgumentNullException.ThrowIfNull(cpuHardwareProvider);
+        ArgumentNullException.ThrowIfNull(storageDeviceHealthProvider);
 
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
@@ -197,6 +209,8 @@ public sealed partial class MainWindow : Window
         _historyService = historyService;
         _historyStore = historyStore;
         _gpuTelemetryProvider = gpuTelemetryProvider;
+        _cpuHardwareProvider = cpuHardwareProvider;
+        _storageDeviceHealthProvider = storageDeviceHealthProvider;
 #if DEBUG
         _presentationValidationOptions =
             MatasuriPresentationValidationOptions.Parse(

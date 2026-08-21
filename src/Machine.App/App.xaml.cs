@@ -60,6 +60,10 @@ public partial class App : Application
             new WindowsMachineDeviceInventoryProvider();
         IMachineGpuTelemetryProvider gpuTelemetryProvider =
             new WindowsMachineGpuTelemetryProvider();
+        IMachineCpuHardwareProvider cpuHardwareProvider =
+            new WindowsMachineCpuHardwareProvider();
+        IMachineStorageDeviceHealthProvider storageDeviceHealthProvider =
+            new WindowsMachineStorageDeviceHealthProvider();
         _gpuTelemetryProvider = gpuTelemetryProvider;
         var learningActivityLog = new MachineLearningActivityLog();
         var learningService = new MachineLearningService(
@@ -139,6 +143,8 @@ public partial class App : Application
             taskInventoryProvider,
             deviceInventoryProvider,
             gpuTelemetryProvider,
+            cpuHardwareProvider,
+            storageDeviceHealthProvider,
             presentationValidationArguments);
         _window = window;
         _shutdownCoordinator = new MachineShutdownCoordinator(

@@ -62,11 +62,14 @@ All capabilities below are read-only.
 | Observability v2 | Status |
 | --- | --- |
 | NVIDIA GPU telemetry through dynamically loaded local NVML | Initial implementation complete |
-| CPU hardware sensors | Planned |
-| Storage SMART and temperature | Planned |
-| Power, energy, and cost | Planned |
+| CPU hardware metadata/frequency and package-power estimate | Initial implementation complete |
+| Windows-reported physical storage health | Initial implementation complete |
+| Estimated wall power and observed session energy | Initial implementation complete |
+| Electricity-rate enrichment and cost | Planned |
 
 The GPU slice reads adapter name, utilization, VRAM, temperature, board power, graphics/memory clocks, and fan when the installed driver exposes them. Unsupported or unavailable values remain null; Matasuri adds no NVML package, download, control call, tuning, or severity policy.
+
+CPU utilization remains sourced from the existing resource sampler. Safe Windows CPU metadata and effective frequency enrich it; CPU package temperature and measured package watts remain unavailable when no trustworthy source exists. CPU and whole-PC watts are clearly labeled estimates. Windows Storage Management supplies bounded physical-device identity and health state; missing reliability counters remain unavailable. Energy integrates estimated wall power only across short monotonic observed intervals, so suspend/offline gaps are excluded.
 
 ## Privacy and safety
 

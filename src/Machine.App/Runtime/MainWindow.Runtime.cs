@@ -147,16 +147,33 @@ public sealed partial class MainWindow
             var networkTask = TryCaptureNetworkAsync(cancellationToken);
             var sessionTask = TryCaptureSessionAsync(cancellationToken);
             var gpuTask = TryCaptureGpuAsync(cancellationToken);
+            var storageHealthTask = ShouldRefreshStorageHealth()
+                ? TryCaptureStorageHealthAsync(cancellationToken)
+                : Task.FromResult(_latestStorageHealthSnapshot);
             await Task.WhenAll(
                 resourceTask,
                 networkTask,
                 sessionTask,
-                gpuTask);
+                gpuTask,
+                storageHealthTask);
 
             var snapshot = await resourceTask;
             var networkSnapshot = await networkTask;
             var sessionSnapshot = await sessionTask;
             var gpuSnapshot = await gpuTask;
+            var storageHealth = await storageHealthTask;
+            var cpuHardware = await TryCaptureCpuHardwareAsync(
+                snapshot, cancellationToken);
+            var powerEstimate = MachinePowerEstimator.Estimate(
+                snapshot.CapturedAt,
+                cpuHardware,
+                gpuSnapshot?.Adapters.FirstOrDefault(),
+                snapshot.TotalMemoryBytes,
+                storageHealth?.Devices.Count ?? 0);
+            var energyDeltaWh = _energyAccumulator.Sample(
+                powerEstimate.EstimatedWallWatts,
+                Stopwatch.GetTimestamp(),
+                snapshot.CapturedAt);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -173,6 +190,15 @@ public sealed partial class MainWindow
             {
                 _latestGpuTelemetrySnapshot = gpuSnapshot;
             }
+            if (cpuHardware is not null)
+            {
+                _latestCpuHardwareSnapshot = cpuHardware;
+            }
+            if (storageHealth is not null)
+            {
+                _latestStorageHealthSnapshot = storageHealth;
+                _lastStorageHealthRefreshAt = snapshot.CapturedAt;
+            }
 
             OverviewPage.CpuUsageText.Text =
                 $"{snapshot.CpuUsagePercent:F1}%";
@@ -187,14 +213,19 @@ public sealed partial class MainWindow
             OverviewPage.TelemetryStatusText.Visibility = Visibility.Collapsed;
             UpdateNetworkTelemetry(networkSnapshot);
             UpdateSessionTelemetry(sessionSnapshot);
-            HardwarePage.Update(gpuSnapshot);
+            HardwarePage.Update(gpuSnapshot, cpuHardware, storageHealth,
+                powerEstimate, _energyAccumulator.GetSnapshot());
 
             ReevaluateFindings();
             var historyChanged = CaptureHistoryObservation(
                 snapshot,
                 networkSnapshot,
                 sessionSnapshot,
-                gpuSnapshot);
+                gpuSnapshot,
+                cpuHardware,
+                storageHealth,
+                powerEstimate,
+                energyDeltaWh);
             var learningChanged = await CaptureLearningObservationAsync(
                 snapshot,
                 networkSnapshot,
@@ -310,6 +341,49 @@ public sealed partial class MainWindow
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            return null;
+        }
+    }
+
+    private bool ShouldRefreshStorageHealth() =>
+        _lastStorageHealthRefreshAt is null ||
+        DateTimeOffset.UtcNow - _lastStorageHealthRefreshAt.Value >=
+            TimeSpan.FromMinutes(5);
+
+    private async Task<MachineCpuHardwareSnapshot?> TryCaptureCpuHardwareAsync(
+        MachineResourceSnapshot resources,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _cpuHardwareProvider.GetAsync(resources,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+            return null;
+        }
+    }
+
+    private async Task<MachineStorageDeviceHealthCollection?>
+        TryCaptureStorageHealthAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _storageDeviceHealthProvider.GetAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
@@ -755,7 +829,11 @@ public sealed partial class MainWindow
         MachineResourceSnapshot resources,
         MachineNetworkSnapshot? network,
         MachineSessionSnapshot? session,
-        MachineGpuTelemetrySnapshot? gpu)
+        MachineGpuTelemetrySnapshot? gpu,
+        MachineCpuHardwareSnapshot? cpu,
+        MachineStorageDeviceHealthCollection? storageHealth,
+        MachinePowerEstimate powerEstimate,
+        double energyDeltaWh)
     {
         double? memoryPercent = resources.TotalMemoryBytes == 0
             ? null
@@ -781,7 +859,14 @@ public sealed partial class MainWindow
             primaryGpu?.GpuUtilizationPercent,
             primaryGpu?.MemoryUtilizationPercent,
             primaryGpu?.TemperatureCelsius,
-            primaryGpu?.BoardPowerWatts));
+            primaryGpu?.BoardPowerWatts,
+            cpu?.TemperatureCelsius,
+            cpu?.EstimatedPackagePowerWatts,
+            storageHealth?.Devices.Select(item => item.TemperatureCelsius)
+                .Where(item => item is not null).Select(item => item!.Value)
+                .DefaultIfEmpty().Max(),
+            powerEstimate.EstimatedWallWatts,
+            energyDeltaWh));
     }
 
     private static double? GetVerifiedRate(double? value) =>

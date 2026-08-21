@@ -72,6 +72,41 @@ public sealed partial class HardwareView
             : "Fan telemetry unavailable";
     }
 
+    internal void Update(MachineGpuTelemetrySnapshot? gpu,
+        MachineCpuHardwareSnapshot? cpu,
+        MachineStorageDeviceHealthCollection? storage,
+        MachinePowerEstimate power,
+        MachineEnergySnapshot energy)
+    {
+        Update(gpu);
+        CpuProcessorNameText.Text = cpu?.ProcessorName ??
+            "Processor telemetry unavailable";
+        CpuLoadText.Text = FormatPercent(cpu?.UtilizationPercent);
+        CpuClockText.Text = cpu?.EffectiveClockMHz is { } clock
+            ? $"{clock / 1000d:F1} GHz"
+            : "Unavailable";
+        CpuPowerText.Text = cpu?.EstimatedPackagePowerWatts is { } watts
+            ? $"~{watts:F0} W estimated"
+            : "Unavailable";
+        CpuTemperatureText.Text = cpu?.TemperatureCelsius is { } temperature
+            ? $"{temperature:F0} °C"
+            : "CPU package temperature unavailable through the current safe telemetry path";
+        PowerWallText.Text = power.EstimatedWallWatts is { } wall
+            ? $"~{wall:F0} W estimated"
+            : "Estimated wall power unavailable";
+        PowerRangeText.Text = power.EstimatedWallLowerWatts is { } lower &&
+            power.EstimatedWallUpperWatts is { } upper
+                ? $"Likely range {lower:F0}–{upper:F0} W · {power.Confidence}"
+                : power.PartialReason ?? "Awaiting enough verified component evidence";
+        EnergySessionText.Text = energy.HasObservedEnergy
+            ? $"Session {energy.SessionWattHours / 1000d:F3} kWh estimated · Today {energy.TodayWattHours / 1000d:F3} kWh"
+            : "Energy begins after an observed power interval";
+        StorageHealthText.Text = storage?.Devices.Count > 0
+            ? $"{storage.Devices.Count:N0} Windows-reported physical storage device" +
+                (storage.Devices.Count == 1 ? string.Empty : "s")
+            : "Physical storage health unavailable through Windows Storage Management";
+    }
+
     private static string FormatPercent(double? value) =>
         value is { } percentage ? $"{percentage:F0}%" : "—";
 }

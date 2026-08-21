@@ -86,6 +86,15 @@ public sealed partial class HistoryView
         HistoryResourceSummaryText.Text = summary.Count == 0
             ? "Waiting for history"
             : string.Join("\n", summary);
+        var wallPower = AggregateHistoryMetric(snapshot.Rollups,
+            static item => item.EstimatedSystemPowerWatts);
+        var observedEnergy = snapshot.Rollups.Sum(item =>
+            item.EnergyWattHours is { } energy
+                ? energy.Mean * energy.SampleCount : 0d);
+        HistoryPowerSummaryText.Text = wallPower is null
+            ? "Estimated power begins with new observations"
+            : $"Estimated wall {wallPower.Mean:F0} W average · " +
+                $"{observedEnergy / 1000d:F3} kWh observed";
 
         var activeTicks = snapshot.Rollups.Aggregate(
             0L,
