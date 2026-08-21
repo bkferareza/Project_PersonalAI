@@ -22,11 +22,14 @@ public sealed partial class HistoryView
     private MachineHistoryService? _historyService;
     private MachineHistoryRange _selectedHistoryRange =
         MachineHistoryRange.Last24Hours;
+    private Func<IReadOnlyList<ElectricityRateSnapshot>>? _rates;
 
-    internal void Initialize(MachineHistoryService historyService)
+    internal void Initialize(MachineHistoryService historyService,
+        Func<IReadOnlyList<ElectricityRateSnapshot>>? rates = null)
     {
         ArgumentNullException.ThrowIfNull(historyService);
         _historyService = historyService;
+        _rates = rates;
     }
 
     private void OnHistoryRangeClicked(
@@ -94,6 +97,7 @@ public sealed partial class HistoryView
             ? "Estimated power begins with new observations"
             : $"Estimated wall {wallPower.Mean:F0} W average · " +
                 $"{observedEnergy / 1000d:F3} kWh observed";
+        UpdateDailyEnergyCost(snapshot);
 
         var activeTicks = snapshot.Rollups.Aggregate(
             0L,
@@ -162,6 +166,37 @@ public sealed partial class HistoryView
             : Visibility.Collapsed;
         RenderHistoryTrends(snapshot.Rollups);
     }
+
+    private void UpdateDailyEnergyCost(MachineHistorySnapshot snapshot)
+    {
+        var isDailyRange = snapshot.Range is MachineHistoryRange.Last7Days or
+            MachineHistoryRange.Last30Days;
+        DailyEnergyCostSection.Visibility = isDailyRange
+            ? Visibility.Visible : Visibility.Collapsed;
+        if (!isDailyRange) return;
+        var daily = MachineDailyEnergyCostProjector.Project(snapshot.Rollups,
+            _rates?.Invoke() ?? []);
+        DailyEnergyCostSummaryText.Text = daily.ObservedEnergyKilowattHours > 0d
+            ? $"{daily.ObservedEnergyKilowattHours:F3} kWh observed · " +
+              (daily.EstimatedCost is { } cost
+                ? $"~{daily.CurrencyCode} {cost:F2} · {FormatCoverage(daily.CostCoverage)}"
+                : "Estimated cost unavailable")
+            : "No additive observed energy in this range.";
+        DailyEnergyCostList.ItemsSource = daily.Days.Select(day => new
+        {
+            Date = day.Date.ToString("MMM dd").ToUpperInvariant(),
+            Energy = $"{day.ObservedEnergyKilowattHours:F3} kWh",
+            Cost = day.EstimatedCost is { } cost
+                ? $"~{day.CurrencyCode} {cost:F2}" : "Cost unavailable"
+        }).ToArray();
+    }
+
+    private static string FormatCoverage(MachineCostCoverage coverage) => coverage switch
+    {
+        MachineCostCoverage.Complete => "Complete rate coverage",
+        MachineCostCoverage.Partial => "Partial rate coverage",
+        _ => "Rate unavailable"
+    };
 
     private void SetHistoryRangeButtonState()
     {

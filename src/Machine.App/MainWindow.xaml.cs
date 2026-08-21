@@ -225,7 +225,8 @@ public sealed partial class MainWindow : Window
 #endif
 
         InitializeComponent();
-        HistoryPage.Initialize(_historyService);
+        HistoryPage.Initialize(_historyService,
+            () => _cachedElectricityRates);
         StoragePage.Initialize(
             storageProvider,
             folderInspectionProvider,

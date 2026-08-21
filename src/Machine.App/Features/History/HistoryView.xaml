@@ -123,6 +123,23 @@
                             </StackPanel>
                         </Border>
 
+                        <StackPanel x:Name="DailyEnergyCostSection" x:FieldModifier="internal" Spacing="8" Visibility="Collapsed">
+                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Daily observed energy" />
+                            <TextBlock x:Name="DailyEnergyCostSummaryText" x:FieldModifier="internal" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                            <ListView x:Name="DailyEnergyCostList" x:FieldModifier="internal" SelectionMode="None">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,4" ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Date}" Style="{StaticResource SecondaryTextStyle}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Energy}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Cost}" Style="{StaticResource SecondaryTextStyle}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+
                         <StackPanel Spacing="8">
                             <TextBlock
                                 Style="{StaticResource SectionTitleStyle}"
