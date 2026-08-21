@@ -64,8 +64,10 @@ public sealed class MachinePowerEstimatorTests
     [Fact]
     public void CostUsesDecimalAndRequiresRate()
     {
-        var rate = new ElectricityRateSnapshot("Reference", "PHP", 14.7833m,
-            new DateOnly(2026, 8, 1), DateTimeOffset.UtcNow, "official",
+        var rate = new ElectricityRateSnapshot(1, "Reference", "PHP", 14.7833m,
+            new DateOnly(2026, 8, 1), DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddMonths(1), "official",
+            MachinePowerEstimateConfidence.ModerateEstimate,
             MachinePowerEstimateConfidence.ModerateEstimate);
         Assert.Equal(14.78m, MachineElectricityCostCalculator.Calculate(1000,
             rate));

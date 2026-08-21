@@ -58,13 +58,16 @@ public sealed class MachineEnergyAccumulator
 }
 
 public sealed record ElectricityRateSnapshot(
+    int SchemaVersion,
     string ProviderName,
     string CurrencyCode,
     decimal RatePerKWh,
     DateOnly EffectiveMonth,
     DateTimeOffset RetrievedAt,
+    DateTimeOffset ExpiresAt,
     string SourceIdentity,
-    MachinePowerEstimateConfidence Confidence);
+    MachinePowerEstimateConfidence UtilityConfidence,
+    MachinePowerEstimateConfidence RateConfidence);
 
 public static class MachineElectricityCostCalculator
 {
