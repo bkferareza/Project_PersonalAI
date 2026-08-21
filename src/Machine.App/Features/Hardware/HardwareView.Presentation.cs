@@ -44,22 +44,22 @@ public sealed partial class HardwareView
         PowerWallText.Text = power.EstimatedWallWatts is { } wall ? $"~{wall:F0} W" : "Unavailable";
         PowerRangeText.Text = power.EstimatedWallLowerWatts is { } lower && power.EstimatedWallUpperWatts is { } upper ? $"{lower:F0}-{upper:F0} W likely range" : "Range unavailable";
         PowerConfidenceText.Text = FormatConfidence(power.Confidence);
-        EnergySessionText.Text = energy.HasObservedEnergy ? $"{energy.SessionWattHours / 1000d:F3} kWh" : "Unavailable";
-        EnergyTodayText.Text = todayHistoryEnergy.ObservedWattHours > 0d
-            ? $"{todayHistoryEnergy.ObservedWattHours / 1000d:F3} kWh"
-            : energy.HasObservedEnergy ? $"{energy.TodayWattHours / 1000d:F3} kWh" : "Unavailable";
         var sessionCost = MachineElectricityCostCalculator.Calculate(
             energy.SessionWattHours, rate);
         var todayCost = todayHistoryEnergy.EstimatedCost;
+        EnergySessionText.Text = energy.HasObservedEnergy
+            ? $"{energy.SessionWattHours / 1000d:F3} kWh\n{FormatEstimatedCost(sessionCost, rate)}"
+            : "Unavailable";
+        EnergyTodayText.Text = todayHistoryEnergy.ObservedWattHours > 0d
+            ? $"{todayHistoryEnergy.ObservedWattHours / 1000d:F3} kWh\n{FormatEstimatedCost(todayCost, rate)}"
+            : energy.HasObservedEnergy
+                ? $"{energy.TodayWattHours / 1000d:F3} kWh\n{FormatEstimatedCost(todayCost, rate)}"
+                : "Unavailable";
         PowerEvidenceText.Text = BuildEvidence(power) + (rate is null
             ? "\nPublished residential reference rate unavailable; electricity cost is unavailable."
             : $"\nPublished residential reference · {rate.ProviderName} · {rate.CurrencyCode} {rate.RatePerKWh:F4}/kWh · {rate.EffectiveMonth:MMMM yyyy}" +
-              $"\nSession estimated cost: {(sessionCost is { } session ? $"~{rate.CurrencyCode} {session:F2}" : "Unavailable")}" +
-              $"\nToday estimated cost: {(todayCost is { } today ? $"~{rate.CurrencyCode} {today:F2}" : "Unavailable")}" +
-              $"\n30 observed days: {historyEnergy.ObservedWattHours / 1000d:F3} kWh · " +
-              (historyEnergy.EstimatedCost is { } cost
-                ? $"~{rate.CurrencyCode} {cost:F2} estimated"
-                : "estimated cost unavailable for one or more observed months"));
+              $"\n30 observed days\n{historyEnergy.ObservedWattHours / 1000d:F3} kWh\n" +
+              FormatEstimatedCost(historyEnergy.EstimatedCost, rate));
 
         StorageHealthText.Text = storage?.Devices.Count > 0 ? $"{storage.Devices.Count:N0} Windows-reported physical storage device" + (storage.Devices.Count == 1 ? string.Empty : "s") : "Physical storage health unavailable";
         StorageDevicesList.ItemsSource = storage?.Devices.Select(device => new StorageDeviceDisplayItem(device.DisplayName,
@@ -68,6 +68,9 @@ public sealed partial class HardwareView
     }
 
     private static string FormatPercent(double? value) => value is { } percent ? $"{percent:F0}%" : "Unavailable";
+    private static string FormatEstimatedCost(decimal? cost, ElectricityRateSnapshot? rate) => cost is { } value && rate is not null
+        ? $"~{(string.Equals(rate.CurrencyCode, "PHP", StringComparison.OrdinalIgnoreCase) ? "₱" : $"{rate.CurrencyCode} ")}{value:F2} estimated"
+        : "Estimated cost unavailable";
     private static string FormatConfidence(MachinePowerEstimateConfidence value) => value switch { MachinePowerEstimateConfidence.Measured => "Measured component evidence", MachinePowerEstimateConfidence.HighEstimate => "High estimate confidence", MachinePowerEstimateConfidence.ModerateEstimate => "Moderate estimate confidence", MachinePowerEstimateConfidence.LowEstimate => "Low estimate confidence", _ => "Estimate quality unavailable" };
     private static string BuildEvidence(MachinePowerEstimate power) => string.Join("\n", new[] { power.MeasuredGpuBoardWatts is { } gpu ? $"Measured GPU board power / {gpu:F0} W" : null, power.EstimatedCpuWatts is { } cpu ? $"Estimated CPU package / ~{cpu:F0} W" : null, power.EstimatedPlatformWatts is { } platform ? $"Estimated platform/base / ~{platform:F0} W" : null }.Where(value => value is not null)) switch { "" => "Component evidence is unavailable.", var text => text };
 }
