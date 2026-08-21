@@ -21,7 +21,8 @@ public sealed partial class OllamaMachineStateExplainer
             Session: CreateSessionPayload(request.Session),
             Health: CreateHealthPayload(request.Health),
             History: CreateHistoryPayload(request.History),
-            Gpu: CreateGpuPayload(request.Gpu));
+            Gpu: CreateGpuPayload(request.Gpu),
+            EnergyCost: CreateEnergyCostPayload(request.EnergyCost));
 
         var payloadJson = JsonSerializer.Serialize(
             payload,
@@ -324,6 +325,22 @@ public sealed partial class OllamaMachineStateExplainer
             gpu.MemoryUtilizationPercent,
             gpu.TemperatureCelsius,
             gpu.BoardPowerWatts);
+
+    private static EnergyCostSnapshotPayload? CreateEnergyCostPayload(
+        MachineEnergyCostInsightSnapshot? value) => value is null ? null : new(
+        "estimated", value.EstimatedWallPowerWatts,
+        value.EstimatedWallPowerLowerWatts, value.EstimatedWallPowerUpperWatts,
+        value.PowerEstimateConfidence.ToString(),
+        value.SessionObservedEnergyKilowattHours,
+        value.TodayObservedEnergyKilowattHours,
+        value.ThirtyDayObservedEnergyKilowattHours,
+        value.SessionEstimatedCost, value.TodayEstimatedCost,
+        value.ThirtyDayEstimatedCost, value.ThirtyDayCostCoverage.ToString(),
+        value.ElectricityProvider, value.CurrencyCode,
+        value.RatePerKilowattHour,
+        value.RateEffectiveMonth?.ToString("yyyy-MM"),
+        value.RateConfidence.ToString(),
+        "estimated_from_observed_wall_power_and_published_reference_rate");
 
     private static HistoryPeriodPayload CreateHistoryPeriodPayload(
         MachineHistoryInsightPeriod period) => new(

@@ -71,7 +71,9 @@ public sealed partial class OllamaMachineStateExplainer
         [property: JsonPropertyName("history")]
         HistorySnapshotPayload? History,
         [property: JsonPropertyName("gpu")]
-        GpuSnapshotPayload? Gpu);
+        GpuSnapshotPayload? Gpu,
+        [property: JsonPropertyName("energy_cost")]
+        EnergyCostSnapshotPayload? EnergyCost);
 
     private sealed record LearnedContextPayload(
         [property: JsonPropertyName("current_baseline")]
@@ -260,6 +262,26 @@ public sealed partial class OllamaMachineStateExplainer
         double? TemperatureCelsius,
         [property: JsonPropertyName("board_power_watts")]
         double? BoardPowerWatts);
+
+    private sealed record EnergyCostSnapshotPayload(
+        [property: JsonPropertyName("wall_power_kind")] string WallPowerKind,
+        [property: JsonPropertyName("estimated_wall_watts")] double? EstimatedWallWatts,
+        [property: JsonPropertyName("wall_range_watts")] double? WallLowerWatts,
+        [property: JsonPropertyName("wall_upper_watts")] double? WallUpperWatts,
+        [property: JsonPropertyName("power_confidence")] string PowerConfidence,
+        [property: JsonPropertyName("session_observed_kwh")] double? SessionKwh,
+        [property: JsonPropertyName("today_observed_kwh")] double? TodayKwh,
+        [property: JsonPropertyName("thirty_day_observed_kwh")] double? ThirtyDayKwh,
+        [property: JsonPropertyName("session_estimated_cost")] decimal? SessionCost,
+        [property: JsonPropertyName("today_estimated_cost")] decimal? TodayCost,
+        [property: JsonPropertyName("thirty_day_estimated_cost")] decimal? ThirtyDayCost,
+        [property: JsonPropertyName("thirty_day_cost_coverage")] string Coverage,
+        [property: JsonPropertyName("published_reference_provider")] string? Provider,
+        [property: JsonPropertyName("currency")] string? Currency,
+        [property: JsonPropertyName("published_reference_rate_per_kwh")] decimal? RatePerKwh,
+        [property: JsonPropertyName("rate_effective_month")] string? EffectiveMonth,
+        [property: JsonPropertyName("rate_confidence")] string RateConfidence,
+        [property: JsonPropertyName("energy_cost_kind")] string EnergyCostKind);
 
     private sealed record ReliabilityCountsPayload(
         [property: JsonPropertyName("application_crashes")]
