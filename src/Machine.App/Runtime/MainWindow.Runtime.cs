@@ -41,6 +41,8 @@ public sealed partial class MainWindow
         await LoadHealthHistoryAsync();
         await LoadHistoryAsync();
 
+        _ = RefreshElectricityRateAsync(_windowCancellationTokenSource.Token);
+
         var cancellationToken =
             _windowCancellationTokenSource.Token;
 
@@ -91,6 +93,27 @@ public sealed partial class MainWindow
             processLoop,
             ollamaStatusLoop,
             healthLoop);
+    }
+
+    private async Task RefreshElectricityRateAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _electricityRateEnrichment.GetCurrentAsync(
+                DateTimeOffset.Now, cancellationToken);
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _latestElectricityRate = result;
+            }
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(exception);
+        }
     }
 
     private async Task LoadIdentityAsync()

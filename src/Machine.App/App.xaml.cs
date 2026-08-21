@@ -10,6 +10,7 @@ public partial class App : Application
     private MainWindow? _window;
     private HttpClient? _ollamaHttpClient;
     private HttpClient? _ollamaInferenceHttpClient;
+    private HttpClient? _electricityRateHttpClient;
     private IOllamaRuntimeBootstrapper? _ollamaRuntimeBootstrapper;
     private IMachineGpuTelemetryProvider? _gpuTelemetryProvider;
     private readonly CancellationTokenSource _appCancellationTokenSource = new();
@@ -97,6 +98,14 @@ public partial class App : Application
             Timeout = TimeSpan.FromMinutes(2),
         };
         _ollamaInferenceHttpClient = inferenceHttpClient;
+        var electricityRateHttpClient = new HttpClient(
+            new HttpClientHandler { AllowAutoRedirect = false })
+        {
+            Timeout = TimeSpan.FromSeconds(5),
+        };
+        _electricityRateHttpClient = electricityRateHttpClient;
+        var electricityRateEnrichment = new ElectricityRateEnrichmentService(
+            electricityRateHttpClient, new FileElectricityRateCache());
         IMachineStateExplainer machineStateExplainer =
             new OllamaMachineStateExplainer(
                 inferenceHttpClient,
@@ -145,6 +154,7 @@ public partial class App : Application
             gpuTelemetryProvider,
             cpuHardwareProvider,
             storageDeviceHealthProvider,
+            electricityRateEnrichment,
             presentationValidationArguments);
         _window = window;
         _shutdownCoordinator = new MachineShutdownCoordinator(
@@ -310,6 +320,8 @@ public partial class App : Application
         _ollamaHttpClient = null;
         _ollamaInferenceHttpClient?.Dispose();
         _ollamaInferenceHttpClient = null;
+        _electricityRateHttpClient?.Dispose();
+        _electricityRateHttpClient = null;
         _ollamaRuntimeBootstrapper = null;
         _gpuTelemetryProvider?.Dispose();
         _gpuTelemetryProvider = null;

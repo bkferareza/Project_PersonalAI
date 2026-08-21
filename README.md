@@ -65,11 +65,14 @@ All capabilities below are read-only.
 | CPU hardware metadata/frequency and package-power estimate | Initial implementation complete |
 | Windows-reported physical storage health | Initial implementation complete |
 | Estimated wall power and observed session energy | Initial implementation complete |
-| Electricity-rate enrichment and cost | Planned |
+| Electricity-rate enrichment and bounded monthly cache | Initial implementation complete |
+| Persistent energy and electricity cost | Planned |
 
 The GPU slice reads adapter name, utilization, VRAM, temperature, board power, graphics/memory clocks, and fan when the installed driver exposes them. Unsupported or unavailable values remain null; Matasuri adds no NVML package, download, control call, tuning, or severity policy.
 
 CPU utilization remains sourced from the existing resource sampler. Safe Windows CPU metadata and effective frequency enrich it; CPU package temperature and measured package watts remain unavailable when no trustworthy source exists. CPU and whole-PC watts are clearly labeled estimates. Windows Storage Management supplies bounded physical-device identity and health state; missing reliability counters remain unavailable. Energy integrates estimated wall power only across short monotonic observed intervals, so suspend/offline gaps are excluded.
+
+Electricity-rate enrichment is cache-first and optional. Its only external requests are HTTPS requests to the selected coarse-location endpoint and an official utility source, both enforced by a component-local allowlist with no redirects. Coarse location is used only in memory to resolve a probable utility; IP addresses, coordinates, location history, account information, machine data, History, and Learning data are neither sent nor persisted. A published rate is retained only when its effective month and source parse unambiguously; otherwise energy remains available and the rate stays unknown.
 
 ## Privacy and safety
 

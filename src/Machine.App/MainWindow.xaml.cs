@@ -64,6 +64,7 @@ public sealed partial class MainWindow : Window
     private readonly IMachineCpuHardwareProvider _cpuHardwareProvider;
     private readonly IMachineStorageDeviceHealthProvider
         _storageDeviceHealthProvider;
+    private readonly ElectricityRateEnrichmentService _electricityRateEnrichment;
     private readonly MachineInsightTriggerPolicy
         _insightTriggerPolicy = new();
     private readonly MachineEnergyAccumulator _energyAccumulator = new(
@@ -92,6 +93,7 @@ public sealed partial class MainWindow : Window
     private MachineGpuTelemetrySnapshot? _latestGpuTelemetrySnapshot;
     private MachineCpuHardwareSnapshot? _latestCpuHardwareSnapshot;
     private MachineStorageDeviceHealthCollection? _latestStorageHealthSnapshot;
+    private ElectricityRateEnrichmentResult? _latestElectricityRate;
     private DateTimeOffset? _lastStorageHealthRefreshAt;
     private OllamaStatusSnapshot? _latestOllamaStatusSnapshot;
     private MachineFindingsSnapshot _latestFindingsSnapshot =
@@ -157,6 +159,7 @@ public sealed partial class MainWindow : Window
         IMachineGpuTelemetryProvider gpuTelemetryProvider,
         IMachineCpuHardwareProvider cpuHardwareProvider,
         IMachineStorageDeviceHealthProvider storageDeviceHealthProvider,
+        ElectricityRateEnrichmentService electricityRateEnrichment,
         string? presentationValidationArguments = null)
     {
         ArgumentNullException.ThrowIfNull(identityProvider);
@@ -189,6 +192,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(gpuTelemetryProvider);
         ArgumentNullException.ThrowIfNull(cpuHardwareProvider);
         ArgumentNullException.ThrowIfNull(storageDeviceHealthProvider);
+        ArgumentNullException.ThrowIfNull(electricityRateEnrichment);
 
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
@@ -211,6 +215,7 @@ public sealed partial class MainWindow : Window
         _gpuTelemetryProvider = gpuTelemetryProvider;
         _cpuHardwareProvider = cpuHardwareProvider;
         _storageDeviceHealthProvider = storageDeviceHealthProvider;
+        _electricityRateEnrichment = electricityRateEnrichment;
 #if DEBUG
         _presentationValidationOptions =
             MatasuriPresentationValidationOptions.Parse(
