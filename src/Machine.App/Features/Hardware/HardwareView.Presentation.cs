@@ -48,12 +48,18 @@ public sealed partial class HardwareView
         EnergyTodayText.Text = todayHistoryEnergy.ObservedWattHours > 0d
             ? $"{todayHistoryEnergy.ObservedWattHours / 1000d:F3} kWh"
             : energy.HasObservedEnergy ? $"{energy.TodayWattHours / 1000d:F3} kWh" : "Unavailable";
+        var sessionCost = MachineElectricityCostCalculator.Calculate(
+            energy.SessionWattHours, rate);
+        var todayCost = todayHistoryEnergy.EstimatedCost;
         PowerEvidenceText.Text = BuildEvidence(power) + (rate is null
-            ? "\nPublished reference rate unavailable."
-            : $"\n{rate.ProviderName} residential reference · {rate.CurrencyCode} {rate.RatePerKWh:F4}/kWh · {rate.EffectiveMonth:MMMM yyyy}. " +
-              $"30 observed days: {historyEnergy.ObservedWattHours / 1000d:F3} kWh" +
-              (historyEnergy.EstimatedCost is { } cost ? $" · ~{rate.CurrencyCode} {cost:F2} estimated." : "."));
-        PowerEvidenceText.Text = BuildEvidence(power);
+            ? "\nPublished residential reference rate unavailable; electricity cost is unavailable."
+            : $"\nPublished residential reference · {rate.ProviderName} · {rate.CurrencyCode} {rate.RatePerKWh:F4}/kWh · {rate.EffectiveMonth:MMMM yyyy}" +
+              $"\nSession estimated cost: {(sessionCost is { } session ? $"~{rate.CurrencyCode} {session:F2}" : "Unavailable")}" +
+              $"\nToday estimated cost: {(todayCost is { } today ? $"~{rate.CurrencyCode} {today:F2}" : "Unavailable")}" +
+              $"\n30 observed days: {historyEnergy.ObservedWattHours / 1000d:F3} kWh · " +
+              (historyEnergy.EstimatedCost is { } cost
+                ? $"~{rate.CurrencyCode} {cost:F2} estimated"
+                : "estimated cost unavailable for one or more observed months"));
 
         StorageHealthText.Text = storage?.Devices.Count > 0 ? $"{storage.Devices.Count:N0} Windows-reported physical storage device" + (storage.Devices.Count == 1 ? string.Empty : "s") : "Physical storage health unavailable";
         StorageDevicesList.ItemsSource = storage?.Devices.Select(device => new StorageDeviceDisplayItem(device.DisplayName,
