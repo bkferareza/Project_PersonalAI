@@ -246,8 +246,12 @@ public sealed partial class MainWindow
             var todayHistoryEnergy = MachineHistoryEnergyCostProjector.Project(
                 _historyService.GetSnapshot(MachineHistoryRange.Last24Hours,
                     DateTimeOffset.Now).Rollups, _cachedElectricityRates);
+            _latestPowerEstimate = powerEstimate;
+            _latestEnergySnapshot = _energyAccumulator.GetSnapshot();
+            _latestTodayEnergyCost = todayHistoryEnergy;
+            _latestThirtyDayEnergyCost = historyEnergy;
             HardwarePage.Update(gpuSnapshot, cpuHardware, storageHealth,
-                powerEstimate, _energyAccumulator.GetSnapshot(), historyEnergy,
+                powerEstimate, _latestEnergySnapshot, historyEnergy,
                 _latestElectricityRate?.Rate, todayHistoryEnergy);
 
             ReevaluateFindings();

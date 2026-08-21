@@ -377,7 +377,8 @@ public sealed partial class MainWindow
                     _historyService.GetSnapshot(
                         MachineHistoryRange.Last7Days,
                         DateTimeOffset.UtcNow)),
-                Gpu: CreateGpuInsightContext(_latestGpuTelemetrySnapshot));
+                Gpu: CreateGpuInsightContext(_latestGpuTelemetrySnapshot),
+                EnergyCost: CreateEnergyCostInsightSnapshot());
             var explanation =
                 await _machineStateExplainer.ExplainAsync(
                     request,
@@ -479,6 +480,35 @@ public sealed partial class MainWindow
             IsInsightContextAvailable() &&
             !_insightTriggerPolicy.IsRequestInFlight &&
             !_isExplanationRequestRunning;
+    }
+
+    private MachineEnergyCostInsightSnapshot? CreateEnergyCostInsightSnapshot()
+    {
+        var power = _latestPowerEstimate;
+        var energy = _latestEnergySnapshot;
+        if (power is null && energy is null && _latestElectricityRate?.Rate is null)
+        {
+            return null;
+        }
+        var today = _latestTodayEnergyCost;
+        var thirtyDay = _latestThirtyDayEnergyCost;
+        var rate = _latestElectricityRate?.Rate;
+        var sessionWh = energy?.SessionWattHours;
+        return new(DateTimeOffset.UtcNow,
+            power?.EstimatedWallWatts, power?.EstimatedWallLowerWatts,
+            power?.EstimatedWallUpperWatts,
+            power?.Confidence ?? MachinePowerEstimateConfidence.Unavailable,
+            sessionWh is > 0d ? sessionWh.Value / 1000d : null,
+            today?.ObservedWattHours is > 0d ? today.ObservedWattHours / 1000d : null,
+            thirtyDay?.ObservedWattHours is > 0d ? thirtyDay.ObservedWattHours / 1000d : null,
+            MachineElectricityCostCalculator.Calculate(sessionWh ?? -1d, rate),
+            today?.EstimatedCost, thirtyDay?.EstimatedCost,
+            thirtyDay?.MonthsWithRate == 0 ? MachineCostCoverage.Unavailable :
+                thirtyDay?.MonthsWithoutRate > 0 ? MachineCostCoverage.Partial :
+                MachineCostCoverage.Complete,
+            rate?.ProviderName, rate?.CurrencyCode, rate?.RatePerKWh,
+            rate?.EffectiveMonth,
+            rate?.RateConfidence ?? MachinePowerEstimateConfidence.Unavailable);
     }
 
     private static MachineGpuInsightContext? CreateGpuInsightContext(

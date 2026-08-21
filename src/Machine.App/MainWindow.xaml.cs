@@ -95,6 +95,10 @@ public sealed partial class MainWindow : Window
     private MachineStorageDeviceHealthCollection? _latestStorageHealthSnapshot;
     private ElectricityRateEnrichmentResult? _latestElectricityRate;
     private IReadOnlyList<ElectricityRateSnapshot> _cachedElectricityRates = [];
+    private MachinePowerEstimate? _latestPowerEstimate;
+    private MachineEnergySnapshot? _latestEnergySnapshot;
+    private MachineHistoryEnergyCostSummary? _latestTodayEnergyCost;
+    private MachineHistoryEnergyCostSummary? _latestThirtyDayEnergyCost;
     private double _pendingHistoryEnergyWattHours;
     private DateTimeOffset? _lastStorageHealthRefreshAt;
     private OllamaStatusSnapshot? _latestOllamaStatusSnapshot;
