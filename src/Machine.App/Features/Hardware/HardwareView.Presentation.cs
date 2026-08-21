@@ -10,13 +10,17 @@ public sealed partial class HardwareView
     internal void Update(MachineGpuTelemetrySnapshot? gpu) => Update(gpu,
         null, null, new(DateTimeOffset.UtcNow, null, null, null, null,
             null, null, MachinePowerEstimateConfidence.Unavailable),
-        new(0, 0, false));
+        new(0, 0, false), new(0, null, 0, 0), null,
+        new(0, null, 0, 0));
 
     internal void Update(MachineGpuTelemetrySnapshot? gpu,
         MachineCpuHardwareSnapshot? cpu,
         MachineStorageDeviceHealthCollection? storage,
         MachinePowerEstimate power,
-        MachineEnergySnapshot energy)
+        MachineEnergySnapshot energy,
+        MachineHistoryEnergyCostSummary historyEnergy,
+        ElectricityRateSnapshot? rate,
+        MachineHistoryEnergyCostSummary todayHistoryEnergy)
     {
         var adapter = gpu?.Adapters.FirstOrDefault();
         CpuProcessorNameText.Text = cpu?.ProcessorName ?? "Processor telemetry unavailable";
@@ -41,7 +45,14 @@ public sealed partial class HardwareView
         PowerRangeText.Text = power.EstimatedWallLowerWatts is { } lower && power.EstimatedWallUpperWatts is { } upper ? $"{lower:F0}-{upper:F0} W likely range" : "Range unavailable";
         PowerConfidenceText.Text = FormatConfidence(power.Confidence);
         EnergySessionText.Text = energy.HasObservedEnergy ? $"{energy.SessionWattHours / 1000d:F3} kWh" : "Unavailable";
-        EnergyTodayText.Text = energy.HasObservedEnergy ? $"{energy.TodayWattHours / 1000d:F3} kWh" : "Unavailable";
+        EnergyTodayText.Text = todayHistoryEnergy.ObservedWattHours > 0d
+            ? $"{todayHistoryEnergy.ObservedWattHours / 1000d:F3} kWh"
+            : energy.HasObservedEnergy ? $"{energy.TodayWattHours / 1000d:F3} kWh" : "Unavailable";
+        PowerEvidenceText.Text = BuildEvidence(power) + (rate is null
+            ? "\nPublished reference rate unavailable."
+            : $"\n{rate.ProviderName} residential reference · {rate.CurrencyCode} {rate.RatePerKWh:F4}/kWh · {rate.EffectiveMonth:MMMM yyyy}. " +
+              $"30 observed days: {historyEnergy.ObservedWattHours / 1000d:F3} kWh" +
+              (historyEnergy.EstimatedCost is { } cost ? $" · ~{rate.CurrencyCode} {cost:F2} estimated." : "."));
         PowerEvidenceText.Text = BuildEvidence(power);
 
         StorageHealthText.Text = storage?.Devices.Count > 0 ? $"{storage.Devices.Count:N0} Windows-reported physical storage device" + (storage.Devices.Count == 1 ? string.Empty : "s") : "Physical storage health unavailable";

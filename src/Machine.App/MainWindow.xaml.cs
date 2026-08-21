@@ -94,6 +94,8 @@ public sealed partial class MainWindow : Window
     private MachineCpuHardwareSnapshot? _latestCpuHardwareSnapshot;
     private MachineStorageDeviceHealthCollection? _latestStorageHealthSnapshot;
     private ElectricityRateEnrichmentResult? _latestElectricityRate;
+    private IReadOnlyList<ElectricityRateSnapshot> _cachedElectricityRates = [];
+    private double _pendingHistoryEnergyWattHours;
     private DateTimeOffset? _lastStorageHealthRefreshAt;
     private OllamaStatusSnapshot? _latestOllamaStatusSnapshot;
     private MachineFindingsSnapshot _latestFindingsSnapshot =

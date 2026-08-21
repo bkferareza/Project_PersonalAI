@@ -101,9 +101,12 @@ public sealed partial class MainWindow
         {
             var result = await _electricityRateEnrichment.GetCurrentAsync(
                 DateTimeOffset.Now, cancellationToken);
+            var cache = await _electricityRateEnrichment.LoadCachedAsync(
+                cancellationToken);
             if (!cancellationToken.IsCancellationRequested)
             {
                 _latestElectricityRate = result;
+                _cachedElectricityRates = cache.Rates;
             }
         }
         catch (OperationCanceledException)
@@ -197,6 +200,7 @@ public sealed partial class MainWindow
                 powerEstimate.EstimatedWallWatts,
                 Stopwatch.GetTimestamp(),
                 snapshot.CapturedAt);
+            _pendingHistoryEnergyWattHours += energyDeltaWh;
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -236,8 +240,15 @@ public sealed partial class MainWindow
             OverviewPage.TelemetryStatusText.Visibility = Visibility.Collapsed;
             UpdateNetworkTelemetry(networkSnapshot);
             UpdateSessionTelemetry(sessionSnapshot);
+            var historyEnergy = MachineHistoryEnergyCostProjector.Project(
+                _historyService.GetSnapshot(MachineHistoryRange.Last30Days,
+                    DateTimeOffset.Now).Rollups, _cachedElectricityRates);
+            var todayHistoryEnergy = MachineHistoryEnergyCostProjector.Project(
+                _historyService.GetSnapshot(MachineHistoryRange.Last24Hours,
+                    DateTimeOffset.Now).Rollups, _cachedElectricityRates);
             HardwarePage.Update(gpuSnapshot, cpuHardware, storageHealth,
-                powerEstimate, _energyAccumulator.GetSnapshot());
+                powerEstimate, _energyAccumulator.GetSnapshot(), historyEnergy,
+                _latestElectricityRate?.Rate, todayHistoryEnergy);
 
             ReevaluateFindings();
             var historyChanged = CaptureHistoryObservation(
@@ -248,7 +259,11 @@ public sealed partial class MainWindow
                 cpuHardware,
                 storageHealth,
                 powerEstimate,
-                energyDeltaWh);
+                _pendingHistoryEnergyWattHours);
+            if (historyChanged)
+            {
+                _pendingHistoryEnergyWattHours = 0d;
+            }
             var learningChanged = await CaptureLearningObservationAsync(
                 snapshot,
                 networkSnapshot,
@@ -856,7 +871,7 @@ public sealed partial class MainWindow
         MachineCpuHardwareSnapshot? cpu,
         MachineStorageDeviceHealthCollection? storageHealth,
         MachinePowerEstimate powerEstimate,
-        double energyDeltaWh)
+        double observedEnergyWattHours)
     {
         double? memoryPercent = resources.TotalMemoryBytes == 0
             ? null
@@ -889,7 +904,7 @@ public sealed partial class MainWindow
                 .Where(item => item is not null).Select(item => item!.Value)
                 .DefaultIfEmpty().Max(),
             powerEstimate.EstimatedWallWatts,
-            energyDeltaWh));
+            ObservedEnergyWattHours: observedEnergyWattHours));
     }
 
     private static double? GetVerifiedRate(double? value) =>

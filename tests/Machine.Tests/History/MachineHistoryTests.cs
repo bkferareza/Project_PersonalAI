@@ -44,6 +44,20 @@ public sealed class MachineHistoryTests
     }
 
     [Fact]
+    public void ObservedEnergyIsSummedRatherThanAveraged()
+    {
+        var service = CreateService();
+        service.Observe(Observation(Now) with { ObservedEnergyWattHours = 0.05d });
+        service.Observe(Observation(Now.AddSeconds(30)) with { ObservedEnergyWattHours = 0.06d });
+        service.Observe(Observation(Now.AddMinutes(5)) with { ObservedEnergyWattHours = 0.04d });
+
+        var rollup = service.GetSnapshot(MachineHistoryRange.Last24Hours,
+            Now.AddMinutes(5)).Rollups.Single(item => item.BucketStart == Now);
+        Assert.Equal(0.11d, rollup.ObservedEnergyWattHours!.Total, 6);
+        Assert.Equal(2, rollup.ObservedEnergyWattHours?.ContributionCount);
+    }
+
+    [Fact]
     public void PromotionPreservesWeightedMeansAndDurations()
     {
         var service = CreateService();

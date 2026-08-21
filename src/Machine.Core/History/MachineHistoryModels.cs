@@ -52,6 +52,10 @@ public sealed record MachineHistoryNumericSummary(
     double Maximum,
     double Mean);
 
+public sealed record MachineHistoryAdditiveSummary(
+    long ContributionCount,
+    double Total);
+
 public sealed record MachineHistoryStateDurations(
     long StableTicks,
     long AttentionTicks,
@@ -100,7 +104,8 @@ public sealed record MachineHistoryRollup(
     MachineHistoryNumericSummary? CpuPackagePowerWatts = null,
     MachineHistoryNumericSummary? StorageTemperatureCelsius = null,
     MachineHistoryNumericSummary? EstimatedSystemPowerWatts = null,
-    MachineHistoryNumericSummary? EnergyWattHours = null)
+    MachineHistoryNumericSummary? EnergyWattHours = null,
+    MachineHistoryAdditiveSummary? ObservedEnergyWattHours = null)
 {
     [JsonIgnore]
     public TimeSpan ObservedDuration =>
@@ -124,7 +129,8 @@ public sealed record MachineHistoryObservation(
     double? CpuPackagePowerWatts = null,
     double? StorageTemperatureCelsius = null,
     double? EstimatedSystemPowerWatts = null,
-    double? EnergyWattHours = null);
+    double? EnergyWattHours = null,
+    double? ObservedEnergyWattHours = null);
 
 public sealed record MachineHistoryEvent(
     DateTimeOffset OccurredAt,

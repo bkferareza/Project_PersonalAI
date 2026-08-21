@@ -151,7 +151,10 @@ internal static class MachineHistoryAggregation
                 observation.EstimatedSystemPowerWatts),
             EnergyWattHours = Add(
                 rollup.EnergyWattHours,
-                observation.EnergyWattHours)
+                observation.EnergyWattHours),
+            ObservedEnergyWattHours = AddAdditive(
+                rollup.ObservedEnergyWattHours,
+                observation.ObservedEnergyWattHours)
         };
 
     public static MachineHistoryRollup AddDuration(
@@ -287,7 +290,10 @@ internal static class MachineHistoryAggregation
                 contribution.EstimatedSystemPowerWatts),
             EnergyWattHours = Merge(
                 target.EnergyWattHours,
-                contribution.EnergyWattHours)
+                contribution.EnergyWattHours),
+            ObservedEnergyWattHours = MergeAdditive(
+                target.ObservedEnergyWattHours,
+                contribution.ObservedEnergyWattHours)
         };
 
         merged = AddStateDurations(merged, contribution.StateDurations);
@@ -328,6 +334,7 @@ internal static class MachineHistoryAggregation
         IsValid(rollup.StorageTemperatureCelsius) &&
         IsValid(rollup.EstimatedSystemPowerWatts) &&
         IsValid(rollup.EnergyWattHours) &&
+        IsValid(rollup.ObservedEnergyWattHours) &&
         AreNonNegative(rollup.StateDurations.StableTicks,
             rollup.StateDurations.AttentionTicks,
             rollup.StateDurations.WarningTicks,
@@ -364,6 +371,25 @@ internal static class MachineHistoryAggregation
             Math.Max(summary.Maximum, value.Value),
             mean);
     }
+
+    private static MachineHistoryAdditiveSummary? AddAdditive(
+        MachineHistoryAdditiveSummary? summary, double? value) =>
+        value is not { } amount || !double.IsFinite(amount) || amount < 0d
+            ? summary
+            : summary is null
+                ? new(1, amount)
+                : new(SaturatingAdd(summary.ContributionCount, 1),
+                    summary.Total + amount);
+
+    private static MachineHistoryAdditiveSummary? MergeAdditive(
+        MachineHistoryAdditiveSummary? left,
+        MachineHistoryAdditiveSummary? right) => left switch
+        {
+            null => right,
+            _ when right is null => left,
+            _ => new(SaturatingAdd(left.ContributionCount,
+                right.ContributionCount), left.Total + right.Total)
+        };
 
     private static MachineHistoryNumericSummary? Merge(
         MachineHistoryNumericSummary? left,
@@ -434,6 +460,10 @@ internal static class MachineHistoryAggregation
         double.IsFinite(summary.Mean) &&
         summary.Minimum <= summary.Mean &&
         summary.Mean <= summary.Maximum;
+
+    private static bool IsValid(MachineHistoryAdditiveSummary? summary) =>
+        summary is null || summary.ContributionCount > 0 &&
+        double.IsFinite(summary.Total) && summary.Total >= 0d;
 
     private static bool AreNonNegative(params long[] values) =>
         values.All(value => value >= 0);

@@ -126,6 +126,10 @@ public sealed class ElectricityRateEnrichmentService
         }
     }
 
+    public Task<ElectricityRateCacheState> LoadCachedAsync(
+        CancellationToken cancellationToken = default) =>
+        _cache.LoadAsync(cancellationToken);
+
     internal static (string Name, MachinePowerEstimateConfidence Confidence)?
         ResolveUtility(string locationJson)
     {
