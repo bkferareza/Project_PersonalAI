@@ -23,13 +23,16 @@ public sealed partial class HistoryView
     private MachineHistoryRange _selectedHistoryRange =
         MachineHistoryRange.Last24Hours;
     private Func<IReadOnlyList<ElectricityRateSnapshot>>? _rates;
+    private Func<MachineTodayEnergyCostProjection?>? _today;
 
     internal void Initialize(MachineHistoryService historyService,
-        Func<IReadOnlyList<ElectricityRateSnapshot>>? rates = null)
+        Func<IReadOnlyList<ElectricityRateSnapshot>>? rates = null,
+        Func<MachineTodayEnergyCostProjection?>? today = null)
     {
         ArgumentNullException.ThrowIfNull(historyService);
         _historyService = historyService;
         _rates = rates;
+        _today = today;
     }
 
     private void OnHistoryRangeClicked(
@@ -55,6 +58,7 @@ public sealed partial class HistoryView
         var snapshot = _historyService.GetSnapshot(
             _selectedHistoryRange,
             DateTimeOffset.UtcNow);
+        UpdateTodaySummary();
         HistoryObservedDurationText.Text = snapshot.TotalObservedDuration >
                 TimeSpan.Zero
             ? $"{FormatDuration(snapshot.TotalObservedDuration)} observed"
@@ -167,6 +171,43 @@ public sealed partial class HistoryView
         RenderHistoryTrends(snapshot.Rollups);
     }
 
+    internal void UpdateTodaySummary()
+    {
+        var today = _today?.Invoke();
+        TodayEnergyText.Text = today?.HasObservedEnergy == true
+            ? $"{today.ObservedEnergyWattHours / 1000d:F3} kWh"
+            : "Beginning now";
+        TodayCostText.Text = today?.EstimatedCost is { } cost &&
+            today.Rate is { } costRate
+                ? FormatEstimatedCost(cost, costRate.CurrencyCode)
+                : "Cost unavailable";
+        TodayAveragePowerText.Text =
+            today?.AverageEstimatedWallPowerWatts is { } average
+                ? $"~{average:F0} W"
+                : "Unavailable";
+        TodayPeakPowerText.Text =
+            today?.PeakEstimatedWallPowerWatts is { } peak
+                ? $"~{peak:F0} W"
+                : "Unavailable";
+        TodayObservedDurationText.Text = today?.ObservedDuration > TimeSpan.Zero
+            ? FormatDuration(today.ObservedDuration)
+            : "Unavailable";
+        if (today?.Rate is { } rate)
+        {
+            TodayRateText.Text =
+                $"{FormatCurrency(rate.CurrencyCode)}{rate.RatePerKWh:F4}/kWh · " +
+                rate.EffectiveMonth.ToString("MMMM yyyy");
+            TodayProviderText.Text =
+                $"{rate.ProviderName} residential reference";
+        }
+        else
+        {
+            TodayRateText.Text = "Published rate unavailable";
+            TodayProviderText.Text =
+                "Observed PC energy remains available without a cost estimate";
+        }
+    }
+
     private void UpdateDailyEnergyCost(MachineHistorySnapshot snapshot)
     {
         var isDailyRange = snapshot.Range is MachineHistoryRange.Last7Days or
@@ -197,6 +238,15 @@ public sealed partial class HistoryView
         MachineCostCoverage.Partial => "Partial rate coverage",
         _ => "Rate unavailable"
     };
+
+    private static string FormatEstimatedCost(decimal cost,
+        string currencyCode) =>
+        $"~{FormatCurrency(currencyCode)}{cost:F2}";
+
+    private static string FormatCurrency(string currencyCode) =>
+        string.Equals(currencyCode, "PHP", StringComparison.OrdinalIgnoreCase)
+            ? "₱"
+            : $"{currencyCode} ";
 
     private void SetHistoryRangeButtonState()
     {

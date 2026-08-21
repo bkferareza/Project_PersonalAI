@@ -67,6 +67,9 @@ New code should live with its domain or feature rather than in project-wide `Mod
 - Keep automated tests deterministic and offline.
 - Learning activity auditing is diagnostic-only: keep it separately bounded and persistence failures must never alter, repair, or block learning state.
 - Hardware evidence must distinguish measured sensors, Windows-reported state, and software estimates; power and energy estimates never change Learning or posture.
+- Today electricity cost is deterministic observed-PC cost derived from additive History energy and the matching published rate; it is never the household bill.
+- The Local Insight title `Running bill today` uses the shared deterministic Today energy/cost projection and must not trigger inference.
+- Session energy resets on restart; Today History does not. Learning remains schema v3, while a future schema may compare Today values with learned behavior.
 - Avoid subagents for normal feature slices; use them only when explicitly requested or when independent parallel work clearly justifies the cost.
 - Read only relevant files, and keep command output and final reporting concise.
 

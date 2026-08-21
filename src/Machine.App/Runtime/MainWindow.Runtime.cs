@@ -240,19 +240,8 @@ public sealed partial class MainWindow
             OverviewPage.TelemetryStatusText.Visibility = Visibility.Collapsed;
             UpdateNetworkTelemetry(networkSnapshot);
             UpdateSessionTelemetry(sessionSnapshot);
-            var historyEnergy = MachineHistoryEnergyCostProjector.Project(
-                _historyService.GetSnapshot(MachineHistoryRange.Last30Days,
-                    DateTimeOffset.Now).Rollups, _cachedElectricityRates);
-            var todayHistoryEnergy = MachineHistoryEnergyCostProjector.Project(
-                _historyService.GetSnapshot(MachineHistoryRange.Last24Hours,
-                    DateTimeOffset.Now).Rollups, _cachedElectricityRates);
             _latestPowerEstimate = powerEstimate;
             _latestEnergySnapshot = _energyAccumulator.GetSnapshot();
-            _latestTodayEnergyCost = todayHistoryEnergy;
-            _latestThirtyDayEnergyCost = historyEnergy;
-            HardwarePage.Update(gpuSnapshot, cpuHardware, storageHealth,
-                powerEstimate, _latestEnergySnapshot, historyEnergy,
-                _latestElectricityRate?.Rate, todayHistoryEnergy);
 
             ReevaluateFindings();
             var historyChanged = CaptureHistoryObservation(
@@ -268,6 +257,24 @@ public sealed partial class MainWindow
             {
                 _pendingHistoryEnergyWattHours = 0d;
             }
+            var historyEnergy = MachineHistoryEnergyCostProjector.Project(
+                _historyService.GetSnapshot(MachineHistoryRange.Last30Days,
+                    snapshot.CapturedAt).Rollups, _cachedElectricityRates);
+            var todayHistoryEnergy =
+                MachineTodayEnergyCostProjector.Project(
+                    _historyService.GetSnapshot(
+                        MachineHistoryRange.Last24Hours,
+                        snapshot.CapturedAt).Rollups,
+                    _cachedElectricityRates,
+                    snapshot.CapturedAt,
+                    _pendingHistoryEnergyWattHours);
+            _latestTodayEnergyCost = todayHistoryEnergy;
+            _latestThirtyDayEnergyCost = historyEnergy;
+            HardwarePage.Update(gpuSnapshot, cpuHardware, storageHealth,
+                powerEstimate, _latestEnergySnapshot, historyEnergy,
+                todayHistoryEnergy.Rate, todayHistoryEnergy);
+            HistoryPage.UpdateTodaySummary();
+            UpdateRunningBillInsight();
             var learningChanged = await CaptureLearningObservationAsync(
                 snapshot,
                 networkSnapshot,

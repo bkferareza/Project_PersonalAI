@@ -97,7 +97,7 @@ public sealed partial class MainWindow : Window
     private IReadOnlyList<ElectricityRateSnapshot> _cachedElectricityRates = [];
     private MachinePowerEstimate? _latestPowerEstimate;
     private MachineEnergySnapshot? _latestEnergySnapshot;
-    private MachineHistoryEnergyCostSummary? _latestTodayEnergyCost;
+    private MachineTodayEnergyCostProjection? _latestTodayEnergyCost;
     private MachineHistoryEnergyCostSummary? _latestThirtyDayEnergyCost;
     private double _pendingHistoryEnergyWattHours;
     private DateTimeOffset? _lastStorageHealthRefreshAt;
@@ -230,7 +230,8 @@ public sealed partial class MainWindow : Window
 
         InitializeComponent();
         HistoryPage.Initialize(_historyService,
-            () => _cachedElectricityRates);
+            () => _cachedElectricityRates,
+            () => _latestTodayEnergyCost);
         StoragePage.Initialize(
             storageProvider,
             folderInspectionProvider,

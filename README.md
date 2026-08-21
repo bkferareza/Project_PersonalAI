@@ -30,6 +30,8 @@ Accepted observations enter history at most once every 30 seconds. Incremental t
 
 `matasuri-history-v1.json` is separate from behavioral learning. It uses schema v1, atomic replacement, bounded collections, a 10-minute dirty-save cadence with backoff, and a bounded final shutdown save. A sparse normalized timeline retains at most 2,000 significant events for 730 days, deduplicates verified health identities, and groups repeated display events without storing raw Event Log payloads. The History page uses 5-minute resolution for 24h, hourly resolution for 7d and 30d, and monthly resolution for All; gaps remain missing data.
 
+History opens with a shared local-day projection of observed PC energy and estimated electricity cost. It combines accepted additive History energy with the one pending valid contribution without double counting, uses only the matching effective-month published rate, and survives session restarts. `Running bill today` presents the same deterministic PC-cost projection in Local Insight without waking the model; it is not a household utility bill.
+
 ## Learning and local explanation
 
 Hierarchical behavioral learning remains schema v3. Its bounded RAM-only 30-second journal, 48 hour-by-Active/Idle baselines, compact profiles, recurring patterns, and 200 aggregate episodes remain independent from History. Powered-off and suspended gaps add no learning evidence.
@@ -66,7 +68,7 @@ All capabilities below are read-only.
 | Windows-reported physical storage health | Initial implementation complete |
 | Estimated wall power and observed session energy | Initial implementation complete |
 | Electricity-rate enrichment and bounded monthly cache | Initial implementation complete |
-| Persistent energy and electricity cost | Planned |
+| Persistent energy and electricity cost | Initial implementation complete |
 
 The GPU slice reads adapter name, utilization, VRAM, temperature, board power, graphics/memory clocks, and fan when the installed driver exposes them. Unsupported or unavailable values remain null; Matasuri adds no NVML package, download, control call, tuning, or severity policy.
 
@@ -84,4 +86,4 @@ Install the .NET 10 SDK plus the workspace-recommended Microsoft C# Dev Kit and 
 
 ## Next slice
 
-Add CPU/storage hardware telemetry and estimated power, energy, and electricity-cost observability.
+Migrate Learning v3 to v4 so Matasuri can compare Today energy and cost with learned context-specific behavior.

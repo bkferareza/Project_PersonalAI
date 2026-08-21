@@ -242,8 +242,35 @@
                                         FontSize="11"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                         HorizontalAlignment="Right"
-                                        Text="Event-driven" />
+                                        Text="Local · deterministic first" />
                                 </Grid>
+                                <StackPanel
+                                    x:Name="RunningBillInsightPanel" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="RunningBillInsightPanel"
+                                    Spacing="3"
+                                    Visibility="Collapsed">
+                                    <TextBlock
+                                        x:Name="RunningBillInsightTitleText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="RunningBillInsightTitleText"
+                                        FontSize="18"
+                                        FontWeight="SemiBold"
+                                        Text="Running bill today" />
+                                    <TextBlock
+                                        x:Name="RunningBillInsightCostText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="RunningBillInsightCostText"
+                                        FontSize="27"
+                                        FontWeight="SemiBold"
+                                        Text="Cost unavailable" />
+                                    <TextBlock
+                                        x:Name="RunningBillInsightEnergyText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="RunningBillInsightEnergyText"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        x:Name="RunningBillInsightEvidenceText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="RunningBillInsightEvidenceText"
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
                                 <TextBlock
                                     x:Name="MachineExplanationText" x:FieldModifier="internal"
                                     AutomationProperties.AutomationId="MachineExplanationText"

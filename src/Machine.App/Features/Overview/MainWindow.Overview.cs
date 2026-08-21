@@ -492,14 +492,16 @@ public sealed partial class MainWindow
         }
         var today = _latestTodayEnergyCost;
         var thirtyDay = _latestThirtyDayEnergyCost;
-        var rate = _latestElectricityRate?.Rate;
+        var rate = today?.Rate ?? _latestElectricityRate?.Rate;
         var sessionWh = energy?.SessionWattHours;
         return new(DateTimeOffset.UtcNow,
             power?.EstimatedWallWatts, power?.EstimatedWallLowerWatts,
             power?.EstimatedWallUpperWatts,
             power?.Confidence ?? MachinePowerEstimateConfidence.Unavailable,
             sessionWh is > 0d ? sessionWh.Value / 1000d : null,
-            today?.ObservedWattHours is > 0d ? today.ObservedWattHours / 1000d : null,
+            today?.HasObservedEnergy == true
+                ? today.ObservedEnergyWattHours / 1000d
+                : null,
             thirtyDay?.ObservedWattHours is > 0d ? thirtyDay.ObservedWattHours / 1000d : null,
             MachineElectricityCostCalculator.Calculate(sessionWh ?? -1d, rate),
             today?.EstimatedCost, thirtyDay?.EstimatedCost,
@@ -510,6 +512,37 @@ public sealed partial class MainWindow
             rate?.EffectiveMonth,
             rate?.RateConfidence ?? MachinePowerEstimateConfidence.Unavailable);
     }
+
+    private void UpdateRunningBillInsight()
+    {
+        var insight = MachineRunningBillInsightProjector.Project(
+            _latestTodayEnergyCost);
+        if (insight is null)
+        {
+            OverviewPage.RunningBillInsightPanel.Visibility =
+                Visibility.Collapsed;
+            return;
+        }
+
+        OverviewPage.RunningBillInsightTitleText.Text = insight.Title;
+        OverviewPage.RunningBillInsightCostText.Text =
+            $"~{FormatInsightCurrency(insight.Rate.CurrencyCode)}" +
+            $"{insight.EstimatedPcElectricityCost:F2} estimated";
+        OverviewPage.RunningBillInsightEnergyText.Text =
+            $"{insight.TodayObservedEnergyKilowattHours:F3} kWh observed " +
+            "so far today · estimated PC electricity cost";
+        OverviewPage.RunningBillInsightEvidenceText.Text =
+            $"{insight.Rate.ProviderName} residential reference · " +
+            $"{insight.Rate.CurrencyCode} " +
+            $"{insight.Rate.RatePerKWh:F4}/kWh · " +
+            insight.Rate.EffectiveMonth.ToString("MMMM yyyy");
+        OverviewPage.RunningBillInsightPanel.Visibility = Visibility.Visible;
+    }
+
+    private static string FormatInsightCurrency(string currencyCode) =>
+        string.Equals(currencyCode, "PHP", StringComparison.OrdinalIgnoreCase)
+            ? "₱"
+            : $"{currencyCode} ";
 
     private static MachineGpuInsightContext? CreateGpuInsightContext(
         MachineGpuTelemetrySnapshot? snapshot)

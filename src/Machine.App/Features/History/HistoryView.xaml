@@ -50,6 +50,89 @@
                             </StackPanel>
                         </Grid>
 
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="10">
+                                <TextBlock
+                                    Style="{StaticResource MetricLabelStyle}"
+                                    Text="TODAY" />
+                                <Grid ColumnSpacing="20">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock
+                                            x:Name="TodayEnergyText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="TodayEnergyText"
+                                            FontSize="25"
+                                            FontWeight="SemiBold"
+                                            Text="Beginning now" />
+                                        <TextBlock
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="Observed PC energy" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock
+                                            x:Name="TodayCostText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="TodayCostText"
+                                            FontSize="27"
+                                            FontWeight="SemiBold"
+                                            Text="Cost unavailable" />
+                                        <TextBlock
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="Estimated PC electricity cost so far today"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="1">
+                                        <TextBlock
+                                            x:Name="TodayAveragePowerText" x:FieldModifier="internal"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable" />
+                                        <TextBlock
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="Average estimated draw" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="1">
+                                        <TextBlock
+                                            x:Name="TodayPeakPowerText" x:FieldModifier="internal"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable" />
+                                        <TextBlock
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="Peak estimated draw" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Spacing="1">
+                                        <TextBlock
+                                            x:Name="TodayObservedDurationText" x:FieldModifier="internal"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable" />
+                                        <TextBlock
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="Observed" />
+                                    </StackPanel>
+                                </Grid>
+                                <StackPanel Spacing="1">
+                                    <TextBlock
+                                        x:Name="TodayRateText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="TodayRateText"
+                                        FontWeight="SemiBold"
+                                        Text="Published rate unavailable" />
+                                    <TextBlock
+                                        x:Name="TodayProviderText" x:FieldModifier="internal"
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Observed PC energy remains available without a cost estimate"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
                         <StackPanel Spacing="5">
                             <TextBlock
                                 Style="{StaticResource MetricLabelStyle}"

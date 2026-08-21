@@ -11,7 +11,9 @@ public sealed partial class HardwareView
         null, null, new(DateTimeOffset.UtcNow, null, null, null, null,
             null, null, MachinePowerEstimateConfidence.Unavailable),
         new(0, 0, false), new(0, null, 0, 0), null,
-        new(0, null, 0, 0));
+        new(DateOnly.FromDateTime(DateTime.Today), 0d, null,
+            MachineCostCoverage.Unavailable, TimeSpan.Zero, null, null,
+            0, null));
 
     internal void Update(MachineGpuTelemetrySnapshot? gpu,
         MachineCpuHardwareSnapshot? cpu,
@@ -20,7 +22,7 @@ public sealed partial class HardwareView
         MachineEnergySnapshot energy,
         MachineHistoryEnergyCostSummary historyEnergy,
         ElectricityRateSnapshot? rate,
-        MachineHistoryEnergyCostSummary todayHistoryEnergy)
+        MachineTodayEnergyCostProjection todayHistoryEnergy)
     {
         var adapter = gpu?.Adapters.FirstOrDefault();
         CpuProcessorNameText.Text = cpu?.ProcessorName ?? "Processor telemetry unavailable";
@@ -50,8 +52,8 @@ public sealed partial class HardwareView
         EnergySessionText.Text = energy.HasObservedEnergy
             ? $"{energy.SessionWattHours / 1000d:F3} kWh\n{FormatEstimatedCost(sessionCost, rate)}"
             : "Unavailable";
-        EnergyTodayText.Text = todayHistoryEnergy.ObservedWattHours > 0d
-            ? $"{todayHistoryEnergy.ObservedWattHours / 1000d:F3} kWh\n{FormatEstimatedCost(todayCost, rate)}"
+        EnergyTodayText.Text = todayHistoryEnergy.HasObservedEnergy
+            ? $"{todayHistoryEnergy.ObservedEnergyWattHours / 1000d:F3} kWh\n{FormatEstimatedCost(todayCost, rate)}"
             : energy.HasObservedEnergy
                 ? $"{energy.TodayWattHours / 1000d:F3} kWh\n{FormatEstimatedCost(todayCost, rate)}"
                 : "Unavailable";
