@@ -14,6 +14,13 @@ public enum MachineLearningFreshness
     Stale
 }
 
+public enum MachineLearningEvidenceMaturity
+{
+    Insufficient,
+    Provisional,
+    Established
+}
+
 public enum MachineLearningMemoryLayer
 {
     ContextBaseline,
@@ -43,7 +50,8 @@ public sealed record MachineLearningObservation(
     MachineNetworkActivityClass NetworkActivityClass =
         MachineNetworkActivityClass.Unavailable,
     double? ReceiveBytesPerSecond = null,
-    double? SendBytesPerSecond = null);
+    double? SendBytesPerSecond = null,
+    double? EstimatedWallPowerWatts = null);
 
 public sealed record MachineLearningBaseline(
     int LocalHour,
@@ -68,7 +76,18 @@ public sealed record MachineLearningBaseline(
     double AdaptiveMemoryStandardDeviation = 0,
     long AdaptiveSampleCount = 0,
     DateTimeOffset? AdaptiveLastUpdatedAt = null,
-    MachineLearningFreshness Freshness = MachineLearningFreshness.Fresh)
+    MachineLearningFreshness Freshness = MachineLearningFreshness.Fresh,
+    long EstimatedWallPowerSampleCount = 0,
+    double? EstimatedWallPowerMeanWatts = null,
+    double? EstimatedWallPowerStandardDeviationWatts = null,
+    int EstimatedWallPowerObservedDayCount = 0,
+    DateTimeOffset? EstimatedWallPowerFirstObservedAt = null,
+    DateTimeOffset? EstimatedWallPowerLastObservedAt = null,
+    double? AdaptiveEstimatedWallPowerMeanWatts = null,
+    double? AdaptiveEstimatedWallPowerStandardDeviationWatts = null,
+    long AdaptiveEstimatedWallPowerSampleCount = 0,
+    DateTimeOffset? AdaptiveEstimatedWallPowerLastUpdatedAt = null,
+    MachineLearningFreshness? EstimatedWallPowerFreshness = null)
 {
     public TimeSpan LifetimeObservedDuration => TimeSpan.FromTicks(
         Math.Clamp(ObservedDurationTicks, 0, TimeSpan.MaxValue.Ticks));
@@ -84,6 +103,20 @@ public sealed record MachineLearningBaseline(
             AdaptiveMemoryMean,
             AdaptiveMemoryStandardDeviation,
             AdaptiveSampleCount);
+
+    public MachineLearningRange? EstimatedWallPowerTypicalRange =>
+        AdaptiveEstimatedWallPowerMeanWatts is { } mean &&
+        AdaptiveEstimatedWallPowerStandardDeviationWatts is { } deviation
+            ? MachineLearningPolicy.CreateNonnegativeTypicalRange(
+                mean,
+                deviation,
+                AdaptiveEstimatedWallPowerSampleCount)
+            : null;
+
+    public MachineLearningEvidenceMaturity EstimatedWallPowerMaturity =>
+        MachineLearningPolicy.GetEvidenceMaturity(
+            EstimatedWallPowerSampleCount,
+            EstimatedWallPowerObservedDayCount);
 
     public long NetworkObservationCount => SaturatingAdd(
         SaturatingAdd(NetworkQuietSampleCount, NetworkLightSampleCount),
@@ -121,6 +154,20 @@ public sealed record MachineLearningMetricProfile(
     double AdaptiveStandardDeviation,
     MachineLearningRange? TypicalRange);
 
+public sealed record MachineLearningEstimatedWallPowerProfile(
+    long EvidenceCount,
+    int DistinctObservedDayCount,
+    double HistoricalMeanWatts,
+    double HistoricalStandardDeviationWatts,
+    double AdaptiveMeanWatts,
+    double AdaptiveStandardDeviationWatts,
+    MachineLearningRange? TypicalRange,
+    MachineLearningEvidenceMaturity Maturity,
+    MachineLearningFreshness Freshness,
+    DateTimeOffset FirstObservedAt,
+    DateTimeOffset LastObservedAt,
+    DateTimeOffset AdaptiveLastUpdatedAt);
+
 public sealed record MachineLearningContextProfile(
     int LocalHour,
     MachineUserActivityState ActivityState,
@@ -138,7 +185,8 @@ public sealed record MachineLearningContextProfile(
     long NetworkObservationCount,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastReinforcedAt,
-    DateTimeOffset LastMateriallyChangedAt)
+    DateTimeOffset LastMateriallyChangedAt,
+    MachineLearningEstimatedWallPowerProfile? EstimatedWallPower = null)
 {
     public MachineLearningContextKey ContextKey => new(
         LocalHour,

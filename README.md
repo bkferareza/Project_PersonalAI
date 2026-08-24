@@ -34,7 +34,9 @@ History opens with a shared local-day projection of observed PC energy and estim
 
 ## Learning and local explanation
 
-Hierarchical behavioral learning remains schema v3. Its bounded RAM-only 30-second journal, 48 hour-by-Active/Idle baselines, compact profiles, recurring patterns, and 200 aggregate episodes remain independent from History. Powered-off and suspended gaps add no learning evidence.
+Hierarchical behavioral learning uses schema v4. Its bounded RAM-only 30-second journal, 48 hour-by-Active/Idle baselines, compact profiles, recurring patterns, and 200 aggregate episodes remain independent from History. Schema v3 evidence migrates without reset. Each existing context can now accumulate separately mature software-estimated whole-PC wall-power statistics from eligible v4 observations; power is never backfilled from History, and powered-off or suspended gaps add no evidence.
+
+Learned power represents machine behavior, not metered wall evidence. Low-confidence, unavailable, invalid, or stale estimates are excluded without rejecting the rest of an observation. Electricity tariffs, currency, cumulative energy, and cost remain outside Learning, so rate changes cannot alter learned power behavior. Power updates add no timer, network request, or inference trigger.
 
 `learning-activity.json` is a separate bounded local diagnostic trail. It records safe lifecycle, restore, observation, and persistence summaries (not raw telemetry, process, URL, or command data), retains detailed observation events for 48 hours and important lifecycle events for 14 days, and cannot repair or block behavioral learning.
 
@@ -86,4 +88,4 @@ Install the .NET 10 SDK plus the workspace-recommended Microsoft C# Dev Kit and 
 
 ## Next slice
 
-Migrate Learning v3 to v4 so Matasuri can compare Today energy and cost with learned context-specific behavior.
+Derive projected estimated cost per observed hour from learned power behavior and the current published reference rate, expose it in Learning, and compare Today against learned normal behavior.

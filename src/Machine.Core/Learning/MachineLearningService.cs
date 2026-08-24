@@ -7,8 +7,9 @@ public sealed class MachineLearningService
     public const int MaximumObservationCount = 2_880;
     public const int MaximumContextProfileCount = 48;
     public const int MaximumEpisodeCount = 200;
-    public const int PersistenceSchemaVersion = 3;
-    public const int PreviousPersistenceSchemaVersion = 2;
+    public const int PersistenceSchemaVersion = 4;
+    public const int PreviousPersistenceSchemaVersion = 3;
+    public const int VersionTwoPersistenceSchemaVersion = 2;
     public const int LegacyPersistenceSchemaVersion = 1;
     public const int ProvisionalSampleCount = 12;
     public const int EstablishedSampleCount = 168;
@@ -174,7 +175,7 @@ public sealed class MachineLearningService
             _baselines.Add(key, baseline);
         }
 
-        baseline.Add(observation);
+        var powerEvidenceAccepted = baseline.Add(observation);
         var episodeCount = _episodes.Count;
         UpdateEpisodes(observation, localTimestamp);
         if (UpdateProfile(key, baseline, observation.Timestamp))
@@ -182,7 +183,10 @@ public sealed class MachineLearningService
             RecomputePatterns(observation.Timestamp);
             _activityLog.Record(MachineLearningActivityKind.ProfileUpdated,
                 observation.Timestamp, _observationCount, _profiles.Count,
-                _episodes.Count);
+                _episodes.Count,
+                powerEvidenceAccepted: powerEvidenceAccepted,
+                powerEvidenceCount:
+                    baseline.EstimatedWallPowerSampleCount);
         }
 
         if (_episodes.Count != episodeCount)
@@ -195,7 +199,9 @@ public sealed class MachineLearningService
         MarkDirty();
         _activityLog.Record(MachineLearningActivityKind.ObservationAccepted,
             observation.Timestamp, _observationCount, _profiles.Count,
-            _episodes.Count);
+            _episodes.Count,
+            powerEvidenceAccepted: powerEvidenceAccepted,
+            powerEvidenceCount: baseline.EstimatedWallPowerSampleCount);
         return true;
     }
 
@@ -324,6 +330,7 @@ public sealed class MachineLearningService
 
         if (state.SchemaVersion is not PersistenceSchemaVersion and
                 not PreviousPersistenceSchemaVersion and
+                not VersionTwoPersistenceSchemaVersion and
                 not LegacyPersistenceSchemaVersion ||
             state.Baselines is null ||
             state.Episodes is null)
@@ -374,7 +381,7 @@ public sealed class MachineLearningService
             {
                 AddEpisode(state.ActiveEpisode with
                 {
-                    Outcome = state.SchemaVersion == PersistenceSchemaVersion
+                    Outcome = HasHierarchicalState(state.SchemaVersion)
                         ? "Session interrupted"
                         : "Prior session ended"
                 });
@@ -390,12 +397,12 @@ public sealed class MachineLearningService
             ? state.Metadata
             : null;
         if (state.Metadata is not null && metadata is null ||
-            state.SchemaVersion == PersistenceSchemaVersion &&
+            HasHierarchicalState(state.SchemaVersion) &&
             state.Metadata is null)
         {
             ignoredInvalidState = true;
         }
-        if (state.SchemaVersion == PersistenceSchemaVersion &&
+        if (HasHierarchicalState(state.SchemaVersion) &&
             metadata is not null &&
             !IsMetadataConsistentWithState(metadata, state))
         {
@@ -428,7 +435,7 @@ public sealed class MachineLearningService
         _currentSessionFinalized = false;
 
         _profiles.Clear();
-        if (state.SchemaVersion == PersistenceSchemaVersion &&
+        if (HasHierarchicalState(state.SchemaVersion) &&
             state.ContextProfiles is not null)
         {
             if (state.ContextProfiles.Count > MaximumContextProfileCount)
@@ -451,17 +458,16 @@ public sealed class MachineLearningService
                 _profiles[profile.ContextKey] = profile;
             }
         }
-        else if (state.SchemaVersion == PersistenceSchemaVersion)
+        else if (HasHierarchicalState(state.SchemaVersion))
         {
             ignoredInvalidState = true;
         }
 
-        var previousPatterns = state.SchemaVersion ==
-                PersistenceSchemaVersion &&
+        var previousPatterns = HasHierarchicalState(state.SchemaVersion) &&
             state.BroaderPatterns is not null
                 ? state.BroaderPatterns.Where(IsValidPattern).ToArray()
                 : [];
-        if (state.SchemaVersion == PersistenceSchemaVersion &&
+        if (HasHierarchicalState(state.SchemaVersion) &&
             state.BroaderPatterns is not null &&
             (previousPatterns.Length != state.BroaderPatterns.Count ||
              state.BroaderPatterns.Count >
@@ -469,7 +475,7 @@ public sealed class MachineLearningService
         {
             ignoredInvalidState = true;
         }
-        else if (state.SchemaVersion == PersistenceSchemaVersion &&
+        else if (HasHierarchicalState(state.SchemaVersion) &&
             state.BroaderPatterns is null)
         {
             ignoredInvalidState = true;
@@ -486,6 +492,19 @@ public sealed class MachineLearningService
         _dataHealth = _recoveredFromCorruptState
             ? MachineLearningDataHealth.RecoveredFromCorruptState
             : MachineLearningDataHealth.Healthy;
+        var structuralRegression =
+            FindStructuralContinuityRegression(state);
+        if (structuralRegression is not null)
+        {
+            _activityLog.Record(
+                MachineLearningActivityKind.LearningContinuityRegressionDetected,
+                _currentSessionStartedAt,
+                _observationCount,
+                _profiles.Count,
+                _episodes.Count,
+                state.SchemaVersion,
+                structuralRegression);
+        }
         var lastAuditedCount = _activityLog.LastSuccessfulPersistenceObservationCount;
         if (lastAuditedCount is not null && _observationCount < lastAuditedCount)
         {
@@ -507,6 +526,77 @@ public sealed class MachineLearningService
             _currentSessionStartedAt, _observationCount);
     }
 
+    private string? FindStructuralContinuityRegression(
+        MachineLearningPersistedState state)
+    {
+        var regressions = new List<string>();
+        if (_observationCount < Math.Max(0, state.ObservationCount))
+        {
+            regressions.Add("observations");
+        }
+
+        if (state.Metadata is { } metadata &&
+            _lifetimeMachineSessionCount <
+                metadata.LifetimeMachineSessionCount)
+        {
+            regressions.Add("sessions");
+        }
+
+        var persistedBaselineEvidence = SaturatingSum(
+            state.Baselines.Where(item => item is not null &&
+                    item.SampleCount > 0)
+                .Select(item => item.SampleCount));
+        var restoredBaselineEvidence = SaturatingSum(
+            _baselines.Values.Select(item => item.Count));
+        if (_baselines.Count < state.Baselines.Count ||
+            restoredBaselineEvidence < persistedBaselineEvidence)
+        {
+            regressions.Add("baselines");
+        }
+
+        if (HasHierarchicalState(state.SchemaVersion))
+        {
+            if (state.ContextProfiles is { } profiles &&
+                _profiles.Count < profiles.Count)
+            {
+                regressions.Add("profiles");
+            }
+            if (state.BroaderPatterns is { } patterns &&
+                _patterns.Count < patterns.Count)
+            {
+                regressions.Add("patterns");
+            }
+        }
+
+        var expectedEpisodes = Math.Min(
+            MaximumEpisodeCount,
+            state.Episodes.Count + (state.ActiveEpisode is null ? 0 : 1));
+        if (_episodes.Count < expectedEpisodes)
+        {
+            regressions.Add("episodes");
+        }
+
+        if (state.SchemaVersion == PersistenceSchemaVersion)
+        {
+            var persistedPowerEvidence = SaturatingSum(
+                state.Baselines.Where(item => item is not null &&
+                        item.EstimatedWallPowerSampleCount > 0)
+                    .Select(item => item.EstimatedWallPowerSampleCount));
+            var restoredPowerEvidence = SaturatingSum(
+                _baselines.Values.Select(item =>
+                    item.EstimatedWallPowerSampleCount));
+            if (restoredPowerEvidence < persistedPowerEvidence)
+            {
+                regressions.Add("power evidence");
+            }
+        }
+
+        return regressions.Count == 0
+            ? null
+            : "Restored state decreased: " +
+                string.Join(", ", regressions.Distinct());
+    }
+
     public async Task<bool> SaveIfDueAsync(
         IMachineLearningStore store,
         DateTimeOffset now,
@@ -520,7 +610,7 @@ public sealed class MachineLearningService
             return false;
         }
 
-        if (!force &&
+        if (!force && _persistedSchemaVersion == PersistenceSchemaVersion &&
             ((_nextPersistenceAttemptAt is not null &&
               now < _nextPersistenceAttemptAt.Value) ||
              (_lastPersistedAt is not null &&
@@ -789,7 +879,45 @@ public sealed class MachineLearningService
             baseline.NetworkObservationCount,
             createdAt,
             reinforcedAt,
-            materiallyChangedAt);
+            materiallyChangedAt,
+            CreateEstimatedWallPowerProfile(baseline));
+    }
+
+    private static MachineLearningEstimatedWallPowerProfile?
+        CreateEstimatedWallPowerProfile(MachineLearningBaseline baseline)
+    {
+        if (baseline.EstimatedWallPowerMaturity ==
+                MachineLearningEvidenceMaturity.Insufficient ||
+            baseline.EstimatedWallPowerMeanWatts is not { } historicalMean ||
+            baseline.EstimatedWallPowerStandardDeviationWatts is not
+                { } historicalDeviation ||
+            baseline.AdaptiveEstimatedWallPowerMeanWatts is not
+                { } adaptiveMean ||
+            baseline.AdaptiveEstimatedWallPowerStandardDeviationWatts is not
+                { } adaptiveDeviation ||
+            baseline.EstimatedWallPowerTypicalRange is not { } range ||
+            baseline.EstimatedWallPowerFreshness is not { } freshness ||
+            baseline.EstimatedWallPowerFirstObservedAt is not { } first ||
+            baseline.EstimatedWallPowerLastObservedAt is not { } last ||
+            baseline.AdaptiveEstimatedWallPowerLastUpdatedAt is not
+                { } adaptiveLast)
+        {
+            return null;
+        }
+
+        return new MachineLearningEstimatedWallPowerProfile(
+            baseline.EstimatedWallPowerSampleCount,
+            baseline.EstimatedWallPowerObservedDayCount,
+            historicalMean,
+            historicalDeviation,
+            adaptiveMean,
+            adaptiveDeviation,
+            range,
+            baseline.EstimatedWallPowerMaturity,
+            freshness,
+            first,
+            last,
+            adaptiveLast);
     }
 
     private static bool IsMateriallyDifferent(
@@ -810,7 +938,29 @@ public sealed class MachineLearningService
             candidate.Cpu.TypicalRange) ||
         RangeMateriallyChanged(
             existing.Memory.TypicalRange,
-            candidate.Memory.TypicalRange);
+            candidate.Memory.TypicalRange) ||
+        IsEstimatedWallPowerMateriallyDifferent(
+            existing.EstimatedWallPower,
+            candidate.EstimatedWallPower);
+
+    private static bool IsEstimatedWallPowerMateriallyDifferent(
+        MachineLearningEstimatedWallPowerProfile? existing,
+        MachineLearningEstimatedWallPowerProfile? candidate)
+    {
+        if (existing is null || candidate is null)
+        {
+            return existing != candidate;
+        }
+
+        return existing.Maturity != candidate.Maturity ||
+            existing.Freshness != candidate.Freshness ||
+            Math.Abs(existing.AdaptiveMeanWatts -
+                candidate.AdaptiveMeanWatts) >=
+                MachineLearningPolicy.MaterialEstimatedWallPowerMeanShiftWatts ||
+            EstimatedWallPowerRangeMateriallyChanged(
+                existing.TypicalRange,
+                candidate.TypicalRange);
+    }
 
     private static bool IsProfileReinforcementDue(
         MachineLearningContextProfile existing,
@@ -827,7 +977,30 @@ public sealed class MachineLearningService
             candidate.Confidence != existing.Confidence ||
             candidate.Freshness != existing.Freshness ||
             candidate.DominantNetworkActivityClass !=
-                existing.DominantNetworkActivityClass;
+                existing.DominantNetworkActivityClass ||
+            IsEstimatedWallPowerReinforcementDue(
+                existing.EstimatedWallPower,
+                candidate.EstimatedWallPower);
+    }
+
+    private static bool IsEstimatedWallPowerReinforcementDue(
+        MachineLearningEstimatedWallPowerProfile? existing,
+        MachineLearningEstimatedWallPowerProfile? candidate)
+    {
+        if (existing is null || candidate is null)
+        {
+            return existing != candidate;
+        }
+
+        var newEvidence = candidate.EvidenceCount >= existing.EvidenceCount
+            ? candidate.EvidenceCount - existing.EvidenceCount
+            : long.MaxValue;
+        return newEvidence >=
+                MachineLearningPolicy.ProfileReinforcementSampleInterval ||
+            candidate.DistinctObservedDayCount !=
+                existing.DistinctObservedDayCount ||
+            candidate.Maturity != existing.Maturity ||
+            candidate.Freshness != existing.Freshness;
     }
 
     private static bool RangeMateriallyChanged(
@@ -845,6 +1018,21 @@ public sealed class MachineLearningService
                 MachineLearningPolicy.MaterialRangeBoundShiftPercentagePoints;
     }
 
+    private static bool EstimatedWallPowerRangeMateriallyChanged(
+        MachineLearningRange? existing,
+        MachineLearningRange? candidate)
+    {
+        if (existing is null || candidate is null)
+        {
+            return existing != candidate;
+        }
+
+        return Math.Abs(existing.Low - candidate.Low) >=
+                MachineLearningPolicy.MaterialEstimatedWallPowerRangeShiftWatts ||
+            Math.Abs(existing.High - candidate.High) >=
+                MachineLearningPolicy.MaterialEstimatedWallPowerRangeShiftWatts;
+    }
+
     private void RefreshFreshness(DateTimeOffset now)
     {
         var changed = false;
@@ -853,7 +1041,14 @@ public sealed class MachineLearningService
             var freshness = MachineLearningPolicy.GetFreshness(
                 pair.Value.LastObservedAt,
                 now);
-            if (freshness == pair.Value.Freshness)
+            var power = pair.Value.EstimatedWallPower;
+            var powerFreshness = power is null
+                ? (MachineLearningFreshness?)null
+                : MachineLearningPolicy.GetFreshness(
+                    power.LastObservedAt,
+                    now);
+            if (freshness == pair.Value.Freshness &&
+                powerFreshness == power?.Freshness)
             {
                 continue;
             }
@@ -861,7 +1056,13 @@ public sealed class MachineLearningService
             _profiles[pair.Key] = pair.Value with
             {
                 Freshness = freshness,
-                LastMateriallyChangedAt = now
+                LastMateriallyChangedAt = now,
+                EstimatedWallPower = power is null
+                    ? null
+                    : power with
+                    {
+                        Freshness = powerFreshness!.Value
+                    }
             };
             changed = true;
         }
@@ -990,6 +1191,10 @@ public sealed class MachineLearningService
             DateTimeOffset.UtcNow, _observationCount);
     }
 
+    private static bool HasHierarchicalState(int schemaVersion) =>
+        schemaVersion is PreviousPersistenceSchemaVersion or
+            PersistenceSchemaVersion;
+
     private static bool IsValidObservation(
         MachineLearningObservation observation) =>
         double.IsFinite(observation.CpuUsagePercent) &&
@@ -1031,7 +1236,8 @@ public sealed class MachineLearningService
         state.AdaptiveSampleCount >= 0 &&
         state.AdaptiveSampleCount <= state.SampleCount &&
         state.LastObservedAt >= state.FirstObservedAt &&
-        IsValidAdaptiveState(state);
+        IsValidAdaptiveState(state) &&
+        IsValidEstimatedWallPowerState(state);
 
     private static bool IsValidAdaptiveState(
         MachineLearningBaselineState state)
@@ -1052,6 +1258,58 @@ public sealed class MachineLearningService
             IsValidPercentage(memoryMean) &&
             state.AdaptiveMemoryVariance is { } memoryVariance &&
             double.IsFinite(memoryVariance) && memoryVariance >= 0d;
+    }
+
+    private static bool IsValidEstimatedWallPowerState(
+        MachineLearningBaselineState state)
+    {
+        if (state.EstimatedWallPowerSampleCount < 0 ||
+            state.EstimatedWallPowerSampleCount > state.SampleCount ||
+            state.EstimatedWallPowerObservedDayCount < 0 ||
+            state.AdaptiveEstimatedWallPowerSampleCount < 0 ||
+            state.AdaptiveEstimatedWallPowerSampleCount >
+                state.EstimatedWallPowerSampleCount)
+        {
+            return false;
+        }
+
+        if (state.EstimatedWallPowerSampleCount == 0)
+        {
+            return state.EstimatedWallPowerObservedDayCount == 0 &&
+                state.AdaptiveEstimatedWallPowerSampleCount == 0 &&
+                state.EstimatedWallPowerMeanWatts is null &&
+                state.EstimatedWallPowerM2 is null &&
+                state.EstimatedWallPowerFirstObservedAt is null &&
+                state.EstimatedWallPowerLastObservedAt is null &&
+                state.EstimatedWallPowerLastObservedLocalDate is null &&
+                state.AdaptiveEstimatedWallPowerMeanWatts is null &&
+                state.AdaptiveEstimatedWallPowerVariance is null &&
+                state.AdaptiveEstimatedWallPowerLastUpdatedAt is null;
+        }
+
+        return state.EstimatedWallPowerObservedDayCount > 0 &&
+            state.EstimatedWallPowerObservedDayCount <=
+                state.EstimatedWallPowerSampleCount &&
+            state.EstimatedWallPowerMeanWatts is { } mean &&
+            double.IsFinite(mean) && mean >= 0d &&
+            state.EstimatedWallPowerM2 is { } m2 &&
+            double.IsFinite(m2) && m2 >= 0d &&
+            state.EstimatedWallPowerFirstObservedAt is { } first &&
+            state.EstimatedWallPowerLastObservedAt is { } last &&
+            state.EstimatedWallPowerLastObservedLocalDate is not null &&
+            first >= state.FirstObservedAt &&
+            last >= first &&
+            last <= state.LastObservedAt &&
+            state.AdaptiveEstimatedWallPowerSampleCount > 0 &&
+            state.AdaptiveEstimatedWallPowerMeanWatts is
+                { } adaptiveMean &&
+            double.IsFinite(adaptiveMean) && adaptiveMean >= 0d &&
+            state.AdaptiveEstimatedWallPowerVariance is
+                { } adaptiveVariance &&
+            double.IsFinite(adaptiveVariance) && adaptiveVariance >= 0d &&
+            state.AdaptiveEstimatedWallPowerLastUpdatedAt is
+                { } adaptiveLast &&
+            adaptiveLast >= first && adaptiveLast <= last;
     }
 
     private static bool IsValidProfile(
@@ -1081,7 +1339,42 @@ public sealed class MachineLearningService
             profile.DominantNetworkActivityCount &&
         profile.NetworkObservationCount <= profile.LifetimeSampleCount &&
         profile.LastReinforcedAt >= profile.FirstObservedAt &&
-            profile.LastReinforcedAt <= profile.LastObservedAt;
+            profile.LastReinforcedAt <= profile.LastObservedAt &&
+        IsValidEstimatedWallPowerProfile(
+            profile.EstimatedWallPower,
+            profile.LifetimeSampleCount);
+
+    private static bool IsValidEstimatedWallPowerProfile(
+        MachineLearningEstimatedWallPowerProfile? power,
+        long lifetimeSampleCount)
+    {
+        if (power is null)
+        {
+            return true;
+        }
+
+        return power.EvidenceCount >= ProvisionalSampleCount &&
+            power.EvidenceCount <= lifetimeSampleCount &&
+            power.DistinctObservedDayCount > 0 &&
+            power.DistinctObservedDayCount <= power.EvidenceCount &&
+            Enum.IsDefined(power.Maturity) &&
+            power.Maturity == MachineLearningPolicy.GetEvidenceMaturity(
+                power.EvidenceCount,
+                power.DistinctObservedDayCount) &&
+            power.Maturity != MachineLearningEvidenceMaturity.Insufficient &&
+            Enum.IsDefined(power.Freshness) &&
+            IsValidNonnegative(power.HistoricalMeanWatts) &&
+            IsValidStandardDeviation(
+                power.HistoricalStandardDeviationWatts) &&
+            IsValidNonnegative(power.AdaptiveMeanWatts) &&
+            IsValidStandardDeviation(
+                power.AdaptiveStandardDeviationWatts) &&
+            power.TypicalRange is not null &&
+            IsValidNonnegativeRange(power.TypicalRange) &&
+            power.LastObservedAt >= power.FirstObservedAt &&
+            power.AdaptiveLastUpdatedAt >= power.FirstObservedAt &&
+            power.AdaptiveLastUpdatedAt <= power.LastObservedAt;
+    }
 
     private static bool IsValidMetadata(
         MachineLearningMetadataState? metadata)
@@ -1185,6 +1478,9 @@ public sealed class MachineLearningService
     private static bool IsValidPercentage(double value) =>
         double.IsFinite(value) && value is >= 0d and <= 100d;
 
+    private static bool IsValidNonnegative(double value) =>
+        double.IsFinite(value) && value >= 0d;
+
     private static bool IsValidStandardDeviation(double value) =>
         double.IsFinite(value) && value >= 0d;
 
@@ -1226,6 +1522,11 @@ public sealed class MachineLearningService
         range is null ||
         IsValidPercentage(range.Low) &&
         IsValidPercentage(range.High) &&
+        range.High >= range.Low;
+
+    private static bool IsValidNonnegativeRange(MachineLearningRange range) =>
+        IsValidNonnegative(range.Low) &&
+        IsValidNonnegative(range.High) &&
         range.High >= range.Low;
 
     private static long AddDurationTicks(long current, long additional) =>
@@ -1289,6 +1590,31 @@ public sealed class MachineLearningService
                     TimeSpan.MaxValue.Ticks)
                 : EstimateObservedDurationTicks(state.SampleCount);
 
+            if (state.EstimatedWallPowerSampleCount > 0)
+            {
+                EstimatedWallPowerSampleCount =
+                    state.EstimatedWallPowerSampleCount;
+                EstimatedWallPowerMeanWatts =
+                    state.EstimatedWallPowerMeanWatts!.Value;
+                EstimatedWallPowerM2 = state.EstimatedWallPowerM2!.Value;
+                EstimatedWallPowerObservedDayCount =
+                    state.EstimatedWallPowerObservedDayCount;
+                EstimatedWallPowerLastObservedLocalDate =
+                    state.EstimatedWallPowerLastObservedLocalDate;
+                EstimatedWallPowerFirstObservedAt =
+                    state.EstimatedWallPowerFirstObservedAt;
+                EstimatedWallPowerLastObservedAt =
+                    state.EstimatedWallPowerLastObservedAt;
+                AdaptiveEstimatedWallPowerMeanWatts =
+                    state.AdaptiveEstimatedWallPowerMeanWatts!.Value;
+                AdaptiveEstimatedWallPowerVariance =
+                    state.AdaptiveEstimatedWallPowerVariance!.Value;
+                AdaptiveEstimatedWallPowerSampleCount =
+                    state.AdaptiveEstimatedWallPowerSampleCount;
+                AdaptiveEstimatedWallPowerLastUpdatedAt =
+                    state.AdaptiveEstimatedWallPowerLastUpdatedAt;
+            }
+
             if (state.AdaptiveSampleCount > 0 &&
                 state.AdaptiveCpuMean is { } adaptiveCpuMean &&
                 state.AdaptiveCpuVariance is { } adaptiveCpuVariance &&
@@ -1337,7 +1663,47 @@ public sealed class MachineLearningService
         public long AdaptiveSampleCount { get; private set; }
         public DateTimeOffset? AdaptiveLastUpdatedAt { get; private set; }
 
-        public void Add(MachineLearningObservation observation)
+        public long EstimatedWallPowerSampleCount { get; private set; }
+        public double EstimatedWallPowerMeanWatts { get; private set; }
+        public double EstimatedWallPowerM2 { get; private set; }
+        public int EstimatedWallPowerObservedDayCount { get; private set; }
+        public DateOnly? EstimatedWallPowerLastObservedLocalDate
+        {
+            get;
+            private set;
+        }
+        public DateTimeOffset? EstimatedWallPowerFirstObservedAt
+        {
+            get;
+            private set;
+        }
+        public DateTimeOffset? EstimatedWallPowerLastObservedAt
+        {
+            get;
+            private set;
+        }
+        public double AdaptiveEstimatedWallPowerMeanWatts
+        {
+            get;
+            private set;
+        }
+        public double AdaptiveEstimatedWallPowerVariance
+        {
+            get;
+            private set;
+        }
+        public long AdaptiveEstimatedWallPowerSampleCount
+        {
+            get;
+            private set;
+        }
+        public DateTimeOffset? AdaptiveEstimatedWallPowerLastUpdatedAt
+        {
+            get;
+            private set;
+        }
+
+        public bool Add(MachineLearningObservation observation)
         {
             Count = SaturatingIncrement(Count);
             var cpuDelta = observation.CpuUsagePercent - CpuMean;
@@ -1368,6 +1734,8 @@ public sealed class MachineLearningService
             }
 
             AddAdaptiveObservation(observation);
+            var powerEvidenceAccepted =
+                AddEstimatedWallPowerObservation(observation);
             LastObservedAt = observation.Timestamp;
             var localDate = ToLocalDate(observation.Timestamp);
             if (LastObservedLocalDate is null ||
@@ -1381,6 +1749,7 @@ public sealed class MachineLearningService
             ObservedDurationTicks = AddDurationTicks(
                 ObservedDurationTicks,
                 ObservationInterval.Ticks);
+            return powerEvidenceAccepted;
         }
 
         public MachineLearningBaseline ToSnapshot(
@@ -1408,7 +1777,31 @@ public sealed class MachineLearningService
             Math.Sqrt(Math.Max(0d, AdaptiveMemoryVariance)),
             AdaptiveSampleCount,
             AdaptiveLastUpdatedAt,
-            MachineLearningPolicy.GetFreshness(LastObservedAt, now));
+            MachineLearningPolicy.GetFreshness(LastObservedAt, now),
+            EstimatedWallPowerSampleCount,
+            EstimatedWallPowerSampleCount > 0
+                ? EstimatedWallPowerMeanWatts
+                : null,
+            EstimatedWallPowerSampleCount > 0
+                ? StandardDeviation(
+                    EstimatedWallPowerM2,
+                    EstimatedWallPowerSampleCount)
+                : null,
+            EstimatedWallPowerObservedDayCount,
+            EstimatedWallPowerFirstObservedAt,
+            EstimatedWallPowerLastObservedAt,
+            AdaptiveEstimatedWallPowerSampleCount > 0
+                ? AdaptiveEstimatedWallPowerMeanWatts
+                : null,
+            AdaptiveEstimatedWallPowerSampleCount > 0
+                ? Math.Sqrt(Math.Max(0d,
+                    AdaptiveEstimatedWallPowerVariance))
+                : null,
+            AdaptiveEstimatedWallPowerSampleCount,
+            AdaptiveEstimatedWallPowerLastUpdatedAt,
+            EstimatedWallPowerLastObservedAt is { } powerLast
+                ? MachineLearningPolicy.GetFreshness(powerLast, now)
+                : null);
 
         public MachineLearningBaselineState ToState(
             MachineLearningContextKey key) => new(
@@ -1434,7 +1827,102 @@ public sealed class MachineLearningService
             AdaptiveMemoryMean,
             AdaptiveMemoryVariance,
             AdaptiveSampleCount,
-            AdaptiveLastUpdatedAt);
+            AdaptiveLastUpdatedAt,
+            EstimatedWallPowerSampleCount,
+            EstimatedWallPowerSampleCount > 0
+                ? EstimatedWallPowerMeanWatts
+                : null,
+            EstimatedWallPowerSampleCount > 0
+                ? EstimatedWallPowerM2
+                : null,
+            EstimatedWallPowerObservedDayCount,
+            EstimatedWallPowerLastObservedLocalDate,
+            EstimatedWallPowerFirstObservedAt,
+            EstimatedWallPowerLastObservedAt,
+            AdaptiveEstimatedWallPowerSampleCount > 0
+                ? AdaptiveEstimatedWallPowerMeanWatts
+                : null,
+            AdaptiveEstimatedWallPowerSampleCount > 0
+                ? AdaptiveEstimatedWallPowerVariance
+                : null,
+            AdaptiveEstimatedWallPowerSampleCount,
+            AdaptiveEstimatedWallPowerLastUpdatedAt);
+
+        private bool AddEstimatedWallPowerObservation(
+            MachineLearningObservation observation)
+        {
+            if (observation.EstimatedWallPowerWatts is not { } watts ||
+                !double.IsFinite(watts) ||
+                watts < 0d)
+            {
+                return false;
+            }
+
+            EstimatedWallPowerSampleCount = SaturatingIncrement(
+                EstimatedWallPowerSampleCount);
+            var delta = watts - EstimatedWallPowerMeanWatts;
+            EstimatedWallPowerMeanWatts += delta /
+                EstimatedWallPowerSampleCount;
+            EstimatedWallPowerM2 += delta *
+                (watts - EstimatedWallPowerMeanWatts);
+            EstimatedWallPowerFirstObservedAt ??= observation.Timestamp;
+            EstimatedWallPowerLastObservedAt = observation.Timestamp;
+            var localDate = ToLocalDate(observation.Timestamp);
+            if (EstimatedWallPowerLastObservedLocalDate is null ||
+                localDate > EstimatedWallPowerLastObservedLocalDate.Value)
+            {
+                EstimatedWallPowerObservedDayCount =
+                    EstimatedWallPowerObservedDayCount == int.MaxValue
+                        ? int.MaxValue
+                        : EstimatedWallPowerObservedDayCount + 1;
+                EstimatedWallPowerLastObservedLocalDate = localDate;
+            }
+
+            AddAdaptiveEstimatedWallPowerObservation(
+                watts,
+                observation.Timestamp);
+            return true;
+        }
+
+        private void AddAdaptiveEstimatedWallPowerObservation(
+            double watts,
+            DateTimeOffset timestamp)
+        {
+            if (AdaptiveEstimatedWallPowerSampleCount == 0 ||
+                AdaptiveEstimatedWallPowerLastUpdatedAt is null)
+            {
+                AdaptiveEstimatedWallPowerMeanWatts = watts;
+                AdaptiveEstimatedWallPowerVariance = 0d;
+                AdaptiveEstimatedWallPowerSampleCount = 1;
+                AdaptiveEstimatedWallPowerLastUpdatedAt = timestamp;
+                return;
+            }
+
+            var elapsed = timestamp <=
+                    AdaptiveEstimatedWallPowerLastUpdatedAt.Value
+                ? TimeSpan.Zero
+                : timestamp -
+                    AdaptiveEstimatedWallPowerLastUpdatedAt.Value;
+            var decay = elapsed <= TimeSpan.Zero
+                ? 1d
+                : Math.Exp(-Math.Log(2d) *
+                    elapsed.TotalSeconds /
+                    MachineLearningPolicy.AdaptiveHalfLife.TotalSeconds);
+            var observationWeight = 1d - decay;
+            var mean = AdaptiveEstimatedWallPowerMeanWatts;
+            var variance = AdaptiveEstimatedWallPowerVariance;
+            UpdateAdaptiveNonnegative(
+                watts,
+                decay,
+                observationWeight,
+                ref mean,
+                ref variance);
+            AdaptiveEstimatedWallPowerMeanWatts = mean;
+            AdaptiveEstimatedWallPowerVariance = variance;
+            AdaptiveEstimatedWallPowerSampleCount = SaturatingIncrement(
+                AdaptiveEstimatedWallPowerSampleCount);
+            AdaptiveEstimatedWallPowerLastUpdatedAt = timestamp;
+        }
 
         private void AddAdaptiveObservation(
             MachineLearningObservation observation)
@@ -1462,7 +1950,7 @@ public sealed class MachineLearningService
             var observationWeight = 1d - decay;
             var cpuMean = AdaptiveCpuMean;
             var cpuVariance = AdaptiveCpuVariance;
-            UpdateAdaptive(
+            UpdateAdaptivePercentage(
                 observation.CpuUsagePercent,
                 decay,
                 observationWeight,
@@ -1472,7 +1960,7 @@ public sealed class MachineLearningService
             AdaptiveCpuVariance = cpuVariance;
             var memoryMean = AdaptiveMemoryMean;
             var memoryVariance = AdaptiveMemoryVariance;
-            UpdateAdaptive(
+            UpdateAdaptivePercentage(
                 observation.MemoryUsagePercent,
                 decay,
                 observationWeight,
@@ -1484,7 +1972,7 @@ public sealed class MachineLearningService
             AdaptiveLastUpdatedAt = observation.Timestamp;
         }
 
-        private static void UpdateAdaptive(
+        private static void UpdateAdaptivePercentage(
             double value,
             double previousWeight,
             double observationWeight,
@@ -1498,6 +1986,23 @@ public sealed class MachineLearningService
                     (variance + Math.Pow(previousMean - updatedMean, 2d)) +
                 observationWeight * Math.Pow(value - updatedMean, 2d);
             mean = Math.Clamp(updatedMean, 0d, 100d);
+            variance = Math.Max(0d, updatedVariance);
+        }
+
+        private static void UpdateAdaptiveNonnegative(
+            double value,
+            double previousWeight,
+            double observationWeight,
+            ref double mean,
+            ref double variance)
+        {
+            var previousMean = mean;
+            var updatedMean = previousWeight * previousMean +
+                observationWeight * value;
+            var updatedVariance = previousWeight *
+                    (variance + Math.Pow(previousMean - updatedMean, 2d)) +
+                observationWeight * Math.Pow(value - updatedMean, 2d);
+            mean = Math.Max(0d, updatedMean);
             variance = Math.Max(0d, updatedVariance);
         }
 

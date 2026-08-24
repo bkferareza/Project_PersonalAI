@@ -155,11 +155,11 @@ public sealed class MachineLearningPersistenceV3Tests
         foreach (var version in new[]
         {
             MachineLearningService.LegacyPersistenceSchemaVersion,
-            MachineLearningService.PreviousPersistenceSchemaVersion
+            MachineLearningService.VersionTwoPersistenceSchemaVersion
         })
         {
             var versionedBaseline = version ==
-                    MachineLearningService.PreviousPersistenceSchemaVersion
+                    MachineLearningService.VersionTwoPersistenceSchemaVersion
                 ? legacyBaseline with
                 {
                     NetworkQuietSampleCount = 100,
@@ -185,7 +185,7 @@ public sealed class MachineLearningPersistenceV3Tests
                 migrated.AdaptiveCpuStandardDeviation, 8);
             Assert.Equal(5, migrated.ObservedDayCount);
             Assert.Equal(version ==
-                    MachineLearningService.PreviousPersistenceSchemaVersion
+                    MachineLearningService.VersionTwoPersistenceSchemaVersion
                     ? 100
                     : 0,
                 migrated.NetworkQuietSampleCount);
@@ -207,7 +207,7 @@ public sealed class MachineLearningPersistenceV3Tests
     }
 
     [Fact]
-    public async Task VersionThreeRoundTripPreservesProfilesPatternsAndMetadata()
+    public async Task VersionFourRoundTripPreservesProfilesPatternsAndMetadata()
     {
         var start = CreateLocalTime(2026, 1, 1, 2);
         var baselines = Enumerable.Range(0, 3).Select(offset =>
@@ -267,7 +267,7 @@ public sealed class MachineLearningPersistenceV3Tests
     }
 
     [Fact]
-    public async Task CorruptVersionThreeCollectionsRecoverWithoutCrashing()
+    public async Task CorruptVersionFourCollectionsRecoverWithoutCrashing()
     {
         var start = CreateLocalTime(2026, 1, 1, 3);
         var baseline = CreateBaselineState(
@@ -384,7 +384,7 @@ public sealed class MachineLearningPersistenceV3Tests
     }
 
     [Fact]
-    public async Task FileStoreUsesAtomicTemporaryReplacementForSchemaThree()
+    public async Task FileStoreUsesAtomicTemporaryReplacementForSchemaFour()
     {
         var directory = Path.Combine(
             Path.GetTempPath(),

@@ -47,4 +47,15 @@ public sealed record MachineLearningBaselineState(
     double? AdaptiveMemoryMean = null,
     double? AdaptiveMemoryVariance = null,
     long AdaptiveSampleCount = 0,
-    DateTimeOffset? AdaptiveLastUpdatedAt = null);
+    DateTimeOffset? AdaptiveLastUpdatedAt = null,
+    long EstimatedWallPowerSampleCount = 0,
+    double? EstimatedWallPowerMeanWatts = null,
+    double? EstimatedWallPowerM2 = null,
+    int EstimatedWallPowerObservedDayCount = 0,
+    DateOnly? EstimatedWallPowerLastObservedLocalDate = null,
+    DateTimeOffset? EstimatedWallPowerFirstObservedAt = null,
+    DateTimeOffset? EstimatedWallPowerLastObservedAt = null,
+    double? AdaptiveEstimatedWallPowerMeanWatts = null,
+    double? AdaptiveEstimatedWallPowerVariance = null,
+    long AdaptiveEstimatedWallPowerSampleCount = 0,
+    DateTimeOffset? AdaptiveEstimatedWallPowerLastUpdatedAt = null);

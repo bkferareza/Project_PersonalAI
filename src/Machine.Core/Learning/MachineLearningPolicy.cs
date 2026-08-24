@@ -22,6 +22,8 @@ public static class MachineLearningPolicy
     // still reinforcing a profile after six minutes at full cadence.
     public const double MaterialMeanShiftPercentagePoints = 0.25d;
     public const double MaterialRangeBoundShiftPercentagePoints = 0.5d;
+    public const double MaterialEstimatedWallPowerMeanShiftWatts = 1d;
+    public const double MaterialEstimatedWallPowerRangeShiftWatts = 2d;
     public const int ProfileReinforcementSampleInterval = 12;
     // Adjacent profiles must overlap by at least half of the narrower range.
     public const double MinimumRangeOverlapRatio = 0.5d;
@@ -63,6 +65,38 @@ public static class MachineLearningPolicy
             Math.Clamp(mean - spread, 0d, 100d),
             Math.Clamp(mean + spread, 0d, 100d));
     }
+
+    public static MachineLearningRange? CreateNonnegativeTypicalRange(
+        double mean,
+        double standardDeviation,
+        long evidenceCount)
+    {
+        if (evidenceCount < MachineLearningService.ProvisionalSampleCount ||
+            !double.IsFinite(mean) ||
+            !double.IsFinite(standardDeviation) ||
+            mean < 0d ||
+            standardDeviation < 0d)
+        {
+            return null;
+        }
+
+        var spread = standardDeviation *
+            TypicalRangeStandardDeviationMultiplier;
+        return new MachineLearningRange(
+            Math.Max(0d, mean - spread),
+            mean + spread);
+    }
+
+    public static MachineLearningEvidenceMaturity GetEvidenceMaturity(
+        long evidenceCount,
+        int distinctObservedDayCount) =>
+        evidenceCount >= MachineLearningService.EstablishedSampleCount &&
+        distinctObservedDayCount >=
+            MachineLearningService.EstablishedObservedDayCount
+            ? MachineLearningEvidenceMaturity.Established
+            : evidenceCount >= MachineLearningService.ProvisionalSampleCount
+                ? MachineLearningEvidenceMaturity.Provisional
+                : MachineLearningEvidenceMaturity.Insufficient;
 
     public static bool AreRangesCompatible(
         MachineLearningRange left,

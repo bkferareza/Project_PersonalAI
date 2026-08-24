@@ -279,6 +279,7 @@ public sealed partial class MainWindow
                 snapshot,
                 networkSnapshot,
                 sessionSnapshot,
+                powerEstimate,
                 cancellationToken);
             var previousLearningHealth = _learningService.DataHealth;
             var previousLastPersistence = _learningService.LastPersistedAt;
@@ -781,6 +782,7 @@ public sealed partial class MainWindow
         MachineResourceSnapshot resources,
         MachineNetworkSnapshot? network,
         MachineSessionSnapshot? session,
+        MachinePowerEstimate powerEstimate,
         CancellationToken cancellationToken)
     {
         if (!_learningService.TryBeginObservationAttempt(
@@ -869,7 +871,12 @@ public sealed partial class MainWindow
             MachineInsightContextFingerprint.Create(behavioralFindings),
             networkActivityClass,
             receiveBytesPerSecond,
-            sendBytesPerSecond);
+            sendBytesPerSecond,
+            EstimatedWallPowerWatts:
+                MachineLearningPowerEvidencePolicy.
+                    SelectEligibleEstimatedWallPowerWatts(
+                        powerEstimate,
+                        resources.CapturedAt));
 
         return _learningService.Observe(observation);
     }

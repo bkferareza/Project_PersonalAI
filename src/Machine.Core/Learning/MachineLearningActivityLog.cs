@@ -44,7 +44,9 @@ public sealed record MachineLearningActivityEvent(
     long Count = 1,
     string? Detail = null,
     long? ByteCount = null,
-    long? DurationMilliseconds = null);
+    long? DurationMilliseconds = null,
+    bool? PowerEvidenceAccepted = null,
+    long? PowerEvidenceCount = null);
 
 public sealed record MachineLearningActivityPersistedState(
     IReadOnlyList<MachineLearningActivityEvent> Events);
@@ -98,7 +100,9 @@ public sealed class MachineLearningActivityLog
         int? schemaVersion = null,
         string? detail = null,
         long? byteCount = null,
-        long? durationMilliseconds = null)
+        long? durationMilliseconds = null,
+        bool? powerEvidenceAccepted = null,
+        long? powerEvidenceCount = null)
     {
         lock (_sync)
         {
@@ -116,7 +120,9 @@ public sealed class MachineLearningActivityLog
                 _events.Add(new MachineLearningActivityEvent(occurredAt,
                     kind, observationCount, profileCount, episodeCount,
                     schemaVersion, Detail: detail, ByteCount: byteCount,
-                    DurationMilliseconds: durationMilliseconds));
+                    DurationMilliseconds: durationMilliseconds,
+                    PowerEvidenceAccepted: powerEvidenceAccepted,
+                    PowerEvidenceCount: powerEvidenceCount));
             }
 
             Prune(occurredAt);

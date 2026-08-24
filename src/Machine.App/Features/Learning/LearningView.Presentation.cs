@@ -219,6 +219,16 @@ public sealed partial class LearningView
         {
             details.Add($"{item.DurationMilliseconds:N0} ms");
         }
+        if (item.PowerEvidenceAccepted is { } accepted)
+        {
+            details.Add(accepted
+                ? "power evidence accepted"
+                : "power evidence unavailable");
+        }
+        if (item.PowerEvidenceCount is { } powerEvidenceCount)
+        {
+            details.Add($"{powerEvidenceCount:N0} power samples");
+        }
         return details.Count == 0 ? "Lifecycle event" : string.Join(" · ", details);
     }
 
