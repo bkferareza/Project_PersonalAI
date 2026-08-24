@@ -16,6 +16,7 @@ public enum MachineLearningStoreLoadStatus
     NotFound,
     Loaded,
     Corrupt,
+    Incompatible,
     Unavailable
 }
 

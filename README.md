@@ -90,7 +90,9 @@ History never stores process names, interface identities, addresses, endpoints, 
 
 ## Debugging in VS Code
 
-Install the .NET 10 SDK plus the workspace-recommended Microsoft C# Dev Kit and WinApp extensions. Select `Machine.App: Debug x64`; the workspace task builds and registers the development package, the debugger attaches to the internal `Machine.App` process, and the post-debug task removes the package. If cleanup is interrupted, run `Machine.App: Remove debug package` before the next session.
+Install the .NET 10 SDK plus the workspace-recommended Microsoft C# Dev Kit and WinApp extensions. Select `Machine.App: Debug x64`; the workspace task builds and updates/registers the same development package identity in place, preserving package-local application data. Debug completion does not unregister or clean the package.
+
+The former automatic post-debug unregister removed the package container and caused development Learning/History loss. The explicitly named destructive unregister task is now guarded: it gracefully shuts down the exact resident, creates and revalidates a SHA-256 manifest backup under `%LOCALAPPDATA%\Matasuri\DevelopmentBackups`, and aborts before unregister if any required durable JSON is unreadable, incompatible, missing from the copy, or checksum-invalid. Restore is explicit, first snapshots current state, and refuses schema downgrade. See `scripts/development/README.md`. At runtime, rejected or temporarily unreadable persistence files are retained as bounded diagnostic copies and their store instance blocks writes instead of overwriting the only evidence with an empty state.
 
 ## Next slice
 

@@ -432,16 +432,25 @@ public sealed class MachineHistoryService
                 MachineHistoryStoreLoadStatus.Unavailable =>
                     MachineHistoryDataStatus
                         .PersistenceTemporarilyUnavailable,
+                MachineHistoryStoreLoadStatus.Incompatible =>
+                    MachineHistoryDataStatus
+                        .PersistenceTemporarilyUnavailable,
                 _ => MachineHistoryDataStatus.NotYetPersisted
             };
             return;
         }
 
-        if (!IsValidState(state))
+        var validation = ValidatePersistedState(state);
+        if (validation != MachinePersistenceValidationResult.Accepted)
         {
-            _recoveredFromInvalidState = true;
-            _dataStatus =
-                MachineHistoryDataStatus.RecoveredFromInvalidState;
+            _recoveredFromInvalidState = validation ==
+                MachinePersistenceValidationResult.Rejected;
+            _dataStatus = validation ==
+                MachinePersistenceValidationResult.Incompatible
+                    ? MachineHistoryDataStatus
+                        .PersistenceTemporarilyUnavailable
+                    : MachineHistoryDataStatus
+                        .RecoveredFromInvalidState;
             return;
         }
 
@@ -984,9 +993,27 @@ public sealed class MachineHistoryService
         _lastObservedAt,
         persistedAt);
 
+    internal static MachinePersistenceValidationResult
+        ValidatePersistedState(MachineHistoryPersistedState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.SchemaVersion > PersistenceSchemaVersion)
+        {
+            return MachinePersistenceValidationResult.Incompatible;
+        }
+
+        if (state.SchemaVersion != PersistenceSchemaVersion)
+        {
+            return MachinePersistenceValidationResult.Rejected;
+        }
+
+        return IsValidState(state)
+            ? MachinePersistenceValidationResult.Accepted
+            : MachinePersistenceValidationResult.Rejected;
+    }
+
     private static bool IsValidState(
         MachineHistoryPersistedState state) =>
-        state.SchemaVersion == PersistenceSchemaVersion &&
         IsValidList(
             state.FiveMinuteRollups,
             MaximumFiveMinuteRollupCount) &&

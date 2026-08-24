@@ -15,6 +15,7 @@ public enum MachineHistoryStoreLoadStatus
     NotFound,
     Loaded,
     Corrupt,
+    Incompatible,
     Unavailable
 }
 

@@ -100,8 +100,18 @@ public sealed class ElectricityRateEnrichmentService
                     false, requestCount);
             }
 
-            await _cache.SaveAsync(cache.Rates.Append(rate), cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                await _cache.SaveAsync(cache.Rates.Append(rate),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException or IOException or
+                    UnauthorizedAccessException)
+            {
+                // A rejected or unavailable cache must remain untouched, but
+                // the verified live rate can still be returned for this run.
+            }
             return new(rate, rate.ProviderName, rate.UtilityConfidence, false,
                 requestCount);
         }

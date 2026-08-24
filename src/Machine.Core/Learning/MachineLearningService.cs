@@ -313,6 +313,8 @@ public sealed class MachineLearningService
             {
                 MachineLearningStoreLoadStatus.Corrupt =>
                     MachineLearningDataHealth.RecoveredFromCorruptState,
+                MachineLearningStoreLoadStatus.Incompatible =>
+                    MachineLearningDataHealth.PersistenceTemporarilyUnavailable,
                 MachineLearningStoreLoadStatus.Unavailable =>
                     MachineLearningDataHealth.PersistenceTemporarilyUnavailable,
                 _ => MachineLearningDataHealth.NotYetPersisted
@@ -321,10 +323,15 @@ public sealed class MachineLearningService
             {
                 MachineLearningStoreLoadStatus.Corrupt =>
                     MachineLearningActivityKind.RestoreCorrupt,
+                MachineLearningStoreLoadStatus.Incompatible =>
+                    MachineLearningActivityKind.RestoreUnavailable,
                 MachineLearningStoreLoadStatus.Unavailable =>
                     MachineLearningActivityKind.RestoreUnavailable,
                 _ => MachineLearningActivityKind.RestoreMissing
-            }, _currentSessionStartedAt);
+            }, _currentSessionStartedAt,
+                detail: loadStatus == MachineLearningStoreLoadStatus.Incompatible
+                    ? "Newer persistence schema is preserved; writes blocked"
+                    : null);
             return;
         }
 
@@ -1194,6 +1201,61 @@ public sealed class MachineLearningService
     private static bool HasHierarchicalState(int schemaVersion) =>
         schemaVersion is PreviousPersistenceSchemaVersion or
             PersistenceSchemaVersion;
+
+    internal static MachinePersistenceValidationResult
+        ValidatePersistedStateForStorage(
+            MachineLearningPersistedState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.SchemaVersion > PersistenceSchemaVersion)
+        {
+            return MachinePersistenceValidationResult.Incompatible;
+        }
+
+        if (state.SchemaVersion is not PersistenceSchemaVersion and
+                not PreviousPersistenceSchemaVersion and
+                not VersionTwoPersistenceSchemaVersion and
+                not LegacyPersistenceSchemaVersion ||
+            state.Baselines is null ||
+            state.Baselines.Count > MaximumContextProfileCount ||
+            state.Episodes is null ||
+            state.Episodes.Count > MaximumEpisodeCount ||
+            state.ObservationCount < 0 ||
+            state.ObservedDurationTicks < 0 ||
+            state.Baselines.Any(item => !IsValidBaselineState(item)) ||
+            state.Baselines.Select(item => new MachineLearningContextKey(
+                    item.LocalHour,
+                    item.ActivityState))
+                .Distinct().Count() != state.Baselines.Count ||
+            state.Episodes.Any(item => !IsValidEpisode(item)) ||
+            state.ActiveEpisode is not null &&
+                !IsValidEpisode(state.ActiveEpisode))
+        {
+            return MachinePersistenceValidationResult.Rejected;
+        }
+
+        if (!HasHierarchicalState(state.SchemaVersion))
+        {
+            return MachinePersistenceValidationResult.Accepted;
+        }
+
+        if (!IsValidMetadata(state.Metadata) ||
+            !IsMetadataConsistentWithState(state.Metadata!, state) ||
+            state.ContextProfiles is null ||
+            state.ContextProfiles.Count > MaximumContextProfileCount ||
+            state.ContextProfiles.Any(item => !IsValidProfile(item)) ||
+            state.ContextProfiles.Select(item => item.ContextKey)
+                .Distinct().Count() != state.ContextProfiles.Count ||
+            state.BroaderPatterns is null ||
+            state.BroaderPatterns.Count >
+                MachineLearningPolicy.MaximumPatternCount ||
+            state.BroaderPatterns.Any(item => !IsValidPattern(item)))
+        {
+            return MachinePersistenceValidationResult.Rejected;
+        }
+
+        return MachinePersistenceValidationResult.Accepted;
+    }
 
     private static bool IsValidObservation(
         MachineLearningObservation observation) =>

@@ -416,7 +416,11 @@ public sealed class MachineLearningPersistenceV3Tests
             await store.SaveAsync(state);
             await store.SaveAsync(state with
             {
-                PersistedAt = start.AddMinutes(1)
+                PersistedAt = start.AddMinutes(1),
+                Metadata = state.Metadata! with
+                {
+                    LastPersistedAt = start.AddMinutes(1)
+                }
             });
 
             Assert.True(File.Exists(Path.Combine(

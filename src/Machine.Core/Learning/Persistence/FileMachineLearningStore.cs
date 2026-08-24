@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Machine.Core;
 
 public sealed class FileMachineLearningStore :
@@ -9,10 +7,7 @@ public sealed class FileMachineLearningStore :
 {
     private const string FileName = "learning-state.json";
     private readonly string _filePath;
-    private readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        WriteIndented = false
-    };
+    private readonly SafeJsonFile<MachineLearningPersistedState> _safeFile;
 
     public FileMachineLearningStore(string? directoryPath = null)
     {
@@ -21,6 +16,10 @@ public sealed class FileMachineLearningStore :
                 Environment.SpecialFolder.LocalApplicationData),
             "Machine");
         _filePath = Path.Combine(directory, FileName);
+        _safeFile = new(
+            _filePath,
+            new() { WriteIndented = false },
+            MachineLearningService.ValidatePersistedStateForStorage);
     }
 
     public MachineLearningStoreLoadStatus LastLoadStatus { get; private set; }
@@ -30,48 +29,29 @@ public sealed class FileMachineLearningStore :
     public async Task<MachineLearningPersistedState?> LoadAsync(
         CancellationToken cancellationToken = default)
     {
-        try
+        var result = await _safeFile.LoadAsync(cancellationToken)
+            .ConfigureAwait(false);
+        LastLoadStatus = result.Status switch
         {
-            if (!File.Exists(_filePath))
-            {
-                LastLoadStatus = MachineLearningStoreLoadStatus.NotFound;
-                return null;
-            }
-            await using var stream = File.OpenRead(_filePath);
-            var state = await JsonSerializer.DeserializeAsync<
-                MachineLearningPersistedState>(stream, _jsonOptions,
-                cancellationToken).ConfigureAwait(false);
-            LastLoadStatus = state is null
-                ? MachineLearningStoreLoadStatus.Corrupt
-                : MachineLearningStoreLoadStatus.Loaded;
-            return state;
-        }
-        catch (JsonException)
-        {
-            LastLoadStatus = MachineLearningStoreLoadStatus.Corrupt;
-            return null;
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException)
-        {
-            LastLoadStatus = MachineLearningStoreLoadStatus.Unavailable;
-            return null;
-        }
+            MachineSafeJsonLoadStatus.NotFound =>
+                MachineLearningStoreLoadStatus.NotFound,
+            MachineSafeJsonLoadStatus.Loaded =>
+                MachineLearningStoreLoadStatus.Loaded,
+            MachineSafeJsonLoadStatus.Rejected =>
+                MachineLearningStoreLoadStatus.Corrupt,
+            MachineSafeJsonLoadStatus.Incompatible =>
+                MachineLearningStoreLoadStatus.Incompatible,
+            _ => MachineLearningStoreLoadStatus.Unavailable
+        };
+        return result.Value;
     }
 
     public async Task SaveAsync(MachineLearningPersistedState state,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(state);
-        var directory = Path.GetDirectoryName(_filePath)!;
-        Directory.CreateDirectory(directory);
-        var temporaryPath = _filePath + ".tmp";
-        await using (var stream = File.Create(temporaryPath))
-        {
-            await JsonSerializer.SerializeAsync(stream, state, _jsonOptions,
-                cancellationToken).ConfigureAwait(false);
-        }
-        File.Move(temporaryPath, _filePath, overwrite: true);
+        await _safeFile.SaveAsync(state, cancellationToken)
+            .ConfigureAwait(false);
         LastSavedByteCount = new FileInfo(_filePath).Length;
     }
 }

@@ -20,22 +20,53 @@
       }
     },
     {
-      "label": "Machine.App: Remove debug package",
+      "label": "Machine.App: DESTRUCTIVE unregister (guarded backup)",
       "type": "process",
       "command": "powershell.exe",
       "args": [
         "-NoLogo",
         "-NoProfile",
         "-NonInteractive",
-        "-Command",
-        "$ErrorActionPreference = 'Stop'; $project = Join-Path $env:MACHINE_WORKSPACE_ROOT 'src\\Machine.App\\Machine.App.csproj'; $manifest = Join-Path $env:MACHINE_WORKSPACE_ROOT 'src\\Machine.App\\bin\\Debug\\net10.0-windows10.0.26100.0\\win-x64\\AppxManifest.xml'; $cliOutput = @(& dotnet msbuild $project -getProperty:WinAppCliPath -property:Configuration=Debug -property:RuntimeIdentifier=win-x64); if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $cli = ($cliOutput | Select-Object -Last 1).Trim(); if (-not (Test-Path -LiteralPath $cli)) { throw 'The project WinApp CLI was not found.' }; & $cli unregister --manifest $manifest; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; for ($attempt = 0; $attempt -lt 50 -and (Get-Process -Name 'Machine.App' -ErrorAction SilentlyContinue); $attempt++) { Start-Sleep -Milliseconds 100 }; if (Get-Process -Name 'Machine.App' -ErrorAction SilentlyContinue) { throw 'Machine.App is still running after debug cleanup.' }"
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/development/Invoke-MatasuriGuardedUnregister.ps1",
+        "-WorkspaceRoot",
+        "${workspaceFolder}",
+        "-ManifestPath",
+        "${workspaceFolder}/src/Machine.App/bin/Debug/net10.0-windows10.0.26100.0/win-x64/AppxManifest.xml",
+        "-ConfirmDestructiveUnregister"
       ],
-      "options": {
-        "env": {
-          "MACHINE_WORKSPACE_ROOT": "${workspaceFolder}"
-        }
-      },
       "problemMatcher": []
+    },
+    {
+      "label": "Machine.App: Restore development state (guarded)",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/development/Restore-MatasuriDevelopmentState.ps1",
+        "-WorkspaceRoot",
+        "${workspaceFolder}",
+        "-ManifestPath",
+        "${workspaceFolder}/src/Machine.App/bin/Debug/net10.0-windows10.0.26100.0/win-x64/AppxManifest.xml",
+        "-BackupDirectory",
+        "${input:matasuriBackupDirectory}",
+        "-Relaunch"
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "matasuriBackupDirectory",
+      "type": "promptString",
+      "description": "Exact verified development backup directory to restore"
     }
   ]
 }

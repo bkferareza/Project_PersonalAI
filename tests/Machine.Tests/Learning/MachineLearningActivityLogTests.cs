@@ -1,9 +1,79 @@
+using System.Text.Json;
 using Machine.Core;
 
 namespace Machine.Tests;
 
 public sealed class MachineLearningActivityLogTests
 {
+    [Fact]
+    public async Task FileStoreRoundTripsBoundedValidActivity()
+    {
+        var directory = Path.Combine(Path.GetTempPath(),
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var store = new FileMachineLearningActivityStore(directory);
+            await store.SaveAsync(new([
+                new(now, MachineLearningActivityKind.RuntimeStarted)
+            ]));
+
+            var restored = await store.LoadAsync();
+
+            Assert.Single(restored!.Events);
+            Assert.False(File.Exists(Path.Combine(directory,
+                "learning-activity.json.tmp")));
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task FileStorePreservesOversizedActivityAndBlocksWrites()
+    {
+        var directory = Path.Combine(Path.GetTempPath(),
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var filePath = Path.Combine(directory, "learning-activity.json");
+            var now = DateTimeOffset.UtcNow;
+            var invalid = new MachineLearningActivityPersistedState(
+                Enumerable.Range(0,
+                        MachineLearningActivityLog.MaximumEventCount + 1)
+                    .Select(_ => new MachineLearningActivityEvent(now,
+                        MachineLearningActivityKind.ObservationAccepted))
+                    .ToArray());
+            var json = JsonSerializer.Serialize(invalid);
+            await File.WriteAllTextAsync(filePath, json);
+            var store = new FileMachineLearningActivityStore(directory);
+
+            Assert.Null(await store.LoadAsync());
+            Assert.Equal(json, await File.ReadAllTextAsync(filePath));
+            var rejected = Assert.Single(Directory.GetFiles(directory,
+                "learning-activity.json.rejected-*"));
+            Assert.Equal(json, await File.ReadAllTextAsync(rejected));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                store.SaveAsync(new([
+                    new(now, MachineLearningActivityKind.RuntimeStarted)
+                ])));
+            Assert.Equal(json, await File.ReadAllTextAsync(filePath));
+            Assert.False(File.Exists(filePath + ".tmp"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
     [Fact]
     public async Task RestoreRegressionRecordsDiagnosticWithoutRepairingCount()
     {

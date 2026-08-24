@@ -138,16 +138,25 @@ public sealed class MachineHealthHistoryService
                 MachineHealthHistoryStoreLoadStatus.Unavailable =>
                     MachineHealthHistoryDataStatus
                         .PersistenceTemporarilyUnavailable,
+                MachineHealthHistoryStoreLoadStatus.Incompatible =>
+                    MachineHealthHistoryDataStatus
+                        .PersistenceTemporarilyUnavailable,
                 _ => MachineHealthHistoryDataStatus.NotYetPersisted
             };
             return;
         }
 
-        if (!IsValidState(state))
+        var validation = ValidatePersistedState(state);
+        if (validation != MachinePersistenceValidationResult.Accepted)
         {
-            _recoveredFromInvalidState = true;
-            _dataStatus = MachineHealthHistoryDataStatus
-                .RecoveredFromInvalidState;
+            _recoveredFromInvalidState = validation ==
+                MachinePersistenceValidationResult.Rejected;
+            _dataStatus = validation ==
+                MachinePersistenceValidationResult.Incompatible
+                    ? MachineHealthHistoryDataStatus
+                        .PersistenceTemporarilyUnavailable
+                    : MachineHealthHistoryDataStatus
+                        .RecoveredFromInvalidState;
             return;
         }
 
@@ -270,9 +279,27 @@ public sealed class MachineHealthHistoryService
         _lastObservedAt,
         persistedAt);
 
+    internal static MachinePersistenceValidationResult
+        ValidatePersistedState(MachineHealthHistoryPersistedState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.SchemaVersion > PersistenceSchemaVersion)
+        {
+            return MachinePersistenceValidationResult.Incompatible;
+        }
+
+        if (state.SchemaVersion != PersistenceSchemaVersion)
+        {
+            return MachinePersistenceValidationResult.Rejected;
+        }
+
+        return IsValidState(state)
+            ? MachinePersistenceValidationResult.Accepted
+            : MachinePersistenceValidationResult.Rejected;
+    }
+
     private static bool IsValidState(
         MachineHealthHistoryPersistedState state) =>
-        state.SchemaVersion == PersistenceSchemaVersion &&
         state.LifetimeObservedIncidentCount >= 0 &&
         state.KnownIncidentFingerprints is not null &&
         state.KnownIncidentFingerprints.Count <=

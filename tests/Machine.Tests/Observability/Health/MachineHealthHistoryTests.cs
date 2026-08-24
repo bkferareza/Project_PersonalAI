@@ -123,6 +123,10 @@ public sealed class MachineHealthHistoryTests
         {
             var service = new MachineHealthHistoryService();
             var store = new FileMachineHealthHistoryStore(directory);
+            Assert.Null(await store.LoadAsync());
+            Assert.Equal(
+                MachineHealthHistoryStoreLoadStatus.NotFound,
+                store.LastLoadStatus);
             service.Observe(
                 null,
                 null,
@@ -146,6 +150,13 @@ public sealed class MachineHealthHistoryTests
                 StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("secret", json,
                 StringComparison.OrdinalIgnoreCase);
+            Assert.NotNull(await store.LoadAsync());
+            Assert.Equal(
+                MachineHealthHistoryStoreLoadStatus.Loaded,
+                store.LastLoadStatus);
+            Assert.False(File.Exists(Path.Combine(
+                directory,
+                "health-history-v1.json.tmp")));
         }
         finally
         {
@@ -153,6 +164,148 @@ public sealed class MachineHealthHistoryTests
             {
                 Directory.Delete(directory, recursive: true);
             }
+        }
+    }
+
+    [Theory]
+    [InlineData("{ not-json }")]
+    [InlineData("{\"SchemaVersion\":1}")]
+    public async Task RejectedHealthStateIsPreservedAndCannotBeOverwritten(
+        string rejectedJson)
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "MachineHealthTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var filePath = Path.Combine(directory, "health-history-v1.json");
+            await File.WriteAllTextAsync(filePath, rejectedJson);
+            var originalBytes = await File.ReadAllBytesAsync(filePath);
+            var store = new FileMachineHealthHistoryStore(directory);
+            var service = new MachineHealthHistoryService();
+
+            await service.LoadAsync(store);
+
+            Assert.Equal(
+                MachineHealthHistoryDataStatus.RecoveredFromInvalidState,
+                service.GetSnapshot().DataStatus);
+            Assert.False(await service.SaveIfDueAsync(
+                store,
+                Now,
+                force: true));
+            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(filePath));
+            for (var attempt = 0; attempt < 4; attempt++)
+            {
+                Assert.Null(await store.LoadAsync());
+            }
+            var rejectedPaths = Directory.GetFiles(
+                directory,
+                "health-history-v1.json.rejected-*");
+            Assert.Equal(3, rejectedPaths.Length);
+            foreach (var rejectedPath in rejectedPaths)
+            {
+                Assert.Equal(
+                    originalBytes,
+                    await File.ReadAllBytesAsync(rejectedPath));
+            }
+            Assert.Empty(Directory.GetFiles(directory, "*.pending"));
+            Assert.False(File.Exists(filePath + ".tmp"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task NewerHealthSchemaIsPreservedAndWriteBlocked()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "MachineHealthTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var filePath = Path.Combine(directory, "health-history-v1.json");
+            var originalBytes = "{\"SchemaVersion\":2}"u8.ToArray();
+            await File.WriteAllBytesAsync(filePath, originalBytes);
+            var store = new FileMachineHealthHistoryStore(directory);
+            var service = new MachineHealthHistoryService();
+
+            await service.LoadAsync(store);
+
+            Assert.Equal(
+                MachineHealthHistoryStoreLoadStatus.Incompatible,
+                store.LastLoadStatus);
+            Assert.Equal(
+                MachineHealthHistoryDataStatus
+                    .PersistenceTemporarilyUnavailable,
+                service.GetSnapshot().DataStatus);
+            Assert.False(await service.SaveIfDueAsync(
+                store,
+                Now,
+                force: true));
+            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(filePath));
+            Assert.Single(Directory.GetFiles(
+                directory,
+                "health-history-v1.json.rejected-*"));
+            Assert.Empty(Directory.GetFiles(directory, "*.pending"));
+            Assert.False(File.Exists(filePath + ".tmp"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task UnavailableHealthReadBlocksLaterWrite()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "MachineHealthTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var filePath = Path.Combine(directory, "health-history-v1.json");
+            var originalBytes = "locked"u8.ToArray();
+            await File.WriteAllBytesAsync(filePath, originalBytes);
+            var store = new FileMachineHealthHistoryStore(directory);
+            var service = new MachineHealthHistoryService();
+            await using (var locked = new FileStream(
+                filePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.None))
+            {
+                await service.LoadAsync(store);
+            }
+
+            Assert.Equal(
+                MachineHealthHistoryStoreLoadStatus.Unavailable,
+                store.LastLoadStatus);
+            Assert.Equal(
+                MachineHealthHistoryDataStatus
+                    .PersistenceTemporarilyUnavailable,
+                service.GetSnapshot().DataStatus);
+            Assert.False(await service.SaveIfDueAsync(
+                store,
+                Now,
+                force: true));
+            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(filePath));
+            Assert.Empty(Directory.GetFiles(
+                directory,
+                "health-history-v1.json.rejected-*"));
+            Assert.Empty(Directory.GetFiles(directory, "*.pending"));
+            Assert.False(File.Exists(filePath + ".tmp"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
         }
     }
 

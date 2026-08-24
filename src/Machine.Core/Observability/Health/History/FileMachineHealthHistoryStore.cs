@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Machine.Core;
 
 public sealed class FileMachineHealthHistoryStore :
@@ -7,11 +5,8 @@ public sealed class FileMachineHealthHistoryStore :
     IMachineHealthHistoryStoreDiagnostics
 {
     private const string FileName = "health-history-v1.json";
-    private readonly string _filePath;
-    private readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        WriteIndented = false
-    };
+    private readonly SafeJsonFile<MachineHealthHistoryPersistedState>
+        _safeFile;
 
     public FileMachineHealthHistoryStore(string? directoryPath = null)
     {
@@ -19,7 +14,13 @@ public sealed class FileMachineHealthHistoryStore :
             Environment.GetFolderPath(
                 Environment.SpecialFolder.LocalApplicationData),
             "Machine");
-        _filePath = Path.Combine(directory, FileName);
+        _safeFile = new SafeJsonFile<MachineHealthHistoryPersistedState>(
+            Path.Combine(directory, FileName),
+            new()
+            {
+                WriteIndented = false
+            },
+            MachineHealthHistoryService.ValidatePersistedState);
     }
 
     public MachineHealthHistoryStoreLoadStatus LastLoadStatus
@@ -31,56 +32,28 @@ public sealed class FileMachineHealthHistoryStore :
     public async Task<MachineHealthHistoryPersistedState?> LoadAsync(
         CancellationToken cancellationToken = default)
     {
-        try
+        var result = await _safeFile.LoadAsync(cancellationToken)
+            .ConfigureAwait(false);
+        LastLoadStatus = result.Status switch
         {
-            if (!File.Exists(_filePath))
-            {
-                LastLoadStatus =
-                    MachineHealthHistoryStoreLoadStatus.NotFound;
-                return null;
-            }
-
-            await using var stream = File.OpenRead(_filePath);
-            var state = await JsonSerializer.DeserializeAsync<
-                MachineHealthHistoryPersistedState>(
-                    stream,
-                    _jsonOptions,
-                    cancellationToken).ConfigureAwait(false);
-            LastLoadStatus = state is null
-                ? MachineHealthHistoryStoreLoadStatus.Corrupt
-                : MachineHealthHistoryStoreLoadStatus.Loaded;
-            return state;
-        }
-        catch (JsonException)
-        {
-            LastLoadStatus = MachineHealthHistoryStoreLoadStatus.Corrupt;
-            return null;
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException)
-        {
-            LastLoadStatus = MachineHealthHistoryStoreLoadStatus.Unavailable;
-            return null;
-        }
+            MachineSafeJsonLoadStatus.NotFound =>
+                MachineHealthHistoryStoreLoadStatus.NotFound,
+            MachineSafeJsonLoadStatus.Loaded =>
+                MachineHealthHistoryStoreLoadStatus.Loaded,
+            MachineSafeJsonLoadStatus.Rejected =>
+                MachineHealthHistoryStoreLoadStatus.Corrupt,
+            MachineSafeJsonLoadStatus.Incompatible =>
+                MachineHealthHistoryStoreLoadStatus.Incompatible,
+            _ => MachineHealthHistoryStoreLoadStatus.Unavailable
+        };
+        return result.Value;
     }
 
     public async Task SaveAsync(
         MachineHealthHistoryPersistedState state,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(state);
-        var directory = Path.GetDirectoryName(_filePath)!;
-        Directory.CreateDirectory(directory);
-        var temporaryPath = _filePath + ".tmp";
-        await using (var stream = File.Create(temporaryPath))
-        {
-            await JsonSerializer.SerializeAsync(
-                stream,
-                state,
-                _jsonOptions,
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        File.Move(temporaryPath, _filePath, overwrite: true);
+        await _safeFile.SaveAsync(state, cancellationToken)
+            .ConfigureAwait(false);
     }
 }

@@ -370,8 +370,11 @@ public sealed class MachineHistoryTests
             }, null)));
     }
 
-    [Fact]
-    public async Task CorruptStoreRecoversWithoutStoppingCollection()
+    [Theory]
+    [InlineData("{ not-json }")]
+    [InlineData("{\"SchemaVersion\":1}")]
+    public async Task RejectedStoreIsPreservedAndCannotBeOverwritten(
+        string rejectedJson)
     {
         var directory = Path.Combine(
             Path.GetTempPath(),
@@ -380,16 +383,134 @@ public sealed class MachineHistoryTests
         Directory.CreateDirectory(directory);
         try
         {
-            await File.WriteAllTextAsync(
-                Path.Combine(directory, FileMachineHistoryStore.FileName),
-                "{ not-json }");
+            var filePath = Path.Combine(
+                directory,
+                FileMachineHistoryStore.FileName);
+            await File.WriteAllTextAsync(filePath, rejectedJson);
+            var originalBytes = await File.ReadAllBytesAsync(filePath);
+            var store = new FileMachineHistoryStore(directory);
             var service = CreateService();
-            await service.LoadAsync(new FileMachineHistoryStore(directory));
+            await service.LoadAsync(store);
 
             Assert.Equal(
                 MachineHistoryDataStatus.RecoveredFromInvalidState,
                 service.DataStatus);
             Assert.True(service.Observe(Observation(Now)));
+            Assert.False(await service.SaveIfDueAsync(
+                store,
+                Now,
+                force: true));
+            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(filePath));
+            for (var attempt = 0; attempt < 4; attempt++)
+            {
+                Assert.Null(await store.LoadAsync());
+            }
+            var rejectedPaths = Directory.GetFiles(
+                directory,
+                FileMachineHistoryStore.FileName + ".rejected-*");
+            Assert.Equal(3, rejectedPaths.Length);
+            foreach (var rejectedPath in rejectedPaths)
+            {
+                Assert.Equal(
+                    originalBytes,
+                    await File.ReadAllBytesAsync(rejectedPath));
+            }
+            Assert.Empty(Directory.GetFiles(directory, "*.pending"));
+            Assert.False(File.Exists(filePath + ".tmp"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task NewerHistorySchemaIsPreservedAndWriteBlocked()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "MatasuriHistoryTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var filePath = Path.Combine(
+                directory,
+                FileMachineHistoryStore.FileName);
+            var originalBytes = "{\"SchemaVersion\":2}"u8.ToArray();
+            await File.WriteAllBytesAsync(filePath, originalBytes);
+            var store = new FileMachineHistoryStore(directory);
+            var service = CreateService();
+
+            await service.LoadAsync(store);
+
+            Assert.Equal(
+                MachineHistoryStoreLoadStatus.Incompatible,
+                store.LastLoadStatus);
+            Assert.Equal(
+                MachineHistoryDataStatus.PersistenceTemporarilyUnavailable,
+                service.DataStatus);
+            service.Observe(Observation(Now));
+            Assert.False(await service.SaveIfDueAsync(
+                store,
+                Now,
+                force: true));
+            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(filePath));
+            Assert.Single(Directory.GetFiles(
+                directory,
+                FileMachineHistoryStore.FileName + ".rejected-*"));
+            Assert.Empty(Directory.GetFiles(directory, "*.pending"));
+            Assert.False(File.Exists(filePath + ".tmp"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task UnavailableHistoryReadBlocksLaterWrite()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "MatasuriHistoryTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var filePath = Path.Combine(
+                directory,
+                FileMachineHistoryStore.FileName);
+            var originalBytes = "locked"u8.ToArray();
+            await File.WriteAllBytesAsync(filePath, originalBytes);
+            var store = new FileMachineHistoryStore(directory);
+            var service = CreateService();
+            await using (var locked = new FileStream(
+                filePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.None))
+            {
+                await service.LoadAsync(store);
+            }
+
+            Assert.Equal(
+                MachineHistoryStoreLoadStatus.Unavailable,
+                store.LastLoadStatus);
+            Assert.Equal(
+                MachineHistoryDataStatus.PersistenceTemporarilyUnavailable,
+                service.DataStatus);
+            service.Observe(Observation(Now));
+            Assert.False(await service.SaveIfDueAsync(
+                store,
+                Now,
+                force: true));
+            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(filePath));
+            Assert.Empty(Directory.GetFiles(
+                directory,
+                FileMachineHistoryStore.FileName + ".rejected-*"));
+            Assert.Empty(Directory.GetFiles(directory, "*.pending"));
+            Assert.False(File.Exists(filePath + ".tmp"));
         }
         finally
         {
@@ -407,9 +528,14 @@ public sealed class MachineHistoryTests
         try
         {
             var service = CreateService();
+            var store = new FileMachineHistoryStore(directory);
+            Assert.Null(await store.LoadAsync());
+            Assert.Equal(
+                MachineHistoryStoreLoadStatus.NotFound,
+                store.LastLoadStatus);
             service.Observe(Observation(Now));
             await service.SaveIfDueAsync(
-                new FileMachineHistoryStore(directory),
+                store,
                 Now,
                 force: true);
             var json = await File.ReadAllTextAsync(Path.Combine(
@@ -427,6 +553,10 @@ public sealed class MachineHistoryTests
             Assert.False(File.Exists(Path.Combine(
                 directory,
                 FileMachineHistoryStore.FileName + ".tmp")));
+            Assert.NotNull(await store.LoadAsync());
+            Assert.Equal(
+                MachineHistoryStoreLoadStatus.Loaded,
+                store.LastLoadStatus);
         }
         finally
         {

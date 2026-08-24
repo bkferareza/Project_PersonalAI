@@ -1,51 +1,58 @@
-using System.Text.Json;
-
 namespace Machine.Core;
 
 public sealed class FileMachineLearningActivityStore : IMachineLearningActivityStore
 {
     private const string FileName = "learning-activity.json";
-    private readonly string _filePath;
-    private readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        WriteIndented = false
-    };
+    private const int MaximumDetailLength = 512;
+    private readonly SafeJsonFile<MachineLearningActivityPersistedState>
+        _safeFile;
 
     public FileMachineLearningActivityStore(string? directoryPath = null)
     {
         var directory = directoryPath ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Machine");
-        _filePath = Path.Combine(directory, FileName);
+        _safeFile = new(
+            Path.Combine(directory, FileName),
+            new() { WriteIndented = false },
+            Validate);
     }
 
     public async Task<MachineLearningActivityPersistedState?> LoadAsync(
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            if (!File.Exists(_filePath)) return null;
-            await using var stream = File.OpenRead(_filePath);
-            return await JsonSerializer.DeserializeAsync<MachineLearningActivityPersistedState>(
-                stream, _jsonOptions, cancellationToken).ConfigureAwait(false);
-        }
-        catch (JsonException) { return null; }
-        catch (IOException) { return null; }
-        catch (UnauthorizedAccessException) { return null; }
+        var result = await _safeFile.LoadAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return result.Value;
     }
 
     public async Task SaveAsync(MachineLearningActivityPersistedState state,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(state);
-        var directory = Path.GetDirectoryName(_filePath)!;
-        Directory.CreateDirectory(directory);
-        var temporaryPath = _filePath + ".tmp";
-        await using (var stream = File.Create(temporaryPath))
-        {
-            await JsonSerializer.SerializeAsync(stream, state, _jsonOptions,
-                cancellationToken).ConfigureAwait(false);
-        }
-        File.Move(temporaryPath, _filePath, true);
+        await _safeFile.SaveAsync(state, cancellationToken)
+            .ConfigureAwait(false);
     }
+
+    private static MachinePersistenceValidationResult Validate(
+        MachineLearningActivityPersistedState state) =>
+        state.Events is not null &&
+        state.Events.Count <= MachineLearningActivityLog.MaximumEventCount &&
+        state.Events.All(IsValid)
+            ? MachinePersistenceValidationResult.Accepted
+            : MachinePersistenceValidationResult.Rejected;
+
+    private static bool IsValid(MachineLearningActivityEvent? item) =>
+        item is not null &&
+        item.OccurredAt != default &&
+        Enum.IsDefined(item.Kind) &&
+        item.Count > 0 &&
+        item.ObservationCount is null or >= 0 &&
+        item.ProfileCount is null or >= 0 &&
+        item.EpisodeCount is null or >= 0 &&
+        item.SchemaVersion is null or > 0 &&
+        item.ByteCount is null or >= 0 &&
+        item.DurationMilliseconds is null or >= 0 &&
+        item.PowerEvidenceCount is null or >= 0 &&
+        (item.Detail is null || item.Detail.Length <= MaximumDetailLength);
 }

@@ -115,7 +115,7 @@ public sealed class MachineLearningServiceTests
     }
 
     [Fact]
-    public async Task PersistsAggregatesButNotRawJournalAndRecoversFromCorruption()
+    public async Task PersistsAggregatesAndPreservesRejectedCorruption()
     {
         var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         try
@@ -155,20 +155,27 @@ public sealed class MachineLearningServiceTests
             Assert.Equal(MachineLearningDataHealth.Healthy,
                 restored.DataHealth);
 
-            await File.WriteAllTextAsync(Path.Combine(directory,
-                "learning-state.json"), "not json");
+            var filePath = Path.Combine(directory, "learning-state.json");
+            await File.WriteAllTextAsync(filePath, "not json");
             var corrupted = new MachineLearningService();
             await corrupted.LoadAsync(store);
             Assert.Equal(0, corrupted.GetDashboardSnapshot(start).ObservationCount);
             Assert.Equal(MachineLearningDataHealth.RecoveredFromCorruptState,
                 corrupted.DataHealth);
+            Assert.Equal("not json", await File.ReadAllTextAsync(filePath));
+            var rejected = Assert.Single(Directory.GetFiles(directory,
+                "learning-state.json.rejected-*"));
+            Assert.Equal("not json", await File.ReadAllTextAsync(rejected));
             corrupted.Observe(CreateObservation(start));
-            Assert.True(await corrupted.SaveIfDueAsync(
+            Assert.False(await corrupted.SaveIfDueAsync(
                 store,
                 start,
                 force: true));
-            Assert.Equal(MachineLearningDataHealth.RecoveredFromCorruptState,
+            Assert.Equal(
+                MachineLearningDataHealth.PersistenceTemporarilyUnavailable,
                 corrupted.DataHealth);
+            Assert.Equal("not json", await File.ReadAllTextAsync(filePath));
+            Assert.False(File.Exists(filePath + ".tmp"));
         }
         finally
         {
@@ -197,6 +204,91 @@ public sealed class MachineLearningServiceTests
         service.Observe(CreateObservation(now.AddSeconds(30)));
         Assert.False(await service.SaveIfDueAsync(store, now.AddMinutes(1)));
         Assert.Equal(1, store.SaveCount);
+    }
+
+    [Fact]
+    public async Task FileStorePreservesNewerSchemaAsIncompatible()
+    {
+        var directory = Path.Combine(Path.GetTempPath(),
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var filePath = Path.Combine(directory, "learning-state.json");
+            const string json =
+                "{\"SchemaVersion\":5,\"Baselines\":[],\"Episodes\":[]}";
+            await File.WriteAllTextAsync(filePath, json);
+            var store = new FileMachineLearningStore(directory);
+            var service = new MachineLearningService();
+
+            await service.LoadAsync(store);
+
+            Assert.Equal(MachineLearningStoreLoadStatus.Incompatible,
+                store.LastLoadStatus);
+            Assert.Equal(
+                MachineLearningDataHealth.PersistenceTemporarilyUnavailable,
+                service.DataHealth);
+            Assert.Equal(json, await File.ReadAllTextAsync(filePath));
+            Assert.Single(Directory.GetFiles(directory,
+                "learning-state.json.rejected-*"));
+            Assert.Contains(service.ActivityLog.GetSnapshot(
+                    service.GetDashboardSnapshot(DateTimeOffset.UtcNow),
+                    DateTimeOffset.UtcNow).RecentEvents,
+                item => item.Kind ==
+                        MachineLearningActivityKind.RestoreUnavailable &&
+                    item.Detail is not null &&
+                    item.Detail.Contains("writes blocked",
+                        StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task FileStoreBoundsRejectedSemanticCopiesAndBlocksWrites()
+    {
+        var directory = Path.Combine(Path.GetTempPath(),
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var filePath = Path.Combine(directory, "learning-state.json");
+            const string json =
+                "{\"SchemaVersion\":4,\"Baselines\":[]," +
+                "\"Episodes\":[],\"ObservationCount\":-1," +
+                "\"ContextProfiles\":[],\"BroaderPatterns\":[]}";
+            await File.WriteAllTextAsync(filePath, json);
+            var store = new FileMachineLearningStore(directory);
+
+            for (var index = 0; index < 5; index++)
+            {
+                Assert.Null(await store.LoadAsync());
+                Assert.Equal(MachineLearningStoreLoadStatus.Corrupt,
+                    store.LastLoadStatus);
+            }
+
+            Assert.Equal(3, Directory.GetFiles(directory,
+                "learning-state.json.rejected-*").Length);
+            Assert.Equal(json, await File.ReadAllTextAsync(filePath));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                store.SaveAsync(new MachineLearningPersistedState(
+                    MachineLearningService.LegacyPersistenceSchemaVersion,
+                    [], [], 0, null, null)));
+            Assert.Equal(json, await File.ReadAllTextAsync(filePath));
+            Assert.False(File.Exists(filePath + ".tmp"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
     }
 
     [Fact]

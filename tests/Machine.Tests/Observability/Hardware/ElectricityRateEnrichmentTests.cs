@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Machine.Core;
 
 namespace Machine.Tests;
@@ -8,6 +9,76 @@ public sealed class ElectricityRateEnrichmentTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(),
         "MachineTests", Guid.NewGuid().ToString("N"));
+
+    [Fact]
+    public async Task CacheBoundsSafeRatesOnSave()
+    {
+        var now = new DateTimeOffset(2026, 8, 21, 12, 0, 0,
+            TimeSpan.Zero);
+        var cache = new FileElectricityRateCache(_directory);
+        await cache.SaveAsync(Enumerable.Range(0,
+                FileElectricityRateCache.MaximumRateCount + 6)
+            .Select(index => Rate(now) with
+            {
+                EffectiveMonth = new DateOnly(2026, 8, 1)
+                    .AddMonths(-index)
+            }));
+
+        var restored = await cache.LoadAsync();
+
+        Assert.Equal(FileElectricityRateCache.MaximumRateCount,
+            restored.Rates.Count);
+        Assert.False(File.Exists(Path.Combine(_directory,
+            "electricity-rate-v1.json.tmp")));
+    }
+
+    [Fact]
+    public async Task CachePreservesNewerSchemaAndBlocksWrites()
+    {
+        Directory.CreateDirectory(_directory);
+        var now = new DateTimeOffset(2026, 8, 21, 12, 0, 0,
+            TimeSpan.Zero);
+        var filePath = Path.Combine(_directory,
+            "electricity-rate-v1.json");
+        var json = JsonSerializer.Serialize(new ElectricityRateCacheState(
+        [
+            Rate(now) with { SchemaVersion = 2 }
+        ]));
+        await File.WriteAllTextAsync(filePath, json);
+        var cache = new FileElectricityRateCache(_directory);
+
+        Assert.Empty((await cache.LoadAsync()).Rates);
+        Assert.Equal(json, await File.ReadAllTextAsync(filePath));
+        var rejected = Assert.Single(Directory.GetFiles(_directory,
+            "electricity-rate-v1.json.rejected-*"));
+        Assert.Equal(json, await File.ReadAllTextAsync(rejected));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            cache.SaveAsync([Rate(now)]));
+        Assert.Equal(json, await File.ReadAllTextAsync(filePath));
+        Assert.False(File.Exists(filePath + ".tmp"));
+    }
+
+    [Fact]
+    public async Task CachePreservesSemanticallyUnsafeRate()
+    {
+        Directory.CreateDirectory(_directory);
+        var now = new DateTimeOffset(2026, 8, 21, 12, 0, 0,
+            TimeSpan.Zero);
+        var filePath = Path.Combine(_directory,
+            "electricity-rate-v1.json");
+        var json = JsonSerializer.Serialize(new ElectricityRateCacheState(
+        [
+            Rate(now) with { ExpiresAt = now.AddMinutes(-1) }
+        ]));
+        await File.WriteAllTextAsync(filePath, json);
+
+        Assert.Empty((await new FileElectricityRateCache(_directory)
+            .LoadAsync()).Rates);
+
+        Assert.Equal(json, await File.ReadAllTextAsync(filePath));
+        Assert.Single(Directory.GetFiles(_directory,
+            "electricity-rate-v1.json.rejected-*"));
+    }
 
     [Fact]
     public async Task CurrentMonthCacheIsReusedWithoutNetworkRequest()
