@@ -22,12 +22,15 @@ public sealed partial class LearningView
     internal void Update(
         MachineLearningDashboardSnapshot snapshot,
         MachineLearningActivitySnapshot activity,
+        MachineLearnedPowerCostProjection? currentPower,
+        MachineTodayLearnedEnergyComparison todayComparison,
         MachineHealthHistorySnapshot healthHistory,
         OllamaStatusSnapshot? ollamaStatus,
         OverviewView overview)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(activity);
+        ArgumentNullException.ThrowIfNull(todayComparison);
         ArgumentNullException.ThrowIfNull(healthHistory);
         ArgumentNullException.ThrowIfNull(overview);
         var current = snapshot.CurrentObservation;
@@ -83,6 +86,8 @@ public sealed partial class LearningView
             $"{baseline?.ObservedDayCount ?? 0:N0} / " +
             $"{MachineLearningService.EstablishedObservedDayCount:N0}";
         LearningPageConfidenceText.Text = confidence.ToString();
+        UpdateCurrentPowerProjection(currentPower);
+        UpdateTodayLearnedEnergyComparison(todayComparison);
 
         var orderedProfiles = snapshot.ContextProfiles
             .OrderBy(item => baseline is not null &&
@@ -172,6 +177,194 @@ public sealed partial class LearningView
                 FormatActivityDetail(item)))
             .ToArray();
         UpdateRuntimeStatus(ollamaStatus);
+    }
+
+    private void UpdateCurrentPowerProjection(
+        MachineLearnedPowerCostProjection? projection)
+    {
+        if (projection is null)
+        {
+            LearningCurrentPowerContextText.Text =
+                "Waiting for a learned context";
+            LearningCurrentPowerTypicalText.Text = "Still learning";
+            LearningCurrentPowerRangeText.Text = "Unavailable";
+            LearningCurrentPowerEvidenceText.Text =
+                "No eligible power evidence yet";
+            LearningCurrentPowerCostText.Text = "Unavailable";
+            LearningCurrentPowerCostRangeText.Text =
+                "Projected range unavailable";
+            LearningCurrentPowerRateText.Text =
+                "Published residential reference rate unavailable";
+            return;
+        }
+
+        LearningCurrentPowerContextText.Text =
+            $"{FormatLearningHour(projection.LocalHour)} · " +
+            FormatActivity(projection.ActivityState);
+        LearningCurrentPowerEvidenceText.Text =
+            $"{FormatPowerMaturity(projection.PowerMaturity)} · " +
+            $"{FormatSampleCount(projection.PowerEvidenceCount)} · " +
+            $"{projection.ObservedPowerEvidenceDays:N0} observed " +
+            (projection.ObservedPowerEvidenceDays == 1 ? "day" : "days");
+
+        if (!projection.HasUsablePower ||
+            projection.TypicalEstimatedWallPowerWatts is not { } watts ||
+            projection.TypicalEstimatedWallPowerRange is not { } range)
+        {
+            LearningCurrentPowerTypicalText.Text = "Still learning";
+            LearningCurrentPowerRangeText.Text =
+                "Unavailable until enough power evidence";
+            LearningCurrentPowerCostText.Text =
+                "Unavailable until enough power evidence";
+            LearningCurrentPowerCostRangeText.Text =
+                "Matasuri does not project cost from insufficient power evidence.";
+        }
+        else
+        {
+            LearningCurrentPowerTypicalText.Text = $"~{watts:F0} W";
+            LearningCurrentPowerRangeText.Text =
+                $"{range.Low:F0}–{range.High:F0} W";
+            LearningCurrentPowerCostText.Text =
+                projection.ProjectedCostPerObservedHour is { } cost &&
+                projection.Rate is { } costRate
+                    ? $"~{FormatCurrency(costRate.CurrencyCode)}{cost:F2} / observed hour"
+                    : "Cost unavailable";
+            LearningCurrentPowerCostRangeText.Text =
+                projection.ProjectedLowerCostPerObservedHour is { } lowCost &&
+                projection.ProjectedUpperCostPerObservedHour is { } highCost &&
+                projection.Rate is { } rangeRate
+                    ? $"Learned range · ~{FormatCurrency(rangeRate.CurrencyCode)}{lowCost:F2}–" +
+                        $"{FormatCurrency(rangeRate.CurrencyCode)}{highCost:F2} / observed hour"
+                    : "Learned watts remain available without a matching rate.";
+        }
+
+        LearningCurrentPowerRateText.Text = projection.Rate is { } rate
+            ? $"Published residential reference · {rate.ProviderName} · " +
+                $"{FormatCurrency(rate.CurrencyCode)}{rate.RatePerKWh:F4}/kWh · " +
+                rate.EffectiveMonth.ToString(
+                    "MMMM yyyy",
+                    CultureInfo.CurrentCulture)
+            : "Published residential reference rate unavailable";
+    }
+
+    private void UpdateTodayLearnedEnergyComparison(
+        MachineTodayLearnedEnergyComparison comparison)
+    {
+        LearningTodayComparisonStatusText.Text = comparison.ComparisonState switch
+        {
+            MachineTodayLearnedEnergyComparisonState.WithinLearnedRange =>
+                "Within learned range",
+            MachineTodayLearnedEnergyComparisonState.AboveLearnedRange =>
+                "Above learned range",
+            MachineTodayLearnedEnergyComparisonState.BelowLearnedRange =>
+                "Below learned range",
+            MachineTodayLearnedEnergyComparisonState.StillLearning =>
+                "Still learning today's normal",
+            _ => "Today comparison unavailable"
+        };
+        LearningTodayComparisonDetailText.Text =
+            FormatTodayComparisonDetail(comparison);
+        LearningTodayObservedEnergyText.Text =
+            comparison.ActualObservedEnergyKilowattHours > 0d
+                ? $"{comparison.ActualObservedEnergyKilowattHours:F3} kWh"
+                : "Beginning now";
+        LearningTodayObservedDurationText.Text =
+            FormatProjectionDuration(comparison.ObservedDuration);
+        LearningTodayCoverageText.Text =
+            $"{FormatProjectionDuration(comparison.LearnedCoveredDuration)} " +
+            $"of {FormatProjectionDuration(comparison.ObservedDuration)} · " +
+            $"{comparison.LearnedCoverage:P1}";
+        LearningTodayActualCostText.Text =
+            comparison.ActualEstimatedCost is { } actualCost &&
+            comparison.Rate is { } actualRate
+                ? $"~{FormatCurrency(actualRate.CurrencyCode)}{actualCost:F2}"
+                : "Cost unavailable";
+
+        if (comparison.ExpectedObservedEnergyKilowattHours is { } expected &&
+            comparison.ExpectedLowerEnergyKilowattHours is { } lower &&
+            comparison.ExpectedUpperEnergyKilowattHours is { } upper)
+        {
+            LearningTodayExpectedEnergyText.Text =
+                $"{expected:F3} kWh\n{lower:F3}–{upper:F3} kWh range";
+            LearningTodayExpectedCostText.Text =
+                comparison.ExpectedEstimatedCost is { } expectedCost &&
+                comparison.ExpectedLowerCost is { } lowerCost &&
+                comparison.ExpectedUpperCost is { } upperCost &&
+                comparison.Rate is { } expectedRate
+                    ? $"~{FormatCurrency(expectedRate.CurrencyCode)}{expectedCost:F2}\n" +
+                        $"{FormatCurrency(expectedRate.CurrencyCode)}{lowerCost:F2}–" +
+                        $"{FormatCurrency(expectedRate.CurrencyCode)}{upperCost:F2} range"
+                    : "Published rate unavailable";
+        }
+        else
+        {
+            LearningTodayExpectedEnergyText.Text =
+                "Unavailable until coverage is complete";
+            LearningTodayExpectedCostText.Text =
+                "Unavailable until coverage is complete";
+        }
+    }
+
+    private static string FormatTodayComparisonDetail(
+        MachineTodayLearnedEnergyComparison comparison)
+    {
+        if (comparison.ComparisonState ==
+            MachineTodayLearnedEnergyComparisonState.Unavailable)
+        {
+            return "Waiting for accepted Today energy and duration evidence.";
+        }
+        if (comparison.ComparisonState ==
+            MachineTodayLearnedEnergyComparisonState.StillLearning)
+        {
+            return "Power behavior is not yet available for every observed " +
+                "context. No above/below comparison was made.";
+        }
+
+        var maturity = comparison.ComparisonMaturity ==
+                MachineLearningEvidenceMaturity.Established
+            ? "Established learned comparison"
+            : "Early learned estimate · Provisional power evidence";
+        return comparison.DifferenceKilowattHours is { } difference &&
+            comparison.DifferencePercent is { } differencePercent
+                ? $"{maturity} · Difference {difference:+0.000;-0.000;0.000} kWh " +
+                    $"({differencePercent:+0.0;-0.0;0.0}%)."
+                : maturity + ".";
+    }
+
+    private static string FormatPowerMaturity(
+        MachineLearningEvidenceMaturity maturity) => maturity switch
+        {
+            MachineLearningEvidenceMaturity.Established => "Established",
+            MachineLearningEvidenceMaturity.Provisional =>
+                "Early estimate · Provisional",
+            _ => "Still learning · Insufficient"
+        };
+
+    private static string FormatActivity(
+        MachineUserActivityState activityState) => activityState switch
+        {
+            MachineUserActivityState.Active => "Active",
+            MachineUserActivityState.Idle => "Idle",
+            _ => "Unknown activity"
+        };
+
+    private static string FormatCurrency(string currencyCode) =>
+        string.Equals(currencyCode, "PHP", StringComparison.OrdinalIgnoreCase)
+            ? "₱"
+            : $"{currencyCode} ";
+
+    private static string FormatProjectionDuration(TimeSpan duration)
+    {
+        var bounded = duration < TimeSpan.Zero ? TimeSpan.Zero : duration;
+        if (bounded.TotalHours >= 1d)
+        {
+            return $"{(int)bounded.TotalHours}h {bounded.Minutes}m";
+        }
+        if (bounded.TotalMinutes >= 1d)
+        {
+            return $"{bounded.Minutes}m";
+        }
+        return bounded > TimeSpan.Zero ? "<1m" : "0m";
     }
 
     private static string FormatLearningActivityStatus(

@@ -183,6 +183,157 @@
                         </Border>
 
                         <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="9">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Current power behavior" />
+                                <TextBlock
+                                    x:Name="LearningCurrentPowerContextText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningCurrentPowerContextText"
+                                    FontWeight="SemiBold"
+                                    Text="Waiting for a learned context"
+                                    TextWrapping="Wrap" />
+                                <Grid ColumnSpacing="14" RowSpacing="9">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="TYPICAL ESTIMATED POWER" TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningCurrentPowerTypicalText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningCurrentPowerTypicalText"
+                                            FontSize="22"
+                                            FontWeight="SemiBold"
+                                            Text="Still learning"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LEARNED RANGE" />
+                                        <TextBlock
+                                            x:Name="LearningCurrentPowerRangeText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningCurrentPowerRangeText"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="POWER EVIDENCE" />
+                                        <TextBlock
+                                            x:Name="LearningCurrentPowerEvidenceText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningCurrentPowerEvidenceText"
+                                            Text="Insufficient"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="PROJECTED ELECTRICITY COST" TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningCurrentPowerCostText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningCurrentPowerCostText"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock
+                                    x:Name="LearningCurrentPowerCostRangeText" x:FieldModifier="internal"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Projected range unavailable"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="LearningCurrentPowerRateText" x:FieldModifier="internal"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Published residential reference rate unavailable"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="9">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Today vs learned normal" />
+                                <TextBlock
+                                    x:Name="LearningTodayComparisonStatusText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningTodayComparisonStatusText"
+                                    FontSize="20"
+                                    FontWeight="SemiBold"
+                                    Text="Still learning today's normal"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="LearningTodayComparisonDetailText" x:FieldModifier="internal"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Power behavior is not yet available for all observed contexts."
+                                    TextWrapping="Wrap" />
+                                <Grid ColumnSpacing="14" RowSpacing="9">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="OBSERVED" />
+                                        <TextBlock
+                                            x:Name="LearningTodayObservedEnergyText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningTodayObservedEnergyText"
+                                            FontWeight="SemiBold"
+                                            Text="Beginning now" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LEARNED EXPECTATION" TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningTodayExpectedEnergyText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningTodayExpectedEnergyText"
+                                            FontWeight="SemiBold"
+                                            Text="Still learning"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="OBSERVED ESTIMATED COST" TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningTodayActualCostText" x:FieldModifier="internal"
+                                            Text="Unavailable"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LEARNED EXPECTED COST" TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningTodayExpectedCostText" x:FieldModifier="internal"
+                                            Text="Still learning"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="2" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="OBSERVED DURATION" />
+                                        <TextBlock
+                                            x:Name="LearningTodayObservedDurationText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningTodayObservedDurationText"
+                                            Text="0m" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="2" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LEARNED COVERAGE" />
+                                        <TextBlock
+                                            x:Name="LearningTodayCoverageText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningTodayCoverageText"
+                                            Text="0%"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Compared at the last fully accepted History checkpoint so energy and observed duration stay aligned."
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"

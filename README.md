@@ -38,6 +38,8 @@ Hierarchical behavioral learning uses schema v4. Its bounded RAM-only 30-second 
 
 Learned power represents machine behavior, not metered wall evidence. Low-confidence, unavailable, invalid, or stale estimates are excluded without rejecting the rest of an observation. Electricity tariffs, currency, cumulative energy, and cost remain outside Learning, so rate changes cannot alter learned power behavior. Power updates add no timer, network request, or inference trigger.
 
+The Learning page derives current-context estimated electricity cost per observed hour from the adaptive learned wattage and the matching published residential reference rate. This monetary projection is never written into Learning. It also compares Today against learned normal by integrating each usable hour-by-Active/Idle power profile over the corresponding accepted History duration. The comparison uses the last fully accepted History checkpoint so actual energy and expected duration remain aligned across restarts; live pending Today energy continues separately in History, Hardware, and `Running bill today`. If any observed duration lacks at least Provisional power evidence, Learning reports factual coverage and stays in a Still Learning state instead of issuing an above/below-normal claim.
+
 `learning-activity.json` is a separate bounded local diagnostic trail. It records safe lifecycle, restore, observation, and persistence summaries (not raw telemetry, process, URL, or command data), retains detailed observation events for 48 hours and important lifecycle events for 14 days, and cannot repair or block behavioral learning.
 
 Ollama integration remains transitional and local. Matasuri reuses an existing healthy local service or starts an already-installed `ollama serve`; it never downloads Ollama or a model. `qwen3.5:4b` is demand-loaded only after the existing insight policy authorizes an explanation. History, inventory refresh, GPU polling, palette changes, and learning updates never trigger inference. An authorized request adds at most one current historical aggregate, one recent comparison, one event, and four nullable current GPU values; services, tasks, and devices are excluded from model context.
@@ -88,4 +90,4 @@ Install the .NET 10 SDK plus the workspace-recommended Microsoft C# Dev Kit and 
 
 ## Next slice
 
-Derive projected estimated cost per observed hour from learned power behavior and the current published reference rate, expose it in Learning, and compare Today against learned normal behavior.
+Use Established learned-energy behavior to surface a conservative deterministic Local Insight only when Today is meaningfully outside its learned normal range, without waking Qwen or changing machine posture.

@@ -107,6 +107,7 @@ public sealed partial class MainWindow
             {
                 _latestElectricityRate = result;
                 _cachedElectricityRates = cache.Rates;
+                UpdateLearningDashboard();
             }
         }
         catch (OperationCanceledException)
@@ -583,6 +584,7 @@ public sealed partial class MainWindow
             _historyService.ObserveLearningMilestones(
                 _learningService.GetDashboardSnapshot(DateTimeOffset.UtcNow));
             HistoryPage.UpdateDashboard();
+            UpdateLearningDashboard();
         }
         catch (OperationCanceledException)
             when (_windowCancellationTokenSource.IsCancellationRequested)

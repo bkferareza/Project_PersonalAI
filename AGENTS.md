@@ -72,6 +72,8 @@ New code should live with its domain or feature rather than in project-wide `Mod
 - Session energy resets on restart; Today History does not.
 - Learning schema v4 preserves v3 behavioral evidence and adds context-specific software-estimated whole-PC wall-power behavior from v4 observations onward; never backfill it from History.
 - Electricity tariffs, currency, cumulative energy, and cost are not learned behavioral metrics. Rate changes never modify learned power baselines, and power-learning updates never trigger inference.
+- Learned watts remain the persistent behavioral fact. Cost per observed hour is a disposable projection from learned typical watts and the current applicable published rate; it is never persisted as Learning evidence.
+- Today learned-normal projection integrates learned hour-by-Active/Idle power over actually observed persisted History durations. Incomplete learned duration coverage must never produce above/below-normal claims, and the projection never triggers inference.
 - Avoid subagents for normal feature slices; use them only when explicitly requested or when independent parallel work clearly justifies the cost.
 - Read only relevant files, and keep command output and final reporting concise.
 
