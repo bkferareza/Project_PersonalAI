@@ -4,7 +4,6 @@ namespace Machine.Core;
 
 public static class MachineInsightCandidateProjector
 {
-    public const string RunningBillId = "running-bill-today";
     public const string LearnedEnergyAboveId =
         "learned-energy-today-above";
     public const string LearnedEnergyBelowId =
@@ -116,58 +115,6 @@ public static class MachineInsightCandidateProjector
             now + CandidateFreshness,
             MachineLearningEvidenceMaturity.Established,
             CanSignalNew: true,
-            explainContext);
-    }
-
-    public static MachineInsightCandidate? ProjectRunningBill(
-        MachineTodayEnergyCostProjection? today,
-        DateTimeOffset now)
-    {
-        var bill = MachineRunningBillInsightProjector.Project(today);
-        if (bill is null)
-        {
-            return null;
-        }
-
-        var currency = FormatCurrency(bill.Rate.CurrencyCode);
-        var primary =
-            $"~{currency}{bill.EstimatedPcElectricityCost:F2} estimated";
-        var secondary =
-            $"{bill.TodayObservedEnergyKilowattHours:F3} kWh observed " +
-            "so far today · estimated PC electricity cost";
-        var evidence =
-            $"{bill.Rate.ProviderName} residential reference · " +
-            $"{bill.Rate.CurrencyCode} {bill.Rate.RatePerKWh:F4}/kWh · " +
-            bill.Rate.EffectiveMonth.ToString(
-                "MMMM yyyy",
-                CultureInfo.CurrentCulture);
-        var explainContext = new MachineInsightExplainContext(
-            RunningBillId,
-            MachineInsightKind.RunningBill,
-            bill.Title,
-            primary,
-            secondary,
-            evidence,
-            ActualObservedEnergyKilowattHours:
-                bill.TodayObservedEnergyKilowattHours,
-            ActualEstimatedCost: bill.EstimatedPcElectricityCost,
-            ElectricityProvider: bill.Rate.ProviderName,
-            CurrencyCode: bill.Rate.CurrencyCode,
-            RatePerKilowattHour: bill.Rate.RatePerKWh,
-            RateEffectiveMonth: bill.Rate.EffectiveMonth);
-
-        return new(
-            RunningBillId,
-            MachineInsightKind.RunningBill,
-            bill.Title,
-            primary,
-            secondary,
-            evidence,
-            MachineInsightImportance.Useful,
-            now,
-            now + CandidateFreshness,
-            EvidenceMaturity: null,
-            CanSignalNew: false,
             explainContext);
     }
 

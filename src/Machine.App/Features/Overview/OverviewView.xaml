@@ -7,6 +7,8 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
 <ScrollViewer
+                    x:Name="OverviewScrollViewer" x:FieldModifier="internal"
+                    AutomationProperties.AutomationId="OverviewScrollViewer"
                     HorizontalScrollBarVisibility="Disabled"
                     VerticalScrollBarVisibility="Auto">
                     <StackPanel Padding="12,0,12,16" Spacing="10">
@@ -203,7 +205,50 @@
                                     Text="See Learning page for details." />
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource DashboardCardStyle}">
+                        <Border
+                            x:Name="TodayStatusCard" x:FieldModifier="internal"
+                            AutomationProperties.AutomationId="TodayStatusCard"
+                            Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="5">
+                                <Grid>
+                                    <TextBlock
+                                        Style="{StaticResource SectionTitleStyle}"
+                                        Text="Today" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        HorizontalAlignment="Right"
+                                        Text="Local · deterministic" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="TodayRunningBillTitleText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="TodayRunningBillTitleText"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Text="Running bill today" />
+                                <TextBlock
+                                    x:Name="TodayRunningBillCostText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="TodayRunningBillCostText"
+                                    FontSize="27"
+                                    FontWeight="SemiBold"
+                                    Text="Still observing" />
+                                <TextBlock
+                                    x:Name="TodayRunningBillEnergyText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="TodayRunningBillEnergyText"
+                                    Text="Valid observed PC energy will appear here."
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="TodayRunningBillEvidenceText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="TodayRunningBillEvidenceText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Estimated PC electricity cost"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border
+                            x:Name="CurrentFindingsCard" x:FieldModifier="internal"
+                            AutomationProperties.AutomationId="CurrentFindingsCard"
+                            Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
@@ -232,7 +277,10 @@
                                 </ItemsControl>
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource DashboardCardStyle}">
+                        <Border
+                            x:Name="LocalInsightCard" x:FieldModifier="internal"
+                            AutomationProperties.AutomationId="LocalInsightCard"
+                            Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="9">
                                 <Grid>
                                     <TextBlock
@@ -245,29 +293,29 @@
                                         Text="Local · deterministic first" />
                                 </Grid>
                                 <StackPanel
-                                    x:Name="RunningBillInsightPanel" x:FieldModifier="internal"
-                                    AutomationProperties.AutomationId="RunningBillInsightPanel"
+                                    x:Name="LocalInsightCandidatePanel" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LocalInsightCandidatePanel"
                                     Spacing="3"
                                     Visibility="Collapsed">
                                     <TextBlock
-                                        x:Name="RunningBillInsightTitleText" x:FieldModifier="internal"
-                                        AutomationProperties.AutomationId="RunningBillInsightTitleText"
+                                        x:Name="LocalInsightTitleText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LocalInsightTitleText"
                                         FontSize="18"
                                         FontWeight="SemiBold"
-                                        Text="Running bill today" />
+                                        Text="Watching for a meaningful change" />
                                     <TextBlock
-                                        x:Name="RunningBillInsightCostText" x:FieldModifier="internal"
-                                        AutomationProperties.AutomationId="RunningBillInsightCostText"
+                                        x:Name="LocalInsightPrimaryText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LocalInsightPrimaryText"
                                         FontSize="27"
                                         FontWeight="SemiBold"
-                                        Text="Cost unavailable" />
-                                    <TextBlock
-                                        x:Name="RunningBillInsightEnergyText" x:FieldModifier="internal"
-                                        AutomationProperties.AutomationId="RunningBillInsightEnergyText"
                                         TextWrapping="Wrap" />
                                     <TextBlock
-                                        x:Name="RunningBillInsightEvidenceText" x:FieldModifier="internal"
-                                        AutomationProperties.AutomationId="RunningBillInsightEvidenceText"
+                                        x:Name="LocalInsightSecondaryText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LocalInsightSecondaryText"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        x:Name="LocalInsightEvidenceText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LocalInsightEvidenceText"
                                         Style="{StaticResource SecondaryTextStyle}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>

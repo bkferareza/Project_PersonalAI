@@ -75,7 +75,7 @@ public sealed class MachineTodayEnergyCostProjectorTests
     }
 
     [Fact]
-    public void MissingCurrentMonthRateKeepsCostUnknownAndOmitsInsight()
+    public void MissingCurrentMonthRateKeepsEnergyAndStatusCostUnknown()
     {
         var today = MachineTodayEnergyCostProjector.Project(
             [Rollup(Today.AddHours(1), 100d)],
@@ -86,7 +86,11 @@ public sealed class MachineTodayEnergyCostProjectorTests
         Assert.Null(today.EstimatedCost);
         Assert.Equal(MachineCostCoverage.Unavailable,
             today.CostCoverage);
-        Assert.Null(MachineRunningBillInsightProjector.Project(today));
+        var status = MachineTodayStatusProjector.Project(today);
+        Assert.True(status.HasObservedEnergy);
+        Assert.Equal(0.100d, status.ObservedEnergyKilowattHours, 6);
+        Assert.Null(status.EstimatedPcElectricityCost);
+        Assert.Null(status.Rate);
     }
 
     [Fact]
@@ -108,21 +112,33 @@ public sealed class MachineTodayEnergyCostProjectorTests
     }
 
     [Fact]
-    public void RunningBillInsightUsesPrecomputedTodayValues()
+    public void TodayStatusUsesPrecomputedTodayValues()
     {
         var today = MachineTodayEnergyCostProjector.Project(
             [Rollup(Today.AddHours(1), 840d)], [Rate()],
             Today.AddHours(2), timeZone: TimeZoneInfo.Utc);
 
-        var insight = MachineRunningBillInsightProjector.Project(today);
+        var status = MachineTodayStatusProjector.Project(today);
 
-        Assert.NotNull(insight);
-        Assert.Equal("Running bill today", insight.Title);
+        Assert.Equal("Running bill today", status.Title);
         Assert.Equal(today.EstimatedCost,
-            insight.EstimatedPcElectricityCost);
+            status.EstimatedPcElectricityCost);
         Assert.Equal(0.84d,
-            insight.TodayObservedEnergyKilowattHours, 6);
-        Assert.Equal("Meralco", insight.Rate.ProviderName);
+            status.ObservedEnergyKilowattHours, 6);
+        Assert.Equal("Meralco", status.Rate?.ProviderName);
+    }
+
+    [Fact]
+    public void TodayStatusWithoutEnergyDoesNotClaimZeroCost()
+    {
+        var today = MachineTodayEnergyCostProjector.Project(
+            [], [Rate()], Today.AddHours(2),
+            timeZone: TimeZoneInfo.Utc);
+
+        var status = MachineTodayStatusProjector.Project(today);
+
+        Assert.False(status.HasObservedEnergy);
+        Assert.Null(status.EstimatedPcElectricityCost);
     }
 
     private static MachineHistoryRollup Rollup(

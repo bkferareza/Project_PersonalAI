@@ -143,24 +143,7 @@ public sealed class MachineInsightArbiterTests
     }
 
     [Fact]
-    public void RunningBillUpdatesNeverBecomeNew()
-    {
-        var arbiter = new MachineInsightArbiter();
-        var first = CreateRunningBill(Now, 1.25m);
-        var second = CreateRunningBill(Now.AddMinutes(1), 1.27m);
-
-        var initial = arbiter.Evaluate([first], Now);
-        var updated = arbiter.Evaluate([second], Now.AddMinutes(1));
-
-        Assert.Equal(
-            MachineInsightCandidateProjector.RunningBillId,
-            updated.CurrentInsight?.Id);
-        Assert.False(initial.HasNewUnseenInsight);
-        Assert.False(updated.HasNewUnseenInsight);
-    }
-
-    [Fact]
-    public void CurrentMachineFindingOutranksLearnedDeviationAndRunningBill()
+    public void CurrentMachineFindingOutranksLearnedDeviation()
     {
         var arbiter = new MachineInsightArbiter();
         var finding = MachineInsightCandidateProjector.ProjectMachineFinding(
@@ -175,7 +158,6 @@ public sealed class MachineInsightArbiterTests
 
         var selected = arbiter.Evaluate(
             [
-                CreateRunningBill(Now, 1.25m),
                 Project(CreateComparison(
                     MachineTodayLearnedEnergyComparisonState.
                         AboveLearnedRange))!,
@@ -254,6 +236,14 @@ public sealed class MachineInsightArbiterTests
                 field.FieldType));
     }
 
+    [Fact]
+    public void RunningBillIsNotAnInsightCandidateKindOrProjector()
+    {
+        Assert.DoesNotContain("RunningBill", Enum.GetNames<MachineInsightKind>());
+        Assert.Null(typeof(MachineInsightCandidateProjector).GetMethod(
+            "ProjectRunningBill"));
+    }
+
     private static MachineInsightCandidate? Project(
         MachineTodayLearnedEnergyComparison comparison,
         DateTimeOffset? now = null) =>
@@ -289,25 +279,6 @@ public sealed class MachineInsightArbiterTests
             6.65m,
             8.13m,
             CreateRate());
-    }
-
-    private static MachineInsightCandidate CreateRunningBill(
-        DateTimeOffset now,
-        decimal cost)
-    {
-        var today = new MachineTodayEnergyCostProjection(
-            new DateOnly(2026, 8, 25),
-            84.55d,
-            cost,
-            MachineCostCoverage.Complete,
-            TimeSpan.FromHours(2),
-            42d,
-            50d,
-            20,
-            CreateRate());
-        return MachineInsightCandidateProjector.ProjectRunningBill(
-            today,
-            now)!;
     }
 
     private static ElectricityRateSnapshot CreateRate() => new(

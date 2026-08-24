@@ -3,7 +3,6 @@ namespace Machine.Core;
 public enum MachineInsightKind
 {
     Routine,
-    RunningBill,
     LearnedEnergyDeviation,
     MachineFinding
 }

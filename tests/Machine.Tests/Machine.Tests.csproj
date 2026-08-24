@@ -32,6 +32,9 @@
       Include="..\..\src\Machine.App\Ambient\AmbientOrbFrameSequence.cs"
       Link="AmbientOrbFrameSequence.cs" />
     <Compile
+      Include="..\..\src\Machine.App\Features\Overview\OverviewTodayStatusPresentation.cs"
+      Link="OverviewTodayStatusPresentation.cs" />
+    <Compile
       Include="..\..\src\Machine.App\Lifecycle\MachineShutdownCoordinator.cs"
       Link="MachineShutdownCoordinator.cs" />
     <Compile

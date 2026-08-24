@@ -494,6 +494,8 @@ public sealed partial class MainWindow
             return;
         }
 
+        UpdateTodayStatus();
+
         var now = DateTimeOffset.UtcNow;
         var candidates = new MachineInsightCandidate?[]
         {
@@ -502,9 +504,6 @@ public sealed partial class MainWindow
                 now),
             MachineInsightCandidateProjector.ProjectLearnedEnergyDeviation(
                 CreateTodayLearnedEnergyComparison(now),
-                now),
-            MachineInsightCandidateProjector.ProjectRunningBill(
-                _latestTodayEnergyCost,
                 now)
         };
         var previousId = _currentInsight?.Id;
@@ -523,8 +522,18 @@ public sealed partial class MainWindow
         _hasNewUnseenInsight = selection.HasNewUnseenInsight;
         if (_currentInsight is null)
         {
-            OverviewPage.RunningBillInsightPanel.Visibility =
+            OverviewPage.LocalInsightCandidatePanel.Visibility =
                 Visibility.Collapsed;
+            if (previousId is not null)
+            {
+                _hasSuccessfulExplanation = false;
+                OverviewPage.MachineExplanationText.Text =
+                    "Watching for a meaningful change.";
+                OverviewPage.MachineExplanationMetadataText.Text =
+                    string.Empty;
+                OverviewPage.MachineExplanationMetadataText.Visibility =
+                    Visibility.Collapsed;
+            }
             UpdateExplainMachineStateButtonState();
             if (previousNewState != _hasNewUnseenInsight)
             {
@@ -533,14 +542,15 @@ public sealed partial class MainWindow
             return;
         }
 
-        OverviewPage.RunningBillInsightTitleText.Text = _currentInsight.Title;
-        OverviewPage.RunningBillInsightCostText.Text =
+        OverviewPage.LocalInsightTitleText.Text = _currentInsight.Title;
+        OverviewPage.LocalInsightPrimaryText.Text =
             _currentInsight.PrimaryText;
-        OverviewPage.RunningBillInsightEnergyText.Text =
+        OverviewPage.LocalInsightSecondaryText.Text =
             _currentInsight.SecondaryText;
-        OverviewPage.RunningBillInsightEvidenceText.Text =
+        OverviewPage.LocalInsightEvidenceText.Text =
             _currentInsight.EvidenceSummary;
-        OverviewPage.RunningBillInsightPanel.Visibility = Visibility.Visible;
+        OverviewPage.LocalInsightCandidatePanel.Visibility =
+            Visibility.Visible;
 
         if (!string.Equals(previousId, _currentInsight.Id,
             StringComparison.Ordinal))
@@ -558,6 +568,19 @@ public sealed partial class MainWindow
         {
             ApplyPresenceVisualMode(force: true);
         }
+    }
+
+    private void UpdateTodayStatus()
+    {
+        var presentation = OverviewTodayStatusPresenter.Present(
+            MachineTodayStatusProjector.Project(_latestTodayEnergyCost));
+        OverviewPage.TodayRunningBillTitleText.Text = presentation.Title;
+        OverviewPage.TodayRunningBillCostText.Text =
+            presentation.PrimaryText;
+        OverviewPage.TodayRunningBillEnergyText.Text =
+            presentation.EnergyText;
+        OverviewPage.TodayRunningBillEvidenceText.Text =
+            presentation.EvidenceText;
     }
 
     private void MarkCurrentInsightViewed()

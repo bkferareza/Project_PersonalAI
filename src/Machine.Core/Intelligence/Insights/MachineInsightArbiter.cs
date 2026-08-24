@@ -122,7 +122,6 @@ public sealed class MachineInsightArbiter
     {
         MachineInsightKind.MachineFinding => 4,
         MachineInsightKind.LearnedEnergyDeviation => 3,
-        MachineInsightKind.RunningBill => 2,
         _ => 1
     };
 }
