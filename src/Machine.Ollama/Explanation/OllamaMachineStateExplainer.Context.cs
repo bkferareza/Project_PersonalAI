@@ -8,21 +8,53 @@ public sealed partial class OllamaMachineStateExplainer
     private static string CreateUserMessage(
         MachineStateExplanationRequest request)
     {
+        var isBoundedLearnedInsight = request.CurrentInsight?.Kind ==
+            MachineInsightKind.LearnedEnergyDeviation;
         var payload = new MachineSnapshotPayload(
-            CpuUsagePercent: request.Resources.CpuUsagePercent,
-            UsedMemoryBytes: request.Resources.UsedMemoryBytes,
-            TotalMemoryBytes: request.Resources.TotalMemoryBytes,
-            Storage: CreateStoragePayload(request.Storage),
-            Software: CreateSoftwarePayload(request.Software),
-            Startup: CreateStartupPayload(request.Startup),
-            Findings: CreateFindingsPayload(request.Findings),
-            LearnedContext: CreateLearnedContextPayload(request.LearnedContext),
-            Network: CreateNetworkPayload(request.Network),
-            Session: CreateSessionPayload(request.Session),
-            Health: CreateHealthPayload(request.Health),
-            History: CreateHistoryPayload(request.History),
-            Gpu: CreateGpuPayload(request.Gpu),
-            EnergyCost: CreateEnergyCostPayload(request.EnergyCost));
+            CpuUsagePercent: isBoundedLearnedInsight
+                ? null
+                : request.Resources.CpuUsagePercent,
+            UsedMemoryBytes: isBoundedLearnedInsight
+                ? null
+                : request.Resources.UsedMemoryBytes,
+            TotalMemoryBytes: isBoundedLearnedInsight
+                ? null
+                : request.Resources.TotalMemoryBytes,
+            Storage: isBoundedLearnedInsight
+                ? null
+                : CreateStoragePayload(request.Storage),
+            Software: isBoundedLearnedInsight
+                ? null
+                : CreateSoftwarePayload(request.Software),
+            Startup: isBoundedLearnedInsight
+                ? null
+                : CreateStartupPayload(request.Startup),
+            Findings: isBoundedLearnedInsight
+                ? null
+                : CreateFindingsPayload(request.Findings),
+            LearnedContext: isBoundedLearnedInsight
+                ? null
+                : CreateLearnedContextPayload(request.LearnedContext),
+            Network: isBoundedLearnedInsight
+                ? null
+                : CreateNetworkPayload(request.Network),
+            Session: isBoundedLearnedInsight
+                ? null
+                : CreateSessionPayload(request.Session),
+            Health: isBoundedLearnedInsight
+                ? null
+                : CreateHealthPayload(request.Health),
+            History: isBoundedLearnedInsight
+                ? null
+                : CreateHistoryPayload(request.History),
+            Gpu: isBoundedLearnedInsight
+                ? null
+                : CreateGpuPayload(request.Gpu),
+            EnergyCost: isBoundedLearnedInsight
+                ? null
+                : CreateEnergyCostPayload(request.EnergyCost),
+            CurrentInsight: CreateCurrentInsightPayload(
+                request.CurrentInsight));
 
         var payloadJson = JsonSerializer.Serialize(
             payload,
@@ -341,6 +373,32 @@ public sealed partial class OllamaMachineStateExplainer
         value.RateEffectiveMonth?.ToString("yyyy-MM"),
         value.RateConfidence.ToString(),
         "estimated_from_observed_wall_power_and_published_reference_rate");
+
+    private static CurrentInsightPayload? CreateCurrentInsightPayload(
+        MachineInsightExplainContext? value) => value is null ? null : new(
+            value.CandidateId,
+            value.Kind.ToString(),
+            value.Title,
+            value.PrimaryText,
+            value.SecondaryText,
+            value.EvidenceSummary,
+            value.ActualObservedEnergyKilowattHours,
+            value.ObservedDurationSeconds,
+            value.ExpectedObservedEnergyKilowattHours,
+            value.ExpectedLowerEnergyKilowattHours,
+            value.ExpectedUpperEnergyKilowattHours,
+            value.DifferenceKilowattHours,
+            value.DifferencePercent,
+            value.LearnedCoverage,
+            value.EvidenceMaturity?.ToString(),
+            value.ActualEstimatedCost,
+            value.ExpectedEstimatedCost,
+            value.ExpectedLowerCost,
+            value.ExpectedUpperCost,
+            value.ElectricityProvider,
+            value.CurrencyCode,
+            value.RatePerKilowattHour,
+            value.RateEffectiveMonth?.ToString("yyyy-MM"));
 
     private static HistoryPeriodPayload CreateHistoryPeriodPayload(
         MachineHistoryInsightPeriod period) => new(

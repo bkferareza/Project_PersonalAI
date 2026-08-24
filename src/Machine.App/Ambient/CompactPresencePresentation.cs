@@ -19,6 +19,13 @@ public enum CompactPresenceVisualMode
     NewInsight
 }
 
+public readonly record struct CompactPresenceVisualState(
+    CompactPresenceVisualMode PostureMode,
+    bool HasNewUnseenInsight)
+{
+    public CompactPresenceVisualMode Mode => PostureMode;
+}
+
 public readonly record struct CompactPresenceSize(
     int Width,
     int Height);
@@ -96,19 +103,30 @@ public static class CompactPresenceLayout
     public static CompactPresenceVisualMode SelectVisualMode(
         Machine.Core.MachineOverallState overallState,
         bool isGenerating,
-        bool showNewInsightBloom) =>
-        showNewInsightBloom
-            ? CompactPresenceVisualMode.NewInsight
-            : isGenerating
+        bool showNewInsightBloom) => SelectVisualState(
+            overallState,
+            isGenerating,
+            showNewInsightBloom).PostureMode;
+
+    public static CompactPresenceVisualState SelectVisualState(
+        Machine.Core.MachineOverallState overallState,
+        bool isGenerating,
+        bool hasNewUnseenInsight) => new(
+            isGenerating
                 ? CompactPresenceVisualMode.Generating
                 : overallState switch
                 {
-                    Machine.Core.MachineOverallState.Stable => CompactPresenceVisualMode.Stable,
-                    Machine.Core.MachineOverallState.Attention => CompactPresenceVisualMode.Attention,
-                    Machine.Core.MachineOverallState.Warning => CompactPresenceVisualMode.Warning,
-                    Machine.Core.MachineOverallState.Critical => CompactPresenceVisualMode.Critical,
+                    Machine.Core.MachineOverallState.Stable =>
+                        CompactPresenceVisualMode.Stable,
+                    Machine.Core.MachineOverallState.Attention =>
+                        CompactPresenceVisualMode.Attention,
+                    Machine.Core.MachineOverallState.Warning =>
+                        CompactPresenceVisualMode.Warning,
+                    Machine.Core.MachineOverallState.Critical =>
+                        CompactPresenceVisualMode.Critical,
                     _ => CompactPresenceVisualMode.Unknown
-                };
+                },
+            hasNewUnseenInsight);
 
     public static bool IsSurfaceInteractive(
         CompactPresencePresentation presentation) =>

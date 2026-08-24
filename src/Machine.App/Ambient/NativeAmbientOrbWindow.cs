@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Machine.App;
@@ -40,10 +41,16 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     private static ushort _windowClassAtom;
     private readonly AmbientOrbLifecycle _lifecycle = new();
     private readonly Action _onOrbClicked;
-    private AmbientOrbFrameSequence _normalFrames =
+    private readonly byte[] _renderPixels = new byte[
+        AmbientOrbFrameSequence.CanvasSize *
+        AmbientOrbFrameSequence.CanvasSize * 4];
+    private readonly AmbientOrbFrame _renderedFrame;
+    private readonly long _phaseOriginTimestamp = Stopwatch.GetTimestamp();
+    private CompactPresenceVisualState _visualState = new(
+        CompactPresenceVisualMode.Stable,
+        HasNewUnseenInsight: false);
+    private AmbientOrbFrameSequence _frameModel =
         AmbientOrbFrameSequence.Create();
-    private AmbientOrbFrameSequence _hoverFrames =
-        AmbientOrbFrameSequence.Create(isHovered: true);
     private IntPtr _windowHandle;
     private IntPtr _deviceContext;
     private IntPtr _bitmap;
@@ -51,22 +58,30 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     private IntPtr _pixelBuffer;
     private GCHandle _selfHandle;
     private UIntPtr _animationTimerHandle;
+    private long? _wakeStartedTimestamp;
     private int _frameIndex;
     private bool _isHovered;
+    private bool _wakePending;
 
     public NativeAmbientOrbWindow(Action onOrbClicked)
     {
         _onOrbClicked = onOrbClicked ?? throw new ArgumentNullException(
             nameof(onOrbClicked));
+        _renderedFrame = new AmbientOrbFrame(
+            AmbientOrbFrameSequence.CanvasSize,
+            AmbientOrbFrameSequence.CanvasSize,
+            _renderPixels);
     }
 
     public bool IsVisible => _lifecycle.IsVisible;
 
     public bool IsDisposed => _lifecycle.IsDisposed;
 
-    public TimeSpan FrameInterval => _normalFrames.FrameInterval;
+    public TimeSpan FrameInterval => _frameModel.FrameInterval;
 
-    public CompactPresenceVisualMode VisualMode => _normalFrames.Mode;
+    public CompactPresenceVisualMode VisualMode => _visualState.PostureMode;
+
+    public CompactPresenceVisualState VisualState => _visualState;
 
     public bool ShouldAnimate => _lifecycle.ShouldAnimate;
 
@@ -83,15 +98,40 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
 
     public void SetVisualMode(CompactPresenceVisualMode mode)
     {
+        SetVisualState(mode == CompactPresenceVisualMode.NewInsight
+            ? new(_visualState.PostureMode, HasNewUnseenInsight: true)
+            : new(mode, HasNewUnseenInsight: false));
+    }
+
+    public void SetVisualState(CompactPresenceVisualState state)
+    {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
-        if (VisualMode == mode)
+        if (_visualState == state)
         {
             return;
         }
 
-        _normalFrames = AmbientOrbFrameSequence.Create(mode);
-        _hoverFrames = AmbientOrbFrameSequence.Create(mode, isHovered: true);
-        _frameIndex = 0;
+        var newlyUnseen = state.HasNewUnseenInsight &&
+            !_visualState.HasNewUnseenInsight;
+        _visualState = state;
+        if (!state.HasNewUnseenInsight)
+        {
+            _wakeStartedTimestamp = null;
+            _wakePending = false;
+        }
+        else if (newlyUnseen && _lifecycle.AnimationsEnabled)
+        {
+            if (IsVisible)
+            {
+                _wakeStartedTimestamp = Stopwatch.GetTimestamp();
+            }
+            else
+            {
+                _wakePending = true;
+            }
+        }
+
+        RefreshFrameModel();
         if (IsVisible)
         {
             PresentCurrentFrame();
@@ -106,7 +146,14 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             return;
         }
 
+        if (!enabled)
+        {
+            _wakeStartedTimestamp = null;
+            _wakePending = false;
+        }
+
         var timerTransition = _lifecycle.SetAnimationsEnabled(enabled);
+        RefreshFrameModel();
         ApplyTimerTransition(timerTransition);
         if (IsVisible)
         {
@@ -119,7 +166,13 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         EnsureWindow();
         var timerTransition = _lifecycle.ShowWithTimerTransition();
-        _frameIndex = 0;
+        if (_wakePending && _lifecycle.AnimationsEnabled &&
+            _visualState.HasNewUnseenInsight)
+        {
+            _wakePending = false;
+            _wakeStartedTimestamp = Stopwatch.GetTimestamp();
+            RefreshFrameModel();
+        }
         SetWindowPos(
             _windowHandle,
             new IntPtr(-1),
@@ -140,6 +193,13 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         }
 
         ApplyTimerTransition(_lifecycle.Hide());
+        if (_wakeStartedTimestamp is not null &&
+            _visualState.HasNewUnseenInsight)
+        {
+            _wakeStartedTimestamp = null;
+            _wakePending = true;
+            RefreshFrameModel();
+        }
         ShowNativeWindow(_windowHandle, 0);
     }
 
@@ -150,21 +210,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             return false;
         }
 
-        if (_normalFrames.IsLooping)
-        {
-            _frameIndex = (_frameIndex + 1) % _normalFrames.Frames.Count;
-            PresentCurrentFrame();
-            return true;
-        }
-
-        _frameIndex = Math.Min(_frameIndex + 1, _normalFrames.Frames.Count - 1);
         PresentCurrentFrame();
-        if (_frameIndex < _normalFrames.Frames.Count - 1)
-        {
-            return true;
-        }
-
-        NewInsightCompleted?.Invoke(this, EventArgs.Empty);
         return ShouldAnimate;
     }
 
@@ -271,16 +317,34 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
 
     private void PresentCurrentFrame()
     {
-        var frames = _isHovered ? _hoverFrames : _normalFrames;
-        var frame = frames.GetFrame(
-            _frameIndex,
-            _lifecycle.AnimationsEnabled);
-        Marshal.Copy(frame.Pixels, 0, _pixelBuffer, frame.Pixels.Length);
+        var now = Stopwatch.GetTimestamp();
+        var cycleProgress = GetCycleProgress(now);
+        var insightProgress = GetInsightProgress(now, out var wakeCompleted);
+        if (wakeCompleted)
+        {
+            _wakeStartedTimestamp = null;
+            RefreshFrameModel();
+        }
+
+        _frameIndex = Math.Min(
+            AmbientOrbFrameSequence.FrameCount - 1,
+            (int)Math.Floor(
+                cycleProgress * AmbientOrbFrameSequence.FrameCount));
+        _frameModel.RenderInto(
+            _renderPixels,
+            cycleProgress,
+            _lifecycle.AnimationsEnabled,
+            insightProgress);
+        Marshal.Copy(
+            _renderPixels,
+            0,
+            _pixelBuffer,
+            _renderPixels.Length);
 
         GetWindowRect(_windowHandle, out var windowRect);
         var destination = new Point(windowRect.Left, windowRect.Top);
         var source = new Point(0, 0);
-        var size = new Size(frame.Width, frame.Height);
+        var size = new Size(_renderedFrame.Width, _renderedFrame.Height);
         var blend = new BlendFunction
         {
             BlendOperation = BlendOperationSourceOver,
@@ -301,6 +365,57 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             PresentedFrameCount++;
             LastFramePresentedAt = DateTimeOffset.UtcNow;
         }
+
+        if (wakeCompleted)
+        {
+            NewInsightCompleted?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private double GetCycleProgress(long timestamp)
+    {
+        var elapsed = Stopwatch.GetElapsedTime(
+            _phaseOriginTimestamp,
+            timestamp);
+        return elapsed.TotalSeconds /
+            AmbientOrbMotionModel.StableCycleDuration.TotalSeconds % 1d;
+    }
+
+    private double GetInsightProgress(
+        long timestamp,
+        out bool wakeCompleted)
+    {
+        wakeCompleted = false;
+        if (_wakeStartedTimestamp is not { } started)
+        {
+            return 0d;
+        }
+
+        var wakeDuration = TimeSpan.FromSeconds(
+            AmbientOrbFrameSequence.WakeFrameCount /
+            (double)AmbientOrbFrameSequence.FramesPerSecond);
+        var progress = Stopwatch.GetElapsedTime(started, timestamp) /
+            wakeDuration;
+        if (progress < 1d)
+        {
+            return Math.Max(0d, progress);
+        }
+
+        wakeCompleted = true;
+        return 1d;
+    }
+
+    private void RefreshFrameModel()
+    {
+        var modifier = _wakeStartedTimestamp is not null
+            ? AmbientOrbInsightModifier.Wake
+            : _visualState.HasNewUnseenInsight
+                ? AmbientOrbInsightModifier.UnseenCue
+                : AmbientOrbInsightModifier.None;
+        _frameModel = AmbientOrbFrameSequence.Create(
+            _visualState.PostureMode,
+            _isHovered,
+            modifier);
     }
 
     private void ApplyTimerTransition(
@@ -359,6 +474,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         }
 
         _isHovered = isHovered;
+        RefreshFrameModel();
         PresentCurrentFrame();
     }
 
@@ -388,10 +504,9 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
                 SetHovered(false);
                 break;
             case WindowMessageLeftButtonUp:
-                if (_normalFrames.IsHitTestVisible(
+                if (IsRenderedPixelVisible(
                     SignedLowWord(lParam),
-                    SignedHighWord(lParam),
-                    _frameIndex))
+                    SignedHighWord(lParam)))
                 {
                     _onOrbClicked();
                 }
@@ -424,8 +539,14 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         var point = new Point(
             SignedLowWord(screenPoint) - rect.Left,
             SignedHighWord(screenPoint) - rect.Top);
-        return _normalFrames.IsHitTestVisible(point.X, point.Y, _frameIndex);
+        return IsRenderedPixelVisible(point.X, point.Y);
     }
+
+    private bool IsRenderedPixelVisible(int x, int y) =>
+        x >= 0 && y >= 0 &&
+        x < _renderedFrame.Width && y < _renderedFrame.Height &&
+        _renderedFrame.GetAlpha(x, y) >=
+            AmbientOrbFrameSequence.HitTestAlphaThreshold;
 
     private static void EnsureWindowClass()
     {

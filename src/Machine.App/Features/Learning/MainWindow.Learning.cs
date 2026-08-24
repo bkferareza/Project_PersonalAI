@@ -22,11 +22,11 @@ public sealed partial class MainWindow
         var currentPower = MachineLearnedPowerCostProjector.Project(
             learning.CurrentBaseline,
             acceptedToday.Rate);
-        var todayComparison = MachineTodayLearnedEnergyProjector.Project(
-            history.Rollups,
-            learning.ContextProfiles,
-            acceptedToday,
-            now);
+        var todayComparison = CreateTodayLearnedEnergyComparison(
+            now,
+            history,
+            learning,
+            acceptedToday);
 
         LearningPage.Update(
             learning,
@@ -37,4 +37,34 @@ public sealed partial class MainWindow
             _latestOllamaStatusSnapshot,
             OverviewPage);
     }
+
+    private MachineTodayLearnedEnergyComparison
+        CreateTodayLearnedEnergyComparison(DateTimeOffset now)
+    {
+        var history = _historyService.GetSnapshot(
+            MachineHistoryRange.Last7Days,
+            now);
+        var learning = _learningService.GetDashboardSnapshot(now);
+        var acceptedToday = MachineTodayEnergyCostProjector.Project(
+            history.Rollups,
+            _cachedElectricityRates,
+            now);
+        return CreateTodayLearnedEnergyComparison(
+            now,
+            history,
+            learning,
+            acceptedToday);
+    }
+
+    private static MachineTodayLearnedEnergyComparison
+        CreateTodayLearnedEnergyComparison(
+            DateTimeOffset now,
+            MachineHistorySnapshot history,
+            MachineLearningDashboardSnapshot learning,
+            MachineTodayEnergyCostProjection acceptedToday) =>
+        MachineTodayLearnedEnergyProjector.Project(
+            history.Rollups,
+            learning.ContextProfiles,
+            acceptedToday,
+            now);
 }

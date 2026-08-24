@@ -114,7 +114,6 @@ public sealed partial class MainWindow
                 .ToArray();
             RuntimePage.ProcessStatusText.Text = string.Empty;
             UpdateExplainMachineStateButtonState();
-            TryRequestDashboardInsight();
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -197,7 +196,6 @@ public sealed partial class MainWindow
             ClearOllamaModels(
                 "Loaded-model status is unavailable.");
             UpdateExplainMachineStateButtonState();
-            TryRequestDashboardInsight();
             return;
         }
 
@@ -212,13 +210,11 @@ public sealed partial class MainWindow
             RuntimePage.OllamaLoadedModelsStatusText.Text =
                 "No models currently loaded.";
             UpdateExplainMachineStateButtonState();
-            TryRequestDashboardInsight();
             return;
         }
 
         RuntimePage.OllamaLoadedModelsStatusText.Text = string.Empty;
         UpdateExplainMachineStateButtonState();
-        TryRequestDashboardInsight();
     }
 
     private void ShowOllamaOffline()
@@ -276,31 +272,6 @@ public sealed partial class MainWindow
         await GenerateInsightAsync(decision);
     }
 
-    private void TryRequestDashboardInsight()
-    {
-        if (!_detailsExpanded)
-        {
-            return;
-        }
-
-        var decision =
-            _insightTriggerPolicy.RequestForDashboard(
-                _latestFindingsSnapshot,
-                DateTimeOffset.UtcNow,
-                IsInsightContextAvailable());
-
-        StartInsightGeneration(decision);
-    }
-
-    private void StartInsightGeneration(
-        MachineInsightTriggerDecision decision)
-    {
-        if (decision.ShouldGenerate)
-        {
-            _ = GenerateInsightAsync(decision);
-        }
-    }
-
     private async Task GenerateInsightAsync(
         MachineInsightTriggerDecision decision)
     {
@@ -319,6 +290,7 @@ public sealed partial class MainWindow
         var networkSnapshot = _latestNetworkSnapshot;
         var sessionSnapshot = _latestSessionSnapshot;
         var findingsSnapshot = _latestFindingsSnapshot;
+        var explainedInsight = _currentInsight;
         var cancellationToken =
             _windowCancellationTokenSource.Token;
 
@@ -327,13 +299,12 @@ public sealed partial class MainWindow
             processSnapshots.Length == 0 ||
             cancellationToken.IsCancellationRequested)
         {
-            var followUp = _insightTriggerPolicy.CompleteRequest(
+            _insightTriggerPolicy.CompleteRequest(
                 decision,
                 insightAccepted: false,
                 DateTimeOffset.UtcNow,
                 isOllamaOnline: false);
             UpdateExplainMachineStateButtonState();
-            StartInsightGeneration(followUp);
             return;
         }
 
@@ -378,7 +349,8 @@ public sealed partial class MainWindow
                         MachineHistoryRange.Last7Days,
                         DateTimeOffset.UtcNow)),
                 Gpu: CreateGpuInsightContext(_latestGpuTelemetrySnapshot),
-                EnergyCost: CreateEnergyCostInsightSnapshot());
+                EnergyCost: CreateEnergyCostInsightSnapshot(),
+                CurrentInsight: explainedInsight?.ExplainContext);
             var explanation =
                 await _machineStateExplainer.ExplainAsync(
                     request,
@@ -395,6 +367,10 @@ public sealed partial class MainWindow
                 string.Equals(
                     decision.ContextFingerprint,
                     latestFingerprint,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    explainedInsight?.Id,
+                    _currentInsight?.Id,
                     StringComparison.Ordinal))
             {
                 OverviewPage.MachineExplanationText.Text = explanation.Text;
@@ -413,7 +389,6 @@ public sealed partial class MainWindow
                 OverviewPage.MachineExplanationStatusText.Text = string.Empty;
                 _hasSuccessfulExplanation = true;
                 insightAccepted = true;
-                BeginNewInsightBloom();
             }
             else
             {
@@ -448,7 +423,7 @@ public sealed partial class MainWindow
             ApplyShellAtmosphere();
             ApplyPresenceVisualMode();
 
-            var followUp = _insightTriggerPolicy.CompleteRequest(
+            _insightTriggerPolicy.CompleteRequest(
                 decision,
                 insightAccepted,
                 DateTimeOffset.UtcNow,
@@ -456,18 +431,17 @@ public sealed partial class MainWindow
 
             if (!cancellationToken.IsCancellationRequested)
             {
-                OverviewPage.ExplainMachineStateButton.Content =
-                    "Refresh insight";
+                OverviewPage.ExplainMachineStateButton.Content = "Explain";
                 OverviewPage.MachineExplanationProgressRing.IsActive = false;
                 OverviewPage.MachineExplanationProgressRing.Visibility =
                     Visibility.Collapsed;
                 UpdateExplainMachineStateButtonState();
-                StartInsightGeneration(followUp);
             }
         }
     }
 
     private bool IsInsightContextAvailable() =>
+        _currentInsight is not null &&
         _latestIdentity is not null &&
         _latestResourceSnapshot is not null &&
         _latestProcessSnapshots.Count > 0 &&
@@ -513,36 +487,91 @@ public sealed partial class MainWindow
             rate?.RateConfidence ?? MachinePowerEstimateConfidence.Unavailable);
     }
 
-    private void UpdateRunningBillInsight()
+    private void UpdateLocalInsight()
     {
-        var insight = MachineRunningBillInsightProjector.Project(
-            _latestTodayEnergyCost);
-        if (insight is null)
+        if (_windowCancellationTokenSource.IsCancellationRequested)
         {
-            OverviewPage.RunningBillInsightPanel.Visibility =
-                Visibility.Collapsed;
             return;
         }
 
-        OverviewPage.RunningBillInsightTitleText.Text = insight.Title;
+        var now = DateTimeOffset.UtcNow;
+        var candidates = new MachineInsightCandidate?[]
+        {
+            MachineInsightCandidateProjector.ProjectMachineFinding(
+                _latestFindingsSnapshot,
+                now),
+            MachineInsightCandidateProjector.ProjectLearnedEnergyDeviation(
+                CreateTodayLearnedEnergyComparison(now),
+                now),
+            MachineInsightCandidateProjector.ProjectRunningBill(
+                _latestTodayEnergyCost,
+                now)
+        };
+        var previousId = _currentInsight?.Id;
+        var previousNewState = _hasNewUnseenInsight;
+        var selection = _insightArbiter.Evaluate(
+            candidates.OfType<MachineInsightCandidate>(),
+            now);
+
+        if (_detailsExpanded &&
+            OverviewPage.Visibility == Visibility.Visible)
+        {
+            selection = _insightArbiter.MarkCurrentViewed();
+        }
+
+        _currentInsight = selection.CurrentInsight;
+        _hasNewUnseenInsight = selection.HasNewUnseenInsight;
+        if (_currentInsight is null)
+        {
+            OverviewPage.RunningBillInsightPanel.Visibility =
+                Visibility.Collapsed;
+            UpdateExplainMachineStateButtonState();
+            if (previousNewState != _hasNewUnseenInsight)
+            {
+                ApplyPresenceVisualMode(force: true);
+            }
+            return;
+        }
+
+        OverviewPage.RunningBillInsightTitleText.Text = _currentInsight.Title;
         OverviewPage.RunningBillInsightCostText.Text =
-            $"~{FormatInsightCurrency(insight.Rate.CurrencyCode)}" +
-            $"{insight.EstimatedPcElectricityCost:F2} estimated";
+            _currentInsight.PrimaryText;
         OverviewPage.RunningBillInsightEnergyText.Text =
-            $"{insight.TodayObservedEnergyKilowattHours:F3} kWh observed " +
-            "so far today · estimated PC electricity cost";
+            _currentInsight.SecondaryText;
         OverviewPage.RunningBillInsightEvidenceText.Text =
-            $"{insight.Rate.ProviderName} residential reference · " +
-            $"{insight.Rate.CurrencyCode} " +
-            $"{insight.Rate.RatePerKWh:F4}/kWh · " +
-            insight.Rate.EffectiveMonth.ToString("MMMM yyyy");
+            _currentInsight.EvidenceSummary;
         OverviewPage.RunningBillInsightPanel.Visibility = Visibility.Visible;
+
+        if (!string.Equals(previousId, _currentInsight.Id,
+            StringComparison.Ordinal))
+        {
+            _hasSuccessfulExplanation = false;
+            OverviewPage.MachineExplanationText.Text =
+                "Deterministic local evidence · explanation is optional.";
+            OverviewPage.MachineExplanationMetadataText.Text = string.Empty;
+            OverviewPage.MachineExplanationMetadataText.Visibility =
+                Visibility.Collapsed;
+        }
+
+        UpdateExplainMachineStateButtonState();
+        if (previousNewState != _hasNewUnseenInsight)
+        {
+            ApplyPresenceVisualMode(force: true);
+        }
     }
 
-    private static string FormatInsightCurrency(string currencyCode) =>
-        string.Equals(currencyCode, "PHP", StringComparison.OrdinalIgnoreCase)
-            ? "₱"
-            : $"{currencyCode} ";
+    private void MarkCurrentInsightViewed()
+    {
+        if (!_insightArbiter.HasNewUnseenInsight)
+        {
+            return;
+        }
+
+        var selection = _insightArbiter.MarkCurrentViewed();
+        _currentInsight = selection.CurrentInsight;
+        _hasNewUnseenInsight = selection.HasNewUnseenInsight;
+        ApplyPresenceVisualMode(force: true);
+    }
 
     private static MachineGpuInsightContext? CreateGpuInsightContext(
         MachineGpuTelemetrySnapshot? snapshot)

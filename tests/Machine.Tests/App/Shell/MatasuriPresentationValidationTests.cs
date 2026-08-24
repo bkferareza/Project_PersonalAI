@@ -12,6 +12,8 @@ public sealed class MatasuriPresentationValidationTests
 
         Assert.Null(result.State);
         Assert.False(result.IsGenerating);
+        Assert.False(result.HasNewInsight);
+        Assert.False(result.ReducedMotion);
         Assert.Equal(MatasuriPresentationTheme.System, result.Theme);
     }
 
@@ -20,10 +22,13 @@ public sealed class MatasuriPresentationValidationTests
     {
         var result = MatasuriPresentationValidationOptions.Parse(
             "--matasuri-state=CRITICAL --matasuri-generating " +
-            "--matasuri-theme=Light");
+            "--matasuri-theme=Light --matasuri-new-insight " +
+            "--matasuri-reduced-motion");
 
         Assert.Equal(MachineOverallState.Critical, result.State);
         Assert.True(result.IsGenerating);
+        Assert.True(result.HasNewInsight);
+        Assert.True(result.ReducedMotion);
         Assert.Equal(MatasuriPresentationTheme.Light, result.Theme);
     }
 

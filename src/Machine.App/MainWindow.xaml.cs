@@ -67,6 +67,7 @@ public sealed partial class MainWindow : Window
     private readonly ElectricityRateEnrichmentService _electricityRateEnrichment;
     private readonly MachineInsightTriggerPolicy
         _insightTriggerPolicy = new();
+    private readonly MachineInsightArbiter _insightArbiter = new();
     private readonly MachineEnergyAccumulator _energyAccumulator = new(
         Stopwatch.Frequency);
     private readonly CompactPresenceInteraction
@@ -99,6 +100,7 @@ public sealed partial class MainWindow : Window
     private MachineEnergySnapshot? _latestEnergySnapshot;
     private MachineTodayEnergyCostProjection? _latestTodayEnergyCost;
     private MachineHistoryEnergyCostSummary? _latestThirtyDayEnergyCost;
+    private MachineInsightCandidate? _currentInsight;
     private double _pendingHistoryEnergyWattHours;
     private DateTimeOffset? _lastStorageHealthRefreshAt;
     private OllamaStatusSnapshot? _latestOllamaStatusSnapshot;
@@ -107,7 +109,6 @@ public sealed partial class MainWindow : Window
     private bool _contentLoadStarted;
     private bool _detailsExpanded;
     private bool _hasSuccessfulExplanation;
-    private bool _initialContextHydrationCompleted;
     private bool _windowPresentationConfigured;
     private bool _isOllamaServiceAvailable;
     private bool _isExplanationRequestRunning;
@@ -116,9 +117,9 @@ public sealed partial class MainWindow : Window
         MachineOverallState.Unknown;
     private CompactPresencePresentation?
         _appliedCompactPresentation;
-    private CompactPresenceVisualMode?
-        _activePresenceVisualMode;
-    private bool _showNewInsightBloom;
+    private CompactPresenceVisualState?
+        _activePresenceVisualState;
+    private bool _hasNewUnseenInsight;
     private bool _isAnimationSettingsChangeSubscribed;
     private bool _isXamlRootChangeSubscribed;
     private bool _isApplicationShutdownRequested;
@@ -269,7 +270,6 @@ public sealed partial class MainWindow : Window
         _dashboardBackdrop = SystemBackdrop!;
         _ambientOrbWindow = new NativeAmbientOrbWindow(
             OpenDashboardFromAmbientOrb);
-        _ambientOrbWindow.NewInsightCompleted += OnNewInsightBloomCompleted;
         ApplyPresenceVisualMode(force: true);
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
         {

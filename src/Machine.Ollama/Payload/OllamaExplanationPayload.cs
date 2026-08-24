@@ -47,11 +47,11 @@ public sealed partial class OllamaMachineStateExplainer
 
     private sealed record MachineSnapshotPayload(
         [property: JsonPropertyName("cpu_usage_percent")]
-        double CpuUsagePercent,
+        double? CpuUsagePercent,
         [property: JsonPropertyName("used_memory_bytes")]
-        ulong UsedMemoryBytes,
+        ulong? UsedMemoryBytes,
         [property: JsonPropertyName("total_memory_bytes")]
-        ulong TotalMemoryBytes,
+        ulong? TotalMemoryBytes,
         [property: JsonPropertyName("storage")]
         StorageSnapshotPayload? Storage,
         [property: JsonPropertyName("software")]
@@ -73,7 +73,9 @@ public sealed partial class OllamaMachineStateExplainer
         [property: JsonPropertyName("gpu")]
         GpuSnapshotPayload? Gpu,
         [property: JsonPropertyName("energy_cost")]
-        EnergyCostSnapshotPayload? EnergyCost);
+        EnergyCostSnapshotPayload? EnergyCost,
+        [property: JsonPropertyName("current_insight")]
+        CurrentInsightPayload? CurrentInsight);
 
     private sealed record LearnedContextPayload(
         [property: JsonPropertyName("current_baseline")]
@@ -282,6 +284,31 @@ public sealed partial class OllamaMachineStateExplainer
         [property: JsonPropertyName("rate_effective_month")] string? EffectiveMonth,
         [property: JsonPropertyName("rate_confidence")] string RateConfidence,
         [property: JsonPropertyName("energy_cost_kind")] string EnergyCostKind);
+
+    private sealed record CurrentInsightPayload(
+        [property: JsonPropertyName("candidate_id")] string CandidateId,
+        [property: JsonPropertyName("kind")] string Kind,
+        [property: JsonPropertyName("title")] string Title,
+        [property: JsonPropertyName("primary_text")] string PrimaryText,
+        [property: JsonPropertyName("secondary_text")] string SecondaryText,
+        [property: JsonPropertyName("evidence_summary")] string EvidenceSummary,
+        [property: JsonPropertyName("actual_observed_kwh")] double? ActualKwh,
+        [property: JsonPropertyName("observed_duration_seconds")] long? ObservedDurationSeconds,
+        [property: JsonPropertyName("expected_observed_kwh")] double? ExpectedKwh,
+        [property: JsonPropertyName("expected_lower_kwh")] double? ExpectedLowerKwh,
+        [property: JsonPropertyName("expected_upper_kwh")] double? ExpectedUpperKwh,
+        [property: JsonPropertyName("difference_kwh")] double? DifferenceKwh,
+        [property: JsonPropertyName("difference_percent")] double? DifferencePercent,
+        [property: JsonPropertyName("learned_coverage")] double? LearnedCoverage,
+        [property: JsonPropertyName("evidence_maturity")] string? EvidenceMaturity,
+        [property: JsonPropertyName("actual_estimated_cost")] decimal? ActualCost,
+        [property: JsonPropertyName("expected_estimated_cost")] decimal? ExpectedCost,
+        [property: JsonPropertyName("expected_lower_cost")] decimal? ExpectedLowerCost,
+        [property: JsonPropertyName("expected_upper_cost")] decimal? ExpectedUpperCost,
+        [property: JsonPropertyName("published_reference_provider")] string? Provider,
+        [property: JsonPropertyName("currency")] string? Currency,
+        [property: JsonPropertyName("published_reference_rate_per_kwh")] decimal? RatePerKwh,
+        [property: JsonPropertyName("rate_effective_month")] string? EffectiveMonth);
 
     private sealed record ReliabilityCountsPayload(
         [property: JsonPropertyName("application_crashes")]

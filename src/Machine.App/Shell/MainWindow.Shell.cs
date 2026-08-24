@@ -169,7 +169,7 @@ public sealed partial class MainWindow
                             FocusState.Programmatic);
                     }
                 });
-            TryRequestDashboardInsight();
+            MarkCurrentInsightViewed();
         }
     }
 
@@ -317,17 +317,6 @@ public sealed partial class MainWindow
         }
     }
 
-    private void BeginNewInsightBloom()
-    {
-        if (_windowCancellationTokenSource.IsCancellationRequested)
-        {
-            return;
-        }
-
-        _showNewInsightBloom = true;
-        ApplyPresenceVisualMode(force: true);
-    }
-
     private void ApplyShellAtmosphere()
     {
         if (MainContent is null)
@@ -444,44 +433,27 @@ public sealed partial class MainWindow
             return;
         }
 
-        var mode = CompactPresenceLayout.SelectVisualMode(
+        var hasNewInsight = _hasNewUnseenInsight;
+#if DEBUG
+        hasNewInsight |= _presentationValidationOptions.HasNewInsight;
+#endif
+        var state = CompactPresenceLayout.SelectVisualState(
             GetPresentationState(),
             IsGeneratingPresentation(),
-            _showNewInsightBloom);
+            hasNewInsight);
 
-        if (!force && _activePresenceVisualMode == mode)
+        if (!force && _activePresenceVisualState == state)
         {
             return;
         }
 
-        _activePresenceVisualMode = mode;
-        _ambientOrbWindow.SetAnimationsEnabled(_uiSettings.AnimationsEnabled);
-        _ambientOrbWindow.SetVisualMode(mode);
-
-        if (!_uiSettings.AnimationsEnabled)
-        {
-            if (mode == CompactPresenceVisualMode.NewInsight)
-            {
-                _showNewInsightBloom = false;
-                _activePresenceVisualMode = null;
-                ApplyPresenceVisualMode(force: true);
-            }
-
-            return;
-        }
-
-    }
-
-    private void OnNewInsightBloomCompleted(object? sender, EventArgs args)
-    {
-        if (_windowCancellationTokenSource.IsCancellationRequested)
-        {
-            return;
-        }
-
-        _showNewInsightBloom = false;
-        _activePresenceVisualMode = null;
-        ApplyPresenceVisualMode(force: true);
+        _activePresenceVisualState = state;
+        var animationsEnabled = _uiSettings.AnimationsEnabled;
+#if DEBUG
+        animationsEnabled &= !_presentationValidationOptions.ReducedMotion;
+#endif
+        _ambientOrbWindow.SetAnimationsEnabled(animationsEnabled);
+        _ambientOrbWindow.SetVisualState(state);
     }
 
     private void OnSystemAnimationsEnabledChanged(
@@ -679,6 +651,10 @@ public sealed partial class MainWindow
                 isManualRefresh: false,
                 _windowCancellationTokenSource.Token);
         }
+        else if (tag == "overview")
+        {
+            MarkCurrentInsightViewed();
+        }
     }
 
     private void ResizeAndPositionWindow(
@@ -810,7 +786,6 @@ public sealed partial class MainWindow
         _generatingAtmosphereStoryboard = null;
         _powerBroadcastMonitor?.Dispose();
         _powerBroadcastMonitor = null;
-        _ambientOrbWindow.NewInsightCompleted -= OnNewInsightBloomCompleted;
         _ambientOrbWindow.Dispose();
         if (_isXamlRootChangeSubscribed && MainContent.XamlRoot is not null)
         {

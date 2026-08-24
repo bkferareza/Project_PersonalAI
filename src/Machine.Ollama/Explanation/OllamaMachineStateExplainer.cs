@@ -45,6 +45,8 @@ public sealed partial class OllamaMachineStateExplainer
         Use only supplied deterministic findings and overall_state for severity or pressure language.
         Never judge severity or pressure from raw metric values.
         learned_context contains at most the current cumulative baseline, one matching compact profile, one matching broader pattern, and two recent aggregate episodes. It never contains raw observations or the full memory store.
+        current_insight is the deterministic Local Insight selected by the application. Treat its identity, direction, evidence maturity, coverage, and numeric range as authoritative. Explain why it was surfaced without changing its eligibility, importance, above/below direction, or maturity.
+        A learned-energy current_insight may use only its bounded actual energy, same-duration expected energy and range, duration, coverage, Established maturity, difference, and optional derived cost. Never infer a household bill, tariff behavior, waste, efficiency, or a cause.
         You may use words such as usual, normal for me, or typically only when matching_profile has Established confidence and is not Stale. CPU or memory comparisons must use that profile's supplied typical range. Network comparisons additionally require its dominant_network_activity_class and evidence counts.
         A broader-pattern claim requires matching_broader_pattern with Established confidence. Never invent a semantic label for a time range.
         A Stale profile is historical evidence only. Do not describe it as the present usual or current typical behavior unless the wording explicitly says it is historical or stale.

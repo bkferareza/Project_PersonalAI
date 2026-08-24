@@ -677,6 +677,76 @@ public sealed class OllamaMachineStateExplainerTests
         Assert.Equal(0, handler.CallCount);
     }
 
+    [Fact]
+    public async Task ExplicitInsightExplanationCarriesOnlyBoundedInsightEvidence()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            ChatResponse(StableInsight, ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new OllamaMachineStateExplainer(
+            httpClient,
+            ModelName);
+        var request = CreateExplanationRequest() with
+        {
+            CurrentInsight = new MachineInsightExplainContext(
+                "learned-energy-today-above",
+                MachineInsightKind.LearnedEnergyDeviation,
+                "Running heavier than usual",
+                "~0.620 kWh observed today",
+                "Established range 0.450–0.550 kWh.",
+                "Established · 100% learned coverage",
+                ActualObservedEnergyKilowattHours: 0.620d,
+                ObservedDurationSeconds: 5_400,
+                ExpectedObservedEnergyKilowattHours: 0.500d,
+                ExpectedLowerEnergyKilowattHours: 0.450d,
+                ExpectedUpperEnergyKilowattHours: 0.550d,
+                DifferenceKilowattHours: 0.120d,
+                DifferencePercent: 24d,
+                LearnedCoverage: 1d,
+                EvidenceMaturity:
+                    MachineLearningEvidenceMaturity.Established,
+                ActualEstimatedCost: 9.16m,
+                ExpectedEstimatedCost: 7.39m,
+                ExpectedLowerCost: 6.65m,
+                ExpectedUpperCost: 8.13m,
+                ElectricityProvider: "Meralco",
+                CurrencyCode: "PHP",
+                RatePerKilowattHour: 14.7833m,
+                RateEffectiveMonth: new DateOnly(2026, 8, 1))
+        };
+
+        await explainer.ExplainAsync(request);
+
+        var payload = GetUserPayload(handler.RequestJson);
+        var insight = payload.GetProperty("current_insight");
+        Assert.Equal("learned-energy-today-above",
+            insight.GetProperty("candidate_id").GetString());
+        Assert.Equal("Established",
+            insight.GetProperty("evidence_maturity").GetString());
+        Assert.Equal(5_400,
+            insight.GetProperty("observed_duration_seconds").GetInt64());
+        Assert.Equal(0.620d,
+            insight.GetProperty("actual_observed_kwh").GetDouble());
+        Assert.Equal(0.450d,
+            insight.GetProperty("expected_lower_kwh").GetDouble());
+        Assert.Equal(0.550d,
+            insight.GetProperty("expected_upper_kwh").GetDouble());
+        Assert.Equal(1d,
+            insight.GetProperty("learned_coverage").GetDouble());
+        Assert.DoesNotContain("rollups", insight.GetRawText(),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("profiles", insight.GetRawText(),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("process", insight.GetRawText(),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(JsonValueKind.Null,
+            payload.GetProperty("cpu_usage_percent").ValueKind);
+        Assert.Equal(JsonValueKind.Null,
+            payload.GetProperty("history").ValueKind);
+        Assert.Equal(JsonValueKind.Null,
+            payload.GetProperty("learned_context").ValueKind);
+    }
+
     private static MachineStateExplanationRequest
         CreateExplanationRequest() =>
         new(

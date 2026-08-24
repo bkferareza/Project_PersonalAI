@@ -306,7 +306,7 @@
                                     <Button
                                         x:Name="ExplainMachineStateButton" x:FieldModifier="internal"
                                         AutomationProperties.AutomationId="ExplainMachineStateButton"
-                                        Content="Refresh insight"
+                                        Content="Explain"
                                         FontSize="12"
                                         Grid.Column="2"
                                         HorizontalAlignment="Right"

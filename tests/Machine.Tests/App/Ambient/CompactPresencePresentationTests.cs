@@ -72,8 +72,8 @@ public sealed class CompactPresencePresentationTests
 
         Assert.InRange(body.Width, 42, 50);
         Assert.InRange(body.Height, 42, 50);
-        Assert.InRange(halo.Width, 60, 68);
-        Assert.InRange(halo.Height, 60, 68);
+        Assert.InRange(halo.Width, 52, 68);
+        Assert.InRange(halo.Height, 52, 68);
     }
 
     [Fact]
@@ -147,12 +147,12 @@ public sealed class CompactPresencePresentationTests
 
         var minimum = sequence.Frames[0];
         var maximum = sequence.Frames[sequence.Frames.Count / 4];
-        var settled = sequence.Frames[sequence.Frames.Count / 2];
+        var settled = sequence.Frames[sequence.Frames.Count * 3 / 4];
 
         Assert.True(AmbientOrbFrameSequence.MeanAlphaDifference(
             minimum, maximum) > 2d);
         Assert.True(AmbientOrbFrameSequence.MeanLuminance(maximum) >
-            AmbientOrbFrameSequence.MeanLuminance(minimum) * 1.12d);
+            AmbientOrbFrameSequence.MeanLuminance(minimum) * 1.03d);
         Assert.True(AmbientOrbFrameSequence.MeanAlphaDifference(
             maximum, settled) > 2d);
         Assert.InRange(
@@ -161,11 +161,131 @@ public sealed class CompactPresencePresentationTests
                 sequence.Frames[^1]),
             0d,
             2d);
-        Assert.Equal(10, AmbientOrbFrameSequence.FramesPerSecond);
-        Assert.InRange(sequence.FrameInterval.TotalSeconds, 0.09d, 0.11d);
+        Assert.Equal(20, AmbientOrbFrameSequence.FramesPerSecond);
+        Assert.InRange(sequence.FrameInterval.TotalSeconds, 0.04d, 0.06d);
         Assert.Equal(
             TimeSpan.FromSeconds(5),
             sequence.FrameInterval * sequence.Frames.Count);
+    }
+
+    [Fact]
+    public void StableBreathingChangesTheActualAlphaSilhouette()
+    {
+        var sequence = AmbientOrbFrameSequence.Create();
+        var inhale = sequence.Frames[28];
+        var exhale = sequence.Frames[72];
+
+        Assert.True(AmbientOrbFrameSequence.SilhouetteDifferencePixels(
+            inhale,
+            exhale) >= 40);
+    }
+
+    [Fact]
+    public void OrganicDeformationMovesBoundaryInBothDirections()
+    {
+        var sequence = AmbientOrbFrameSequence.Create();
+        var first = sequence.Frames[28];
+        var second = sequence.Frames[40];
+        var firstOnly = 0;
+        var secondOnly = 0;
+        for (var y = 0; y < first.Height; y++)
+        {
+            for (var x = 0; x < first.Width; x++)
+            {
+                var firstInside = first.GetAlpha(x, y) >=
+                    AmbientOrbFrameSequence.SilhouetteAlphaThreshold;
+                var secondInside = second.GetAlpha(x, y) >=
+                    AmbientOrbFrameSequence.SilhouetteAlphaThreshold;
+                if (firstInside && !secondInside)
+                {
+                    firstOnly++;
+                }
+                else if (secondInside && !firstInside)
+                {
+                    secondOnly++;
+                }
+            }
+        }
+
+        Assert.True(firstOnly >= 4);
+        Assert.True(secondOnly >= 4);
+    }
+
+    [Fact]
+    public void BodyAreaGrowsOnInhaleAndRelaxesOnExhale()
+    {
+        var sequence = AmbientOrbFrameSequence.Create();
+        var inhaleArea = AmbientOrbFrameSequence.SilhouetteArea(
+            sequence.Frames[30]);
+        var exhaleArea = AmbientOrbFrameSequence.SilhouetteArea(
+            sequence.Frames[75]);
+
+        Assert.True(inhaleArea >= exhaleArea + 80);
+    }
+
+    [Fact]
+    public void NonRestContourIsSmoothlyAsymmetric()
+    {
+        var motion = AmbientOrbMotionModel.CreateForProgress(
+            0.31d,
+            CompactPresenceVisualMode.Stable);
+        var radii = Enumerable.Range(0, 72)
+            .Select(index => AmbientOrbMotionModel.GetContourRadius(
+                Math.Tau * index / 72d,
+                motion))
+            .ToArray();
+
+        Assert.True(radii.Max() - radii.Min() > 1.5d);
+        Assert.NotEqual(radii[0], radii[36], precision: 2);
+    }
+
+    [Fact]
+    public void ReducedMotionKeepsOrganicGeometryStaticAcrossElapsedTime()
+    {
+        var first = AmbientOrbMotionModel.Create(
+            TimeSpan.Zero,
+            CompactPresenceVisualMode.Stable,
+            reducedMotion: true);
+        var later = AmbientOrbMotionModel.Create(
+            TimeSpan.FromSeconds(17),
+            CompactPresenceVisualMode.Stable,
+            reducedMotion: true);
+
+        Assert.Equal(first, later);
+        Assert.True(radiiVary(first));
+
+        static bool radiiVary(AmbientOrbMotionParameters motion)
+        {
+            var radii = Enumerable.Range(0, 24)
+                .Select(index => AmbientOrbMotionModel.GetContourRadius(
+                    Math.Tau * index / 24d,
+                    motion));
+            return radii.Max() - radii.Min() > 1d;
+        }
+    }
+
+    [Fact]
+    public void NewInsightIsAnOverlayWithoutChangingPosture()
+    {
+        var state = CompactPresenceLayout.SelectVisualState(
+            Machine.Core.MachineOverallState.Stable,
+            isGenerating: false,
+            hasNewUnseenInsight: true);
+        var normal = AmbientOrbMotionModel.CreateForProgress(
+            0.25d,
+            state.PostureMode);
+        var wake = AmbientOrbMotionModel.CreateForProgress(
+            0.25d,
+            state.PostureMode,
+            insightModifier: AmbientOrbInsightModifier.Wake,
+            insightProgress: 0.42d);
+
+        Assert.Equal(CompactPresenceVisualMode.Stable, state.PostureMode);
+        Assert.True(state.HasNewUnseenInsight);
+        Assert.Equal(normal.PostureMode, wake.PostureMode);
+        Assert.True(wake.HasNewUnseenInsight);
+        Assert.True(wake.NewInsightAmount > 0d);
+        Assert.True(wake.Expansion > normal.Expansion);
     }
 
     [Fact]

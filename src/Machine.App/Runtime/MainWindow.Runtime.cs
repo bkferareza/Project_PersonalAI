@@ -82,10 +82,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        _insightTriggerPolicy.EstablishBaseline(
-            _latestFindingsSnapshot);
-        _initialContextHydrationCompleted = true;
-        TryRequestDashboardInsight();
+        UpdateLocalInsight();
         _runtimeInitializationCompletion.TrySetResult();
 
         await Task.WhenAll(
@@ -108,6 +105,7 @@ public sealed partial class MainWindow
                 _latestElectricityRate = result;
                 _cachedElectricityRates = cache.Rates;
                 UpdateLearningDashboard();
+                UpdateLocalInsight();
             }
         }
         catch (OperationCanceledException)
@@ -133,7 +131,6 @@ public sealed partial class MainWindow
             OverviewPage.ArchitectureText.Text = identity.Architecture;
             OverviewPage.LoadStatusText.Text = string.Empty;
             UpdateExplainMachineStateButtonState();
-            TryRequestDashboardInsight();
         }
         catch (Exception exception)
         {
@@ -275,7 +272,7 @@ public sealed partial class MainWindow
                 powerEstimate, _latestEnergySnapshot, historyEnergy,
                 todayHistoryEnergy.Rate, todayHistoryEnergy);
             HistoryPage.UpdateTodaySummary();
-            UpdateRunningBillInsight();
+            UpdateLocalInsight();
             var learningChanged = await CaptureLearningObservationAsync(
                 snapshot,
                 networkSnapshot,
@@ -312,9 +309,7 @@ public sealed partial class MainWindow
                     cancellationToken);
                 HistoryPage.UpdateDashboard();
             }
-            ObserveInsightTriggers();
             UpdateExplainMachineStateButtonState();
-            TryRequestDashboardInsight();
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -480,8 +475,7 @@ public sealed partial class MainWindow
 #endif
     }
 
-    private void ReevaluateFindings(
-        bool observeInsightTriggers = false)
+    private void ReevaluateFindings()
     {
         var snapshot = MachineFindingsEvaluator.Evaluate(
             new MachineFindingsInput(
@@ -501,30 +495,7 @@ public sealed partial class MainWindow
         _latestFindingsSnapshot = snapshot;
         UpdatePresenceState(snapshot.OverallState);
         UpdateCurrentFindings(snapshot);
-
-        if (!observeInsightTriggers)
-        {
-            return;
-        }
-
-        var decision = _insightTriggerPolicy.ObserveTelemetry(
-            snapshot,
-            DateTimeOffset.UtcNow,
-            IsInsightContextAvailable(),
-            allowAutomaticGeneration:
-                _initialContextHydrationCompleted);
-
-        StartInsightGeneration(decision);
-    }
-
-    private void ObserveInsightTriggers()
-    {
-        var decision = _insightTriggerPolicy.ObserveTelemetry(
-            _latestFindingsSnapshot,
-            DateTimeOffset.UtcNow,
-            IsInsightContextAvailable(),
-            allowAutomaticGeneration: _initialContextHydrationCompleted);
-        StartInsightGeneration(decision);
+        UpdateLocalInsight();
     }
 
     private async Task LoadLearningAsync()

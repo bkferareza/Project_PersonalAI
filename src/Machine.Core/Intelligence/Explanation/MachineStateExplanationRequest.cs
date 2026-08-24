@@ -14,4 +14,5 @@ public sealed record MachineStateExplanationRequest(
     MachineHealthInsightContext? Health = null,
     MachineHistoryInsightContext? History = null,
     MachineGpuInsightContext? Gpu = null,
-    MachineEnergyCostInsightSnapshot? EnergyCost = null);
+    MachineEnergyCostInsightSnapshot? EnergyCost = null,
+    MachineInsightExplainContext? CurrentInsight = null);
