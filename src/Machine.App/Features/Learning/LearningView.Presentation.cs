@@ -24,6 +24,8 @@ public sealed partial class LearningView
         MachineLearningActivitySnapshot activity,
         MachineLearnedPowerCostProjection? currentPower,
         MachineTodayLearnedEnergyComparison todayComparison,
+        MachineLearnedUsageSnapshot learnedUsage,
+        MachineUsageForecast forecast,
         MachineHealthHistorySnapshot healthHistory,
         OllamaStatusSnapshot? ollamaStatus,
         OverviewView overview)
@@ -31,6 +33,8 @@ public sealed partial class LearningView
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(activity);
         ArgumentNullException.ThrowIfNull(todayComparison);
+        ArgumentNullException.ThrowIfNull(learnedUsage);
+        ArgumentNullException.ThrowIfNull(forecast);
         ArgumentNullException.ThrowIfNull(healthHistory);
         ArgumentNullException.ThrowIfNull(overview);
         var current = snapshot.CurrentObservation;
@@ -133,6 +137,7 @@ public sealed partial class LearningView
             FormatPatternReadinessReason(readiness);
         UpdateCurrentPowerProjection(currentPower);
         UpdateTodayLearnedEnergyComparison(todayComparison);
+        UpdateUsageForecast(learnedUsage, forecast, overview);
 
         var orderedProfiles = snapshot.ContextProfiles
             .OrderBy(item => baseline is not null &&
@@ -350,6 +355,173 @@ public sealed partial class LearningView
             LearningTodayExpectedCostText.Text =
                 "Unavailable until coverage is complete";
         }
+    }
+
+    private void UpdateUsageForecast(
+        MachineLearnedUsageSnapshot learnedUsage,
+        MachineUsageForecast forecast,
+        OverviewView overview)
+    {
+        var usage = forecast.CurrentHourUsage;
+        if (usage is null || !usage.HasUsableEvidence)
+        {
+            LearningCurrentHourUsageText.Text =
+                $"{FormatLearningHour(forecast.CapturedAt.ToLocalTime().Hour)} · " +
+                "Still gathering repeated activity evidence";
+            LearningCurrentHourUsageEvidenceText.Text =
+                learnedUsage.HistoricalDayCount > 0
+                    ? $"{learnedUsage.HistoricalDayCount:N0}-day History window · " +
+                        "two observed days are needed for an early usage profile"
+                    : "No completed historical day is available yet";
+        }
+        else
+        {
+            LearningCurrentHourUsageText.Text =
+                $"{FormatLearningHour(usage.LocalHour)} · " +
+                $"Active {usage.ActiveFraction:P0} · " +
+                $"Idle {usage.IdleFraction:P0}";
+            LearningCurrentHourUsageEvidenceText.Text =
+                $"{FormatUsageMaturity(usage.Maturity)} · " +
+                $"{usage.ObservedDayCount:N0} observed " +
+                (usage.ObservedDayCount == 1 ? "day" : "days") +
+                $" in a {usage.HistoricalDayCount:N0}-day window · " +
+                $"{FormatProjectionDuration(usage.TypicalObservedDuration)} " +
+                "typical observed time";
+        }
+
+        if (forecast.HasNextObservedHourForecast)
+        {
+            LearningNextHourEnergyText.Text =
+                $"~{forecast.NextObservedHourEnergyKilowattHours!.Value:F3} kWh";
+            LearningNextHourEnergyRangeText.Text =
+                forecast.NextObservedHourEnergyLowerKilowattHours is { } low &&
+                forecast.NextObservedHourEnergyUpperKilowattHours is { } high
+                    ? $"{low:F3}–{high:F3} kWh · " +
+                        FormatForecastMaturity(forecast.CurrentPowerMaturity)
+                    : FormatForecastMaturity(forecast.CurrentPowerMaturity);
+            LearningNextHourCostText.Text =
+                forecast.NextObservedHourEstimatedCost is { } cost &&
+                forecast.RateReference is { } rate
+                    ? $"~{FormatCurrency(rate.CurrencyCode)}{cost:F2}"
+                    : "Rate unavailable";
+            LearningNextHourCostRangeText.Text =
+                forecast.NextObservedHourEstimatedCostLower is { } lowCost &&
+                forecast.NextObservedHourEstimatedCostUpper is { } highCost &&
+                forecast.RateReference is { } rangeRate
+                    ? $"{FormatCurrency(rangeRate.CurrencyCode)}{lowCost:F2}–" +
+                        $"{FormatCurrency(rangeRate.CurrencyCode)}{highCost:F2}"
+                    : "Estimated cost range unavailable";
+        }
+        else
+        {
+            LearningNextHourEnergyText.Text = "Unavailable";
+            LearningNextHourEnergyRangeText.Text =
+                "Current power behavior is still learning";
+            LearningNextHourCostText.Text = "Unavailable";
+            LearningNextHourCostRangeText.Text =
+                "No monetary projection without learned energy";
+        }
+
+        if (forecast.HasEndOfDayForecast)
+        {
+            LearningEndOfDayEnergyText.Text =
+                $"~{forecast.ProjectedEndOfDayObservedEnergyKilowattHours!.Value:F3} kWh";
+            LearningEndOfDayEnergyRangeText.Text =
+                forecast.ProjectedEndOfDayLowerKilowattHours is { } low &&
+                forecast.ProjectedEndOfDayUpperKilowattHours is { } high
+                    ? $"{low:F3}–{high:F3} kWh"
+                    : "Projected range unavailable";
+            LearningEndOfDayCostText.Text =
+                forecast.ProjectedEndOfDayEstimatedCost is { } cost &&
+                forecast.RateReference is { } rate
+                    ? $"~{FormatCurrency(rate.CurrencyCode)}{cost:F2}"
+                    : "Rate unavailable";
+            LearningEndOfDayCostRangeText.Text =
+                forecast.ProjectedEndOfDayCostLower is { } lowCost &&
+                forecast.ProjectedEndOfDayCostUpper is { } highCost &&
+                forecast.RateReference is { } rangeRate
+                    ? $"{FormatCurrency(rangeRate.CurrencyCode)}{lowCost:F2}–" +
+                        $"{FormatCurrency(rangeRate.CurrencyCode)}{highCost:F2}"
+                    : "Estimated cost range unavailable";
+        }
+        else
+        {
+            LearningEndOfDayEnergyText.Text = "Unavailable";
+            LearningEndOfDayEnergyRangeText.Text =
+                "No trustworthy remaining-day energy range";
+            LearningEndOfDayCostText.Text = "Unavailable";
+            LearningEndOfDayCostRangeText.Text =
+                "No monetary projection without learned energy";
+        }
+
+        LearningForecastEvidenceText.Text =
+            FormatForecastEvidence(forecast);
+        overview.OverviewNextHourEnergyText.Text =
+            forecast.HasNextObservedHourForecast
+                ? $"~{forecast.NextObservedHourEnergyKilowattHours!.Value:F3} kWh"
+                : "Still learning";
+        overview.OverviewNextHourCostText.Text =
+            forecast.NextObservedHourEstimatedCost is { } nextCost &&
+            forecast.RateReference is { } nextRate
+                ? $"~{FormatCurrency(nextRate.CurrencyCode)}{nextCost:F2} estimated"
+                : forecast.HasNextObservedHourForecast
+                    ? "Published rate unavailable"
+                    : "Current power evidence unavailable";
+        overview.OverviewEndOfDayForecastText.Text =
+            forecast.HasEndOfDayForecast
+                ? $"End of day · ~{forecast.ProjectedEndOfDayObservedEnergyKilowattHours!.Value:F3} kWh" +
+                    (forecast.ProjectedEndOfDayEstimatedCost is { } endCost &&
+                        forecast.RateReference is { } endRate
+                            ? $" · ~{FormatCurrency(endRate.CurrencyCode)}{endCost:F2}"
+                            : string.Empty)
+                : "End-of-day projection unavailable";
+        overview.OverviewForecastEvidenceText.Text =
+            FormatForecastEvidence(forecast);
+    }
+
+    private static string FormatUsageMaturity(
+        MachineLearningEvidenceMaturity maturity) => maturity switch
+        {
+            MachineLearningEvidenceMaturity.Established =>
+                "Established usage behavior",
+            MachineLearningEvidenceMaturity.Provisional =>
+                "Early usage behavior",
+            _ => "Still gathering usage evidence"
+        };
+
+    private static string FormatForecastMaturity(
+        MachineLearningEvidenceMaturity maturity) => maturity switch
+        {
+            MachineLearningEvidenceMaturity.Established =>
+                "Established learned forecast",
+            MachineLearningEvidenceMaturity.Provisional =>
+                "Early projection",
+            _ => "Still learning"
+        };
+
+    private static string FormatForecastEvidence(
+        MachineUsageForecast forecast)
+    {
+        var coverage = $"{forecast.ForecastCoverage:P0} future-hour coverage";
+        return forecast.AvailabilityReason switch
+        {
+            MachineUsageForecastAvailabilityReason.Available =>
+                $"{FormatForecastMaturity(forecast.ForecastMaturity)} · " +
+                    $"{coverage} · {FormatProjectionDuration(forecast.RemainingDayExpectedObservedDuration)} " +
+                    "expected observed time. Based on previously observed " +
+                    "remaining-day behavior.",
+            MachineUsageForecastAvailabilityReason.PartialFutureCoverage =>
+                $"Partial early projection · {coverage} · " +
+                    $"{FormatProjectionDuration(forecast.RemainingDayExpectedObservedDuration)} " +
+                    "expected observed time. Missing hours are not extrapolated.",
+            MachineUsageForecastAvailabilityReason.MissingFuturePowerEvidence =>
+                "End-of-day projection unavailable: learned activity exists, " +
+                    "but matching current power evidence is missing.",
+            _ =>
+                $"End-of-day projection unavailable: fewer than " +
+                    $"{MachineLearnedUsageProjector.ProvisionalObservedDayCount:N0} " +
+                    "observed days of future-hour activity evidence."
+        };
     }
 
     private static string FormatTodayComparisonDetail(

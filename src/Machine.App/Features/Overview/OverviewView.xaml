@@ -208,6 +208,44 @@
                                     Text="See Learning page for details." />
                             </StackPanel>
                         </Border>
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="5">
+                                <Grid>
+                                    <TextBlock
+                                        Style="{StaticResource SectionTitleStyle}"
+                                        Text="Usage outlook" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        HorizontalAlignment="Right"
+                                        Text="Local · deterministic" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="OverviewNextHourEnergyText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="OverviewNextHourEnergyText"
+                                    FontSize="22"
+                                    FontWeight="SemiBold"
+                                    Text="Still learning"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="OverviewNextHourCostText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="OverviewNextHourCostText"
+                                    Text="Current power evidence unavailable"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="OverviewEndOfDayForecastText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="OverviewEndOfDayForecastText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="End-of-day projection unavailable"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="OverviewForecastEvidenceText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="OverviewForecastEvidenceText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Learned future-hour evidence is still accumulating."
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
                         <Border
                             x:Name="TodayStatusCard" x:FieldModifier="internal"
                             AutomationProperties.AutomationId="TodayStatusCard"

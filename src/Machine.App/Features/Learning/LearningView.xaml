@@ -39,6 +39,104 @@
                         </Border>
 
                         <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="9">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Learned usage outlook" />
+                                <TextBlock
+                                    x:Name="LearningCurrentHourUsageText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningCurrentHourUsageText"
+                                    FontWeight="SemiBold"
+                                    Text="Still gathering repeated activity evidence"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="LearningCurrentHourUsageEvidenceText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningCurrentHourUsageEvidenceText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="No completed historical day is available yet"
+                                    TextWrapping="Wrap" />
+                                <Grid ColumnSpacing="14" RowSpacing="9">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="NEXT OBSERVED HOUR" TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningNextHourEnergyText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningNextHourEnergyText"
+                                            FontSize="20"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningNextHourEnergyRangeText" x:FieldModifier="internal"
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="Current power behavior is still learning"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="ESTIMATED COST" TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningNextHourCostText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningNextHourCostText"
+                                            FontSize="20"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningNextHourCostRangeText" x:FieldModifier="internal"
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="Estimated cost range unavailable"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="PROJECTED END OF DAY" TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningEndOfDayEnergyText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningEndOfDayEnergyText"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningEndOfDayEnergyRangeText" x:FieldModifier="internal"
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="No trustworthy remaining-day energy range"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="PROJECTED ESTIMATED COST" TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningEndOfDayCostText" x:FieldModifier="internal"
+                                            AutomationProperties.AutomationId="LearningEndOfDayCostText"
+                                            FontWeight="SemiBold"
+                                            Text="Unavailable"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            x:Name="LearningEndOfDayCostRangeText" x:FieldModifier="internal"
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="Estimated cost range unavailable"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock
+                                    x:Name="LearningForecastEvidenceText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningForecastEvidenceText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="End-of-day projection unavailable while activity evidence accumulates."
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Observed PC electricity only. Unobserved or powered-off time is never classified as Idle, and estimates are not the household bill."
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="10">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"

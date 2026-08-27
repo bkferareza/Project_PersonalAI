@@ -100,6 +100,7 @@ public sealed partial class MainWindow : Window
     private MachineEnergySnapshot? _latestEnergySnapshot;
     private MachineTodayEnergyCostProjection? _latestTodayEnergyCost;
     private MachineHistoryEnergyCostSummary? _latestThirtyDayEnergyCost;
+    private MachineUsageForecast? _latestUsageForecast;
     private MachineInsightCandidate? _currentInsight;
     private double _pendingHistoryEnergyWattHours;
     private DateTimeOffset? _lastStorageHealthRefreshAt;

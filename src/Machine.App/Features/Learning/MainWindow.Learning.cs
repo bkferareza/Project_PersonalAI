@@ -10,7 +10,7 @@ public sealed partial class MainWindow
         var now = DateTimeOffset.UtcNow;
         var learning = _learningService.GetDashboardSnapshot(now);
         var history = _historyService.GetSnapshot(
-            MachineHistoryRange.Last7Days,
+            MachineHistoryRange.Last30Days,
             now);
         // The comparison deliberately omits the sub-cadence pending energy.
         // Accepted History energy and duration therefore cover the same
@@ -27,12 +27,25 @@ public sealed partial class MainWindow
             history,
             learning,
             acceptedToday);
+        var learnedUsage = MachineLearnedUsageProjector.Project(
+            history.Rollups,
+            now);
+        var forecast = MachineUsageForecastProjector.Project(
+            now,
+            learning.CurrentBaseline,
+            learning.ContextProfiles,
+            learnedUsage,
+            currentPower,
+            todayComparison);
+        _latestUsageForecast = forecast;
 
         LearningPage.Update(
             learning,
             _learningService.ActivityLog.GetSnapshot(learning, now),
             currentPower,
             todayComparison,
+            learnedUsage,
+            forecast,
             _healthHistoryService.GetSnapshot(),
             _latestOllamaStatusSnapshot,
             OverviewPage);
