@@ -9,7 +9,6 @@ public static class MachineFindingsEvaluator
     public const int RepeatedUnexpectedShutdownAttentionThreshold = 2;
     public const int RepeatedHardwareFailureAttentionThreshold = 2;
     public const int ActiveApplicationCrashLoopMinimumIncidentCount = 3;
-    public const int ResidentApplicationCrashLoopMinimumIncidentCount = 2;
     public const int IndependentApplicationFailureMinimumIncidentCount = 2;
     public const int IndependentApplicationFailureMinimumApplicationCount = 2;
     public static readonly TimeSpan ReliabilityCurrentWindow =
@@ -346,7 +345,6 @@ public static class MachineFindingsEvaluator
 
         EvaluateCurrentReliabilityPosture(
             reliability,
-            input.ResidentApplicationIdentity,
             findings);
 
         var sevenDays = reliability.Summary.Last7Days;
@@ -467,7 +465,6 @@ public static class MachineFindingsEvaluator
 
     private static void EvaluateCurrentReliabilityPosture(
         MachineReliabilitySnapshot reliability,
-        string? residentApplicationIdentity,
         ICollection<MachineFinding> findings)
     {
         var currentWindowStart = reliability.CapturedAt -
@@ -479,6 +476,9 @@ public static class MachineFindingsEvaluator
                 incident.Category is
                     MachineReliabilityIncidentCategory.ApplicationCrash or
                     MachineReliabilityIncidentCategory.ApplicationHang)
+            .Where(incident =>
+                !MatasuriRuntimeIdentityPolicy.IsOwnedRuntimeIncident(
+                    incident))
             .Where(incident =>
                 incident.OccurredAt >= currentWindowStart &&
                 incident.OccurredAt <= reliability.CapturedAt &&
@@ -494,28 +494,6 @@ public static class MachineFindingsEvaluator
             })
             .Where(group => group.MostRecent >= freshnessStart)
             .ToArray();
-
-        var residentIdentity =
-            MachineReliabilityAggregator.NormalizeApplicationIdentity(
-                residentApplicationIdentity);
-        var residentCrashLoop = residentIdentity is null
-            ? null
-            : recentFailures.FirstOrDefault(group =>
-                string.Equals(
-                    group.ApplicationName,
-                    residentIdentity,
-                    StringComparison.OrdinalIgnoreCase) &&
-                group.Count >= ResidentApplicationCrashLoopMinimumIncidentCount);
-        if (residentCrashLoop is not null)
-        {
-            findings.Add(new MachineFinding(
-                Code: "health.reliability.resident-application-crash-loop",
-                Severity: MachineFindingSeverity.Attention,
-                Title: "Matasuri has recently failed repeatedly",
-                Detail: "Windows recorded repeated recent failures of the " +
-                    "resident Matasuri process."));
-            return;
-        }
 
         var crashLoop = recentFailures
             .Where(group =>

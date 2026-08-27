@@ -191,6 +191,62 @@ public sealed class MachineReliabilityTests
     }
 
     [Fact]
+    public void MatasuriFailuresRemainRetainedButDoNotEnterMachineSummary()
+    {
+        var snapshot = MachineReliabilityAggregator.Aggregate(
+        [
+            Incident(MachineReliabilityIncidentCategory.ApplicationCrash,
+                Now.AddHours(-1), "Machine.App.exe"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationHang,
+                Now.AddHours(-2), "MACHINE.APP.EXE"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationCrash,
+                Now.AddHours(-3), "third-party.exe"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationHang,
+                Now.AddHours(-4), "third-party.exe")
+        ], Now);
+
+        Assert.Equal(4, snapshot.Incidents.Count);
+        Assert.Equal(1, snapshot.Summary.Last7Days.ApplicationCrashCount);
+        Assert.Equal(1, snapshot.Summary.Last7Days.ApplicationHangCount);
+        Assert.Equal(
+            "third-party.exe",
+            Assert.Single(snapshot.Summary.RecurringApplications)
+                .ApplicationName);
+        Assert.Equal(
+            2,
+            snapshot.Incidents.Count(
+                MatasuriRuntimeIdentityPolicy.IsOwnedRuntimeIncident));
+    }
+
+    [Theory]
+    [InlineData("Machine.App.exe")]
+    [InlineData("C:\\Matasuri\\Machine.App.exe")]
+    [InlineData("848F7F02-C9D0-4C05-BD8B-B04298378EE4")]
+    [InlineData("848F7F02-C9D0-4C05-BD8B-B04298378EE4_1z32rh13vfry6")]
+    [InlineData("848F7F02-C9D0-4C05-BD8B-B04298378EE4_1z32rh13vfry6!App")]
+    [InlineData("848F7F02-C9D0-4C05-BD8B-B04298378EE4_1.0.0.0_x64__1z32rh13vfry6")]
+    public void ExactMatasuriRuntimeIdentitiesAreRecognized(string identity)
+    {
+        Assert.True(
+            MatasuriRuntimeIdentityPolicy.IsOwnedApplicationIdentity(
+                identity));
+    }
+
+    [Theory]
+    [InlineData("OtherMachine.App.exe")]
+    [InlineData("Machine.App.Helper.exe")]
+    [InlineData("Machine.Application.exe")]
+    [InlineData("848F7F02-C9D0-4C05-BD8B-B04298378EE4_otherpublisher")]
+    [InlineData("praid:App")]
+    public void SimilarlyNamedUnrelatedIdentitiesAreNotExcluded(
+        string identity)
+    {
+        Assert.False(
+            MatasuriRuntimeIdentityPolicy.IsOwnedApplicationIdentity(
+                identity));
+    }
+
+    [Fact]
     public void NormalizeApplicationIdentityStripsPathsAndRejectsUnsafeData()
     {
         Assert.Equal(

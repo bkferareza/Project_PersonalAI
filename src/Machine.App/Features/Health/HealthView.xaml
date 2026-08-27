@@ -155,6 +155,29 @@
                         </Border>
 
                         <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="6">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Matasuri self health" />
+                                <TextBlock
+                                    FontSize="16"
+                                    FontWeight="SemiBold"
+                                    Text="Runtime incidents" />
+                                <TextBlock
+                                    x:Name="MatasuriRuntimeIncidentCountText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="MatasuriRuntimeIncidentCountText"
+                                    Text="Waiting for Windows reliability history"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="MatasuriRuntimeIncidentEvidenceText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="MatasuriRuntimeIncidentEvidenceText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Kept separate from machine posture and ordinary application reliability."
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"

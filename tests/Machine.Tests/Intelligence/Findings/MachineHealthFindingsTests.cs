@@ -256,7 +256,7 @@ public sealed class MachineHealthFindingsTests
     }
 
     [Fact]
-    public void RepeatedRecentResidentApplicationFailuresElevatePosture()
+    public void RepeatedRecentMatasuriFailuresDoNotAffectMachinePostureOrInsight()
     {
         var findings = MachineFindingsEvaluator.Evaluate(
             new MachineFindingsInput(
@@ -267,12 +267,40 @@ public sealed class MachineHealthFindingsTests
                         Now.AddMinutes(-2), "Machine.App.exe"),
                     Incident(MachineReliabilityIncidentCategory.ApplicationHang,
                         Now.AddMinutes(-12), "Machine.App.exe")
-                ], Now),
-                ResidentApplicationIdentity: "Machine.App.exe"));
+                ], Now)));
 
-        Assert.Equal(MachineOverallState.Attention, findings.OverallState);
-        Assert.Contains(findings.Findings, finding => finding.Code ==
-            "health.reliability.resident-application-crash-loop");
+        Assert.Equal(MachineOverallState.Stable, findings.OverallState);
+        Assert.DoesNotContain(findings.Findings, finding =>
+            finding.Code.StartsWith(
+                "health.reliability",
+                StringComparison.Ordinal));
+        Assert.Null(MachineInsightCandidateProjector.ProjectMachineFinding(
+            findings,
+            Now));
+    }
+
+    [Fact]
+    public void MatasuriAndThirdPartyFailuresRetainThirdPartyFinding()
+    {
+        var findings = Evaluate(
+        [
+            Incident(MachineReliabilityIncidentCategory.ApplicationCrash,
+                Now.AddHours(-1), "Machine.App.exe"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationHang,
+                Now.AddHours(-2), "Machine.App.exe"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationCrash,
+                Now.AddHours(-3), "Discord.exe"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationHang,
+                Now.AddHours(-4), "Discord.exe"),
+            Incident(MachineReliabilityIncidentCategory.ApplicationCrash,
+                Now.AddHours(-5), "Discord.exe")
+        ]);
+
+        Assert.Equal(MachineOverallState.Stable, findings.OverallState);
+        var recurrence = Assert.Single(findings.Findings, finding =>
+            finding.Code == "health.reliability.application-recurrence");
+        Assert.Contains("Discord.exe", recurrence.Detail);
+        Assert.DoesNotContain("Machine.App", recurrence.Detail);
     }
 
     [Fact]

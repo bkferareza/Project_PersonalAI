@@ -42,6 +42,11 @@ public static partial class MachineReliabilityAggregator
             .ThenBy(incident => incident.Source, StringComparer.Ordinal)
             .ToArray();
         var deduplicated = Deduplicate(normalized);
+        var machineIncidents = deduplicated
+            .Where(incident =>
+                !MatasuriRuntimeIdentityPolicy.IsOwnedRuntimeIncident(
+                    incident))
+            .ToArray();
         var retained = deduplicated
             .OrderByDescending(incident => incident.OccurredAt)
             .ThenBy(incident => incident.Category)
@@ -50,15 +55,17 @@ public static partial class MachineReliabilityAggregator
             .ToArray();
         var summary = new MachineReliabilitySummary(
             Last24Hours: CountWindow(
-                deduplicated,
+                machineIncidents,
                 capturedAt - TimeSpan.FromHours(24)),
             Last7Days: CountWindow(
-                deduplicated,
+                machineIncidents,
                 capturedAt - TimeSpan.FromDays(7)),
-            Last30Days: CountWindow(deduplicated, windowStart),
-            MostRecentIncident: retained.FirstOrDefault(),
+            Last30Days: CountWindow(machineIncidents, windowStart),
+            MostRecentIncident: machineIncidents
+                .OrderByDescending(incident => incident.OccurredAt)
+                .FirstOrDefault(),
             RecurringApplications: CreateRecurringApplications(
-                deduplicated,
+                machineIncidents,
                 capturedAt));
 
         return new MachineReliabilitySnapshot(
@@ -72,10 +79,10 @@ public static partial class MachineReliabilityAggregator
             Incidents: retained,
             Summary: summary,
             LastUnexpectedShutdownAt: FindMostRecentOccurrence(
-                deduplicated,
+                machineIncidents,
                 MachineReliabilityIncidentCategory.UnexpectedShutdown),
             LastVerifiedHardwareFailureAt: FindMostRecentOccurrence(
-                deduplicated,
+                machineIncidents,
                 MachineReliabilityIncidentCategory.HardwareFailure),
             FailureCode: NormalizeCode(failureCode, 80));
     }

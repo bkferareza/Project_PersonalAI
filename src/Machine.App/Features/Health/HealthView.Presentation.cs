@@ -160,6 +160,10 @@ public sealed partial class HealthView
         if (snapshot?.VerifiedAt is null)
         {
             SetReliabilityCounts(null);
+            MatasuriRuntimeIncidentCountText.Text =
+                "Runtime incident count unavailable";
+            MatasuriRuntimeIncidentEvidenceText.Text =
+                "No verified self-health evidence is available.";
             ReliabilityFreshnessText.Text = snapshot is null
                 ? "Waiting for Windows reliability history"
                 : "Reliability history unavailable";
@@ -176,6 +180,21 @@ public sealed partial class HealthView
 
         var sevenDays = snapshot.Summary.Last7Days;
         SetReliabilityCounts(sevenDays);
+        var selfIncidents = snapshot.Incidents
+            .Where(MatasuriRuntimeIdentityPolicy.IsOwnedRuntimeIncident)
+            .ToArray();
+        var selfIncidentsLast7Days = selfIncidents.Count(incident =>
+            incident.OccurredAt >= snapshot.CapturedAt - TimeSpan.FromDays(7));
+        MatasuriRuntimeIncidentCountText.Text =
+            $"Last 7 days: {selfIncidentsLast7Days:N0}";
+        var mostRecentSelfIncident = selfIncidents
+            .OrderByDescending(incident => incident.OccurredAt)
+            .FirstOrDefault();
+        MatasuriRuntimeIncidentEvidenceText.Text =
+            mostRecentSelfIncident is null
+                ? "No Matasuri crash or hang is retained in the bounded window."
+                : $"Latest: {mostRecentSelfIncident.OccurredAt.ToLocalTime():MMM d · h:mm tt} · " +
+                    "excluded from machine posture and ordinary application reliability.";
         ReliabilityFreshnessText.Text =
             $"Last 7 days · verified " +
             $"{FormatRelativeAge(DateTimeOffset.UtcNow - snapshot.VerifiedAt.Value)} ago" +
@@ -183,6 +202,9 @@ public sealed partial class HealthView
                 ? string.Empty
                 : " · partial");
         var incidents = snapshot.Incidents
+            .Where(incident =>
+                !MatasuriRuntimeIdentityPolicy.IsOwnedRuntimeIncident(
+                    incident))
             .Take(MaximumReliabilityIncidentDisplayCount)
             .Select(incident => new ReliabilityIncidentDisplayItem(
                 Header: $"{incident.OccurredAt.ToLocalTime():MMM d · h:mm tt}",

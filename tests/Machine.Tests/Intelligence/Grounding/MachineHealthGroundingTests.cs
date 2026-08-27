@@ -316,6 +316,47 @@ public sealed class MachineHealthGroundingTests
         Assert.NotNull(projected.RecurringApplicationFailure);
     }
 
+    [Fact]
+    public void HealthContextExcludesSelfFailureButKeepsThirdPartyFailure()
+    {
+        var reliability = MachineReliabilityAggregator.Aggregate(
+        [
+            new MachineReliabilityIncident(
+                Now.AddMinutes(-1),
+                MachineReliabilityIncidentCategory.ApplicationCrash,
+                MachineReliabilityIncidentSeverity.Significant,
+                "Application Error",
+                "Machine.App.exe",
+                null,
+                null,
+                1000,
+                "application.crash"),
+            new MachineReliabilityIncident(
+                Now.AddMinutes(-2),
+                MachineReliabilityIncidentCategory.ApplicationCrash,
+                MachineReliabilityIncidentSeverity.Significant,
+                "Application Error",
+                "Discord.exe",
+                null,
+                null,
+                1000,
+                "application.crash")
+        ], Now);
+
+        var projected = MachineHealthInsightProjector.Project(
+            null,
+            null,
+            reliability);
+
+        Assert.NotNull(projected);
+        Assert.Equal(
+            "Discord.exe",
+            projected.MostRecentSignificantIncident?.ApplicationName);
+        Assert.Equal(
+            1,
+            projected.ReliabilityLast7Days?.ApplicationCrashCount);
+    }
+
     private static bool IsValid(
         string text,
         MachineHealthInsightContext? health,

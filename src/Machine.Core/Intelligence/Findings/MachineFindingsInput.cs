@@ -9,5 +9,4 @@ public sealed record MachineFindingsInput(
     MachineStartupInventorySnapshot? Startup = null,
     MachineWindowsUpdateSnapshot? WindowsUpdate = null,
     MachineRebootPendingSnapshot? RebootPending = null,
-    MachineReliabilitySnapshot? Reliability = null,
-    string? ResidentApplicationIdentity = null);
+    MachineReliabilitySnapshot? Reliability = null);

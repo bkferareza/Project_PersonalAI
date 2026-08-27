@@ -19,6 +19,9 @@ public static class MachineHealthInsightProjector
             ? null
             : reliability;
         var mostRecentSignificant = verifiedReliability?.Incidents
+            .Where(incident =>
+                !MatasuriRuntimeIdentityPolicy.IsOwnedRuntimeIncident(
+                    incident))
             .Where(incident => incident.Severity is
                 MachineReliabilityIncidentSeverity.Significant or
                 MachineReliabilityIncidentSeverity.Severe)
