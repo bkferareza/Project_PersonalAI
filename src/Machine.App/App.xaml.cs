@@ -41,6 +41,11 @@ public partial class App : Application
                 new WindowsMachinePackagedSoftwareInventoryProvider();
         IMachineStartupInventoryProvider startupInventoryProvider =
             new WindowsMachineStartupInventoryProvider();
+        var actionOutcomeMemory = new MachineActionOutcomeMemory(
+            new FileMachineActionOutcomeStore());
+        var startupActionService = new WindowsStartupActionService(
+            startupInventoryProvider,
+            actionOutcomeMemory);
         IMachineUserActivityProvider userActivityProvider =
             new WindowsMachineUserActivityProvider();
         IMachineNetworkProvider networkProvider =
@@ -135,6 +140,7 @@ public partial class App : Application
             softwareInventoryProvider,
             packagedSoftwareInventoryProvider,
             startupInventoryProvider,
+            startupActionService,
             userActivityProvider,
             networkProvider,
             sessionProvider,

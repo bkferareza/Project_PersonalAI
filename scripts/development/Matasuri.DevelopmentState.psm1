@@ -39,6 +39,23 @@ function Get-MatasuriDevelopmentBackupRoot {
     return Join-Path $env:LOCALAPPDATA 'Matasuri\DevelopmentBackups'
 }
 
+function Get-MatasuriActionRecoveryRoot {
+    param(
+        [string] $ActionRecoveryRoot
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ActionRecoveryRoot)) {
+        return [System.IO.Path]::GetFullPath($ActionRecoveryRoot)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        throw 'LOCALAPPDATA is unavailable; action recovery cannot be resolved.'
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA `
+        'Matasuri\ActionRecovery\Startup'))
+}
+
 function Get-JsonPropertyValue {
     param(
         [Parameter(Mandatory)] [object] $InputObject,
@@ -73,6 +90,192 @@ function ConvertTo-SchemaVersion {
     }
 
     return [int] $parsed
+}
+
+function ConvertTo-BoundedInteger {
+    param(
+        [object] $Value,
+        [long] $Minimum,
+        [long] $Maximum,
+        [string] $Context
+    )
+
+    $parsed = 0L
+    if ($null -eq $Value -or -not [long]::TryParse(
+            [System.Convert]::ToString(
+                $Value,
+                [System.Globalization.CultureInfo]::InvariantCulture),
+            [ref] $parsed) -or
+        $parsed -lt $Minimum -or $parsed -gt $Maximum) {
+        throw "Invalid bounded integer in $Context."
+    }
+
+    return $parsed
+}
+
+function Test-MatasuriSha256 {
+    param([string] $Value)
+
+    return $Value -match '^[0-9a-fA-F]{64}$'
+}
+
+function Test-MatasuriDirectFileName {
+    param([string] $Value)
+
+    return -not [string]::IsNullOrWhiteSpace($Value) -and
+        $Value.Length -le 255 -and
+        [System.IO.Path]::GetFileName($Value) -eq $Value -and
+        $Value -ne '.' -and $Value -ne '..' -and
+        $Value.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -lt 0
+}
+
+function Test-MatasuriDirectoryChainWithoutReparse {
+    param(
+        [Parameter(Mandatory)] [string] $Path
+    )
+
+    $current = [System.IO.Path]::GetFullPath($Path)
+    while (-not (Test-Path -LiteralPath $current -PathType Container)) {
+        $parent = [System.IO.Path]::GetDirectoryName($current)
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $current) {
+            return $false
+        }
+        $current = $parent
+    }
+
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        $item = Get-Item -LiteralPath $current -Force
+        if (($item.Attributes -band
+                [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            return $false
+        }
+        $parent = [System.IO.Path]::GetDirectoryName(
+            $current.TrimEnd('\'))
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $current) {
+            break
+        }
+        $current = $parent
+    }
+    return $true
+}
+
+function Get-MatasuriRequiredActionRecoveryFiles {
+    param(
+        [Parameter(Mandatory)] [string] $ActionStatePath
+    )
+
+    $document = Get-Content -LiteralPath $ActionStatePath -Raw `
+        -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    $schema = ConvertTo-BoundedInteger `
+        (Get-JsonPropertyValue $document 'SchemaVersion') 1 1 `
+        'matasuri-actions-v1.json SchemaVersion'
+    if ($schema -ne 1) {
+        throw 'Only action outcome schema 1 is supported.'
+    }
+
+    $outcomes = @(Get-JsonPropertyValue $document 'Outcomes')
+    if ($outcomes.Count -gt 4096) {
+        throw 'The action outcome collection exceeds its safe bound.'
+    }
+
+    $required = @()
+    $seen = @{}
+    foreach ($outcome in $outcomes) {
+        if ($null -eq $outcome) {
+            throw 'The action outcome collection contains a null item.'
+        }
+
+        $target = Get-JsonPropertyValue $outcome 'Target'
+        if ($null -eq $target) {
+            throw 'An action outcome target is missing.'
+        }
+        $targetKind = ConvertTo-BoundedInteger `
+            (Get-JsonPropertyValue $target 'Kind') 1 2 'action target kind'
+        if ($targetKind -ne 2) {
+            # Registry recovery is completely represented by the action JSON.
+            continue
+        }
+
+        $result = ConvertTo-BoundedInteger `
+            (Get-JsonPropertyValue $outcome 'Result') 0 8 'action result'
+        $undoState = ConvertTo-BoundedInteger `
+            (Get-JsonPropertyValue $outcome 'UndoState') 0 10 `
+            'action undo state'
+        $isUnresolved = $result -in @(0, 8) -or
+            $undoState -in @(4, 5, 7, 8, 9, 10)
+
+        $recoveryPayload = Get-JsonPropertyValue `
+            $outcome 'RecoveryPayload'
+        if ($null -eq $recoveryPayload) {
+            if ($isUnresolved) {
+                throw 'Unresolved folder recovery has no provider payload.'
+            }
+            continue
+        }
+        $version = ConvertTo-BoundedInteger `
+            (Get-JsonPropertyValue $recoveryPayload 'Version') 1 1 `
+            'folder recovery payload version'
+        if ($version -ne 1) {
+            throw 'Only folder recovery payload version 1 is supported.'
+        }
+        $providerDataText = [string] (Get-JsonPropertyValue `
+            $recoveryPayload 'ProviderData')
+        if ([string]::IsNullOrWhiteSpace($providerDataText) -or
+            $providerDataText.Length -gt 16384) {
+            throw 'Folder recovery provider data is missing or unbounded.'
+        }
+        $providerData = $providerDataText |
+            ConvertFrom-Json -ErrorAction Stop
+        if ((Get-JsonPropertyValue $providerData 'Provider') -ne
+            'windows-user-startup-folder-v1') {
+            throw 'The folder recovery provider is not allowlisted.'
+        }
+
+        $fileName = [string] (Get-JsonPropertyValue `
+            $providerData 'FileName')
+        if (-not (Test-MatasuriDirectFileName $fileName)) {
+            throw 'Folder recovery contains an unsafe original file name.'
+        }
+        $recoveryFileName = [string] (Get-JsonPropertyValue `
+            $providerData 'RecoveryFileName')
+        if ($recoveryFileName -notmatch
+            '^[0-9a-fA-F]{32}\.startup-recovery$') {
+            throw 'Folder recovery contains an invalid staging file name.'
+        }
+        $actionIdText = [string] (Get-JsonPropertyValue `
+            $outcome 'ActionId')
+        $actionId = [guid]::Empty
+        if (-not [guid]::TryParse($actionIdText, [ref] $actionId) -or
+            $actionId -eq [guid]::Empty -or
+            -not $recoveryFileName.StartsWith(
+                $actionId.ToString('N'),
+                [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Folder recovery staging identity does not match its action.'
+        }
+        $length = ConvertTo-BoundedInteger `
+            (Get-JsonPropertyValue $providerData 'FileLength') 0 `
+            ([long]::MaxValue) 'folder recovery file length'
+        $sha256 = [string] (Get-JsonPropertyValue `
+            $providerData 'FileSha256')
+        if (-not (Test-MatasuriSha256 $sha256)) {
+            throw 'Folder recovery contains an invalid SHA-256 value.'
+        }
+
+        if ($isUnresolved) {
+            if ($seen.ContainsKey($recoveryFileName)) {
+                throw 'Folder recovery staging identities must be unique.'
+            }
+            $seen[$recoveryFileName] = $true
+            $required += [pscustomobject]@{
+                ActionId = $actionId.ToString('D')
+                Name = $recoveryFileName
+                SizeBytes = $length
+                Sha256 = $sha256.ToUpperInvariant()
+            }
+        }
+    }
+
+    return @($required)
 }
 
 function Read-MatasuriDurableJsonMetadata {
@@ -191,11 +394,135 @@ function Test-MatasuriSchemaCompatibility {
     }
 }
 
+function Test-MatasuriBackupActionRecovery {
+    param(
+        [Parameter(Mandatory)] [string] $BackupDirectory,
+        [Parameter(Mandatory)] [object] $Manifest,
+        [Parameter(Mandatory)] [string] $ActionRecoveryRoot,
+        [Parameter(Mandatory)] [object] $Errors
+    )
+
+    $declaredValue = Get-JsonPropertyValue `
+        $Manifest 'ActionRecoveryFiles'
+    if ($null -eq $declaredValue) {
+        $declared = @()
+    }
+    else {
+        $declared = @($declaredValue)
+    }
+    $actionEntry = @((Get-JsonPropertyValue $Manifest 'Files') |
+        Where-Object { $_.Name -eq 'matasuri-actions-v1.json' })
+    $expected = @()
+    if ($actionEntry.Count -eq 1 -and [bool] $actionEntry[0].JsonValid) {
+        try {
+            $expected = @(Get-MatasuriRequiredActionRecoveryFiles `
+                (Join-Path $BackupDirectory 'matasuri-actions-v1.json'))
+        }
+        catch {
+            $Errors.Add("Action recovery metadata is invalid: " +
+                $_.Exception.Message)
+        }
+    }
+
+    if ($declared.Count -ne $expected.Count) {
+        $Errors.Add('The action recovery manifest count does not match state.')
+    }
+
+    $manifestRoot = [string] (Get-JsonPropertyValue `
+        $Manifest 'ActionRecoveryRoot')
+    if ([string]::IsNullOrWhiteSpace($manifestRoot)) {
+        if ($expected.Count -gt 0 -or $declared.Count -gt 0) {
+            $Errors.Add(
+                'A backup with folder recovery lacks exact root metadata.')
+        }
+    }
+    else {
+        try {
+            $manifestRoot = [System.IO.Path]::GetFullPath($manifestRoot)
+            if (-not $manifestRoot.Equals(
+                    $ActionRecoveryRoot,
+                    [System.StringComparison]::OrdinalIgnoreCase)) {
+                $Errors.Add(
+                    'The action recovery root is not the exact fixed root.')
+            }
+        }
+        catch {
+            $Errors.Add('The action recovery root metadata is invalid.')
+        }
+    }
+
+    $seen = @{}
+    foreach ($entry in $declared) {
+        if ($null -eq $entry) {
+            $Errors.Add('The action recovery manifest contains a null entry.')
+            continue
+        }
+        $name = [string] (Get-JsonPropertyValue $entry 'Name')
+        $actionId = [string] (Get-JsonPropertyValue $entry 'ActionId')
+        $size = 0L
+        try {
+            $size = ConvertTo-BoundedInteger `
+                (Get-JsonPropertyValue $entry 'SizeBytes') 0 `
+                ([long]::MaxValue) 'action recovery manifest size'
+        }
+        catch {
+            $Errors.Add("The action recovery size is invalid: $name")
+            continue
+        }
+        $sha256 = [string] (Get-JsonPropertyValue $entry 'Sha256')
+        if ($name -notmatch '^[0-9a-fA-F]{32}\.startup-recovery$' -or
+            -not (Test-MatasuriSha256 $sha256) -or
+            $seen.ContainsKey($name)) {
+            $Errors.Add("The action recovery manifest entry is invalid: $name")
+            continue
+        }
+        $seen[$name] = $true
+
+        $matching = @($expected | Where-Object {
+            $_.Name -eq $name -and $_.ActionId -eq $actionId
+        })
+        if ($matching.Count -ne 1 -or
+            $matching[0].SizeBytes -ne $size -or
+            $matching[0].Sha256 -ne $sha256.ToUpperInvariant()) {
+            $Errors.Add("Action recovery state does not match manifest: $name")
+        }
+
+        $path = Join-Path (Join-Path $BackupDirectory 'ActionRecovery') $name
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            $Errors.Add("The backed-up action recovery file is missing: $name")
+            continue
+        }
+        $actualSize = (Get-Item -LiteralPath $path).Length
+        $actualHash = (Get-FileHash -LiteralPath $path `
+            -Algorithm SHA256).Hash
+        if ($actualSize -ne $size -or $actualHash -ne $sha256) {
+            $Errors.Add("The backed-up action recovery file mismatches: $name")
+        }
+    }
+
+    $artifactDirectory = Join-Path $BackupDirectory 'ActionRecovery'
+    $actualArtifacts = if (Test-Path -LiteralPath $artifactDirectory `
+            -PathType Container) {
+        @(Get-ChildItem -LiteralPath $artifactDirectory -File)
+    }
+    else {
+        @()
+    }
+    foreach ($artifact in $actualArtifacts) {
+        if (-not $seen.ContainsKey($artifact.Name)) {
+            $Errors.Add(
+                "The backup contains an unreferenced recovery file: " +
+                $artifact.Name)
+        }
+    }
+}
+
 function Test-MatasuriDevelopmentBackup {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string] $BackupDirectory,
-        [switch] $RequireReadableJson
+        [switch] $RequireReadableJson,
+        [string] $ActionRecoveryRoot
     )
 
     $errors = New-Object System.Collections.Generic.List[string]
@@ -297,6 +624,14 @@ function Test-MatasuriDevelopmentBackup {
                 $errors.Add("The backup file cannot be validated: $name")
             }
         }
+
+        $resolvedActionRecoveryRoot = Get-MatasuriActionRecoveryRoot `
+            $ActionRecoveryRoot
+        Test-MatasuriBackupActionRecovery `
+            -BackupDirectory $BackupDirectory `
+            -Manifest $manifest `
+            -ActionRecoveryRoot $resolvedActionRecoveryRoot `
+            -Errors $errors
     }
 
     return [pscustomobject]@{
@@ -310,14 +645,16 @@ function Test-MatasuriDevelopmentBackup {
 function Remove-OldMatasuriDevelopmentBackups {
     param(
         [Parameter(Mandatory)] [string] $BackupRoot,
-        [ValidateRange(1, 100)] [int] $RetentionCount
+        [ValidateRange(1, 100)] [int] $RetentionCount,
+        [string] $ActionRecoveryRoot
     )
 
     $validBackups = @()
     foreach ($directory in @(Get-ChildItem -LiteralPath $BackupRoot `
             -Directory -ErrorAction SilentlyContinue)) {
         $validation = Test-MatasuriDevelopmentBackup `
-            -BackupDirectory $directory.FullName
+            -BackupDirectory $directory.FullName `
+            -ActionRecoveryRoot $ActionRecoveryRoot
         if ($validation.IsValid) {
             $createdAt = [datetimeoffset]::MinValue
             [datetimeoffset]::TryParse(
@@ -350,7 +687,8 @@ function New-MatasuriDevelopmentBackup {
         [ValidateRange(1, 100)] [int] $RetentionCount = 5,
         [ValidateSet('PreUnregister', 'PreRestore', 'Manual')]
         [string] $Purpose = 'Manual',
-        [switch] $PreserveUnreadableJson
+        [switch] $PreserveUnreadableJson,
+        [string] $ActionRecoveryRoot
     )
 
     $stateRoot = [System.IO.Path]::GetFullPath($StateDirectory)
@@ -359,6 +697,8 @@ function New-MatasuriDevelopmentBackup {
     }
 
     $resolvedBackupRoot = Get-MatasuriDevelopmentBackupRoot $BackupRoot
+    $resolvedActionRecoveryRoot = Get-MatasuriActionRecoveryRoot `
+        $ActionRecoveryRoot
     New-Item -ItemType Directory -Path $resolvedBackupRoot -Force |
         Out-Null
 
@@ -372,6 +712,7 @@ function New-MatasuriDevelopmentBackup {
 
     try {
         $entries = @()
+        $jsonValidity = @{}
         foreach ($name in $script:DurableFileNames) {
             $source = Join-Path $stateRoot $name
             if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
@@ -414,10 +755,71 @@ function New-MatasuriDevelopmentBackup {
                 JsonValid = $copiedMetadata.JsonValid
                 SchemaVersion = $copiedMetadata.SchemaVersion
             }
+            $jsonValidity[$name] = $copiedMetadata.JsonValid
         }
 
         if ($entries.Count -eq 0) {
             throw 'No current allowlisted durable files were found; refusing backup.'
+        }
+
+        $actionRecoveryEntries = @()
+        if ($jsonValidity.ContainsKey('matasuri-actions-v1.json') -and
+            $jsonValidity['matasuri-actions-v1.json']) {
+            $requiredRecovery = @(
+                Get-MatasuriRequiredActionRecoveryFiles `
+                    (Join-Path $staging 'matasuri-actions-v1.json'))
+            if ($requiredRecovery.Count -gt 0) {
+                if (-not (Test-Path -LiteralPath `
+                        $resolvedActionRecoveryRoot -PathType Container) -or
+                    -not (Test-MatasuriDirectoryChainWithoutReparse `
+                        $resolvedActionRecoveryRoot)) {
+                    throw 'The fixed action recovery root is unavailable or unsafe.'
+                }
+                $recoveryBackupDirectory = Join-Path $staging 'ActionRecovery'
+                New-Item -ItemType Directory `
+                    -Path $recoveryBackupDirectory | Out-Null
+            }
+            foreach ($required in $requiredRecovery) {
+                $sourceRecovery = Join-Path `
+                    $resolvedActionRecoveryRoot $required.Name
+                $sourceParent = [System.IO.Path]::GetDirectoryName(
+                    [System.IO.Path]::GetFullPath($sourceRecovery))
+                if (-not $sourceParent.Equals(
+                        $resolvedActionRecoveryRoot.TrimEnd('\'),
+                        [System.StringComparison]::OrdinalIgnoreCase) -or
+                    -not (Test-Path -LiteralPath $sourceRecovery `
+                        -PathType Leaf)) {
+                    throw "Required action recovery is missing: " +
+                        $required.Name
+                }
+                $sourceItem = Get-Item -LiteralPath $sourceRecovery
+                if (($sourceItem.Attributes -band
+                        [System.IO.FileAttributes]::ReparsePoint) -ne 0 -or
+                    $sourceItem.Length -ne $required.SizeBytes -or
+                    (Get-FileHash -LiteralPath $sourceRecovery `
+                        -Algorithm SHA256).Hash -ne $required.Sha256) {
+                    throw "Required action recovery mismatches: " +
+                        $required.Name
+                }
+
+                $destinationRecovery = Join-Path `
+                    $recoveryBackupDirectory $required.Name
+                Copy-Item -LiteralPath $sourceRecovery `
+                    -Destination $destinationRecovery -ErrorAction Stop
+                if ((Get-Item -LiteralPath $destinationRecovery).Length -ne
+                        $required.SizeBytes -or
+                    (Get-FileHash -LiteralPath $destinationRecovery `
+                        -Algorithm SHA256).Hash -ne $required.Sha256) {
+                    throw "Copied action recovery mismatches: " +
+                        $required.Name
+                }
+                $actionRecoveryEntries += [ordered]@{
+                    ActionId = $required.ActionId
+                    Name = $required.Name
+                    SizeBytes = $required.SizeBytes
+                    Sha256 = $required.Sha256
+                }
+            }
         }
 
         $manifest = [ordered]@{
@@ -429,6 +831,8 @@ function New-MatasuriDevelopmentBackup {
             SourceCommit = $SourceCommit
             DurableFileAllowlist = $script:DurableFileNames
             Files = $entries
+            ActionRecoveryRoot = $resolvedActionRecoveryRoot
+            ActionRecoveryFiles = $actionRecoveryEntries
         }
         $manifest | ConvertTo-Json -Depth 12 |
             Set-Content -LiteralPath (Join-Path $staging 'manifest.json') `
@@ -436,7 +840,8 @@ function New-MatasuriDevelopmentBackup {
 
         $stagingValidation = Test-MatasuriDevelopmentBackup `
             -BackupDirectory $staging `
-            -RequireReadableJson:(-not $PreserveUnreadableJson)
+            -RequireReadableJson:(-not $PreserveUnreadableJson) `
+            -ActionRecoveryRoot $resolvedActionRecoveryRoot
         if (-not $stagingValidation.IsValid) {
             throw ('Backup staging validation failed: ' +
                 ($stagingValidation.Errors -join '; '))
@@ -445,7 +850,8 @@ function New-MatasuriDevelopmentBackup {
         Move-Item -LiteralPath $staging -Destination $final
         $finalValidation = Test-MatasuriDevelopmentBackup `
             -BackupDirectory $final `
-            -RequireReadableJson:(-not $PreserveUnreadableJson)
+            -RequireReadableJson:(-not $PreserveUnreadableJson) `
+            -ActionRecoveryRoot $resolvedActionRecoveryRoot
         if (-not $finalValidation.IsValid) {
             throw ('Final backup validation failed: ' +
                 ($finalValidation.Errors -join '; '))
@@ -453,7 +859,8 @@ function New-MatasuriDevelopmentBackup {
 
         Remove-OldMatasuriDevelopmentBackups `
             -BackupRoot $resolvedBackupRoot `
-            -RetentionCount $RetentionCount
+            -RetentionCount $RetentionCount `
+            -ActionRecoveryRoot $resolvedActionRecoveryRoot
 
         return $finalValidation
     }
@@ -480,7 +887,8 @@ function Invoke-MatasuriGuardedDestructiveOperation {
         [Parameter(Mandatory)] [scriptblock] $DestructiveAction,
         [string] $SourcePackageIdentity = 'unknown',
         [string] $SourceAppVersion = 'unknown',
-        [string] $SourceCommit = 'unknown'
+        [string] $SourceCommit = 'unknown',
+        [string] $ActionRecoveryRoot
     )
 
     & $GracefulStopAction | Out-Host
@@ -492,11 +900,13 @@ function Invoke-MatasuriGuardedDestructiveOperation {
         -SourceAppVersion $SourceAppVersion `
         -SourceCommit $SourceCommit `
         -RetentionCount 5 `
-        -Purpose PreUnregister
+        -Purpose PreUnregister `
+        -ActionRecoveryRoot $ActionRecoveryRoot
 
     $validation = Test-MatasuriDevelopmentBackup `
         -BackupDirectory $backup.BackupDirectory `
-        -RequireReadableJson
+        -RequireReadableJson `
+        -ActionRecoveryRoot $ActionRecoveryRoot
     if (-not $validation.IsValid) {
         throw ('Verified backup is mandatory; destructive operation aborted: ' +
             ($validation.Errors -join '; '))
@@ -514,12 +924,16 @@ function Restore-MatasuriDevelopmentState {
         [string] $BackupRoot,
         [string] $SourcePackageIdentity = 'unknown',
         [string] $SourceAppVersion = 'unknown',
-        [string] $SourceCommit = 'unknown'
+        [string] $SourceCommit = 'unknown',
+        [string] $ActionRecoveryRoot
     )
 
+    $resolvedActionRecoveryRoot = Get-MatasuriActionRecoveryRoot `
+        $ActionRecoveryRoot
     $selected = Test-MatasuriDevelopmentBackup `
         -BackupDirectory $BackupDirectory `
-        -RequireReadableJson
+        -RequireReadableJson `
+        -ActionRecoveryRoot $resolvedActionRecoveryRoot
     if (-not $selected.IsValid) {
         throw ('Selected backup is invalid: ' +
             ($selected.Errors -join '; '))
@@ -538,9 +952,11 @@ function Restore-MatasuriDevelopmentState {
         -SourceCommit $SourceCommit `
         -RetentionCount 5 `
         -Purpose PreRestore `
-        -PreserveUnreadableJson
+        -PreserveUnreadableJson `
+        -ActionRecoveryRoot $resolvedActionRecoveryRoot
 
     $staged = @()
+    $stagedRecovery = @()
     try {
         foreach ($entry in @($selected.Manifest.Files)) {
             $name = [string] $entry.Name
@@ -595,13 +1011,99 @@ function Restore-MatasuriDevelopmentState {
             }
         }
 
+        if ((Test-Path -LiteralPath $resolvedActionRecoveryRoot `
+                -PathType Container) -and
+            -not (Test-MatasuriDirectoryChainWithoutReparse `
+                $resolvedActionRecoveryRoot)) {
+            throw 'The fixed action recovery root has an unsafe reparse chain.'
+        }
+        $selectedRecoveryEntries = @(Get-JsonPropertyValue `
+            $selected.Manifest 'ActionRecoveryFiles')
+        foreach ($entry in $selectedRecoveryEntries) {
+            $name = [string] $entry.Name
+            if (-not (Test-MatasuriDirectFileName $name)) {
+                throw "Unsafe action recovery restore name: $name"
+            }
+            $source = Join-Path `
+                (Join-Path $BackupDirectory 'ActionRecovery') $name
+            $target = Join-Path $resolvedActionRecoveryRoot $name
+            $targetParent = [System.IO.Path]::GetDirectoryName(
+                [System.IO.Path]::GetFullPath($target))
+            if (-not $targetParent.Equals(
+                    $resolvedActionRecoveryRoot.TrimEnd('\'),
+                    [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "Action recovery restore escaped the fixed root: $name"
+            }
+
+            $size = [long] $entry.SizeBytes
+            $sha256 = [string] $entry.Sha256
+            if (Test-Path -LiteralPath $target -PathType Leaf) {
+                $targetItem = Get-Item -LiteralPath $target
+                if (($targetItem.Attributes -band
+                        [System.IO.FileAttributes]::ReparsePoint) -ne 0 -or
+                    $targetItem.Length -ne $size -or
+                    (Get-FileHash -LiteralPath $target `
+                        -Algorithm SHA256).Hash -ne $sha256) {
+                    throw "Action recovery restore conflict: $name"
+                }
+                $stagedRecovery += [pscustomobject]@{
+                    Name = $name
+                    StagePath = $null
+                    TargetPath = $target
+                    SizeBytes = $size
+                    Sha256 = $sha256
+                    AlreadyPresent = $true
+                }
+                continue
+            }
+            if (Test-Path -LiteralPath $target) {
+                throw "Action recovery restore destination is occupied: $name"
+            }
+
+            if (-not (Test-MatasuriDirectoryChainWithoutReparse `
+                    $resolvedActionRecoveryRoot)) {
+                throw 'The fixed action recovery root has an unsafe reparse chain.'
+            }
+            New-Item -ItemType Directory `
+                -Path $resolvedActionRecoveryRoot -Force | Out-Null
+            $recoveryStagePath = Join-Path $resolvedActionRecoveryRoot `
+                ('.matasuri-action-restore-' +
+                    [guid]::NewGuid().ToString('N') + '.tmp')
+            Copy-Item -LiteralPath $source `
+                -Destination $recoveryStagePath -ErrorAction Stop
+            if ((Get-Item -LiteralPath $recoveryStagePath).Length -ne $size -or
+                (Get-FileHash -LiteralPath $recoveryStagePath `
+                    -Algorithm SHA256).Hash -ne $sha256) {
+                throw "Action recovery restore staging failed: $name"
+            }
+            $stagedRecovery += [pscustomobject]@{
+                Name = $name
+                StagePath = $recoveryStagePath
+                TargetPath = $target
+                SizeBytes = $size
+                Sha256 = $sha256
+                AlreadyPresent = $false
+            }
+        }
+
         if (-not $PSCmdlet.ShouldProcess(
                 $stateRoot,
-                "Restore $($staged.Count) validated durable files")) {
+                "Restore $($staged.Count) durable files and " +
+                "$($stagedRecovery.Count) action recovery files")) {
             return [pscustomobject]@{
                 Restored = $false
+                FileCount = 0
+                ActionRecoveryFileCount = 0
                 CurrentStateBackup = $currentBackup.BackupDirectory
                 SelectedBackup = $selected.BackupDirectory
+            }
+        }
+
+        foreach ($item in $stagedRecovery) {
+            if (-not $item.AlreadyPresent) {
+                [System.IO.File]::Move(
+                    $item.StagePath,
+                    $item.TargetPath)
             }
         }
 
@@ -633,9 +1135,22 @@ function Restore-MatasuriDevelopmentState {
                 -FileName $item.Name | Out-Null
         }
 
+        foreach ($item in $stagedRecovery) {
+            if (-not (Test-Path -LiteralPath $item.TargetPath `
+                    -PathType Leaf) -or
+                (Get-Item -LiteralPath $item.TargetPath).Length -ne
+                    $item.SizeBytes -or
+                (Get-FileHash -LiteralPath $item.TargetPath `
+                    -Algorithm SHA256).Hash -ne $item.Sha256) {
+                throw "Restored action recovery validation failed: " +
+                    $item.Name
+            }
+        }
+
         return [pscustomobject]@{
             Restored = $true
             FileCount = $staged.Count
+            ActionRecoveryFileCount = $stagedRecovery.Count
             CurrentStateBackup = $currentBackup.BackupDirectory
             SelectedBackup = $selected.BackupDirectory
         }
@@ -643,6 +1158,12 @@ function Restore-MatasuriDevelopmentState {
     finally {
         foreach ($item in $staged) {
             if (Test-Path -LiteralPath $item.StagePath -PathType Leaf) {
+                Remove-Item -LiteralPath $item.StagePath -Force
+            }
+        }
+        foreach ($item in $stagedRecovery) {
+            if ($null -ne $item.StagePath -and
+                (Test-Path -LiteralPath $item.StagePath -PathType Leaf)) {
                 Remove-Item -LiteralPath $item.StagePath -Force
             }
         }

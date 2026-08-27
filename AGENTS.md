@@ -43,8 +43,8 @@ Do not reverse these dependencies.
 
 ## Source Map
 
-- `Machine.Core` groups platform-neutral contracts and deterministic policy by `Observability`, `History`, `Learning`, `Intelligence`, and `Runtime` domains.
-- `Machine.Windows` keeps read-only Windows acquisition under `Observability`, native boundaries under `Interop`, and process-owned facilities under `Runtime`.
+- `Machine.Core` groups platform-neutral contracts and deterministic policy by `Actions`, `Observability`, `History`, `Learning`, `Intelligence`, and `Runtime` domains.
+- `Machine.Windows` keeps read-only Windows acquisition under `Observability`, allowlisted deterministic mutations under `Actions`, native boundaries under `Interop`, and process-owned facilities under `Runtime`.
 - `Machine.Ollama` separates local runtime ownership, explanation/context construction, and wire payloads.
 - `Machine.App` keeps window composition in `MainWindow`, ambient presence under `Ambient`, shell behavior under `Shell`, lifecycle coordination under `Lifecycle`, and each complete page under `Features`.
 - `Machine.Tests` mirrors the same production domains.
@@ -68,11 +68,17 @@ New code should live with its domain or feature rather than in project-wide `Mod
 - Learning activity auditing is diagnostic-only: keep it separately bounded and persistence failures must never alter, repair, or block learning state.
 - Hardware evidence must distinguish measured sensors, Windows-reported state, and software estimates; power and energy estimates never change Learning or posture.
 - Today electricity cost is deterministic observed-PC cost derived from additive History energy and the matching published rate; it is never the household bill.
-- The Local Insight title `Running bill today` uses the shared deterministic Today energy/cost projection and must not trigger inference.
+- `Running bill today` is persistent Today status, not an arbitrated Local Insight; Today changes never signal New Insight or trigger inference.
 - Session energy resets on restart; Today History does not.
 - Learning schema v4 preserves v3 behavioral evidence and adds context-specific software-estimated whole-PC wall-power behavior from v4 observations onward; never backfill it from History.
 - Electricity tariffs, currency, cumulative energy, and cost are not learned behavioral metrics. Rate changes never modify learned power baselines, and power-learning updates never trigger inference.
 - Insight eligibility, significance, deduplication, cooldown, and priority arbitration are deterministic; Qwen never decides whether an insight should surface.
+- Insight arbitration is reserved for noteworthy evidence; routine persistent status does not compete for the Local Insight slot.
+- Controlled actions require an exact reviewed plan and immediate explicit user approval. Qwen never creates, alters, approves, or executes mutation parameters.
+- Action execution revalidates the reviewed precondition, routes only to a fixed allowlisted provider, persists recovery before mutation, and independently verifies the post-state.
+- Undo is a separate explicitly approved, conflict-aware, revalidated, and verified action. Startup changes never stop or launch the target process.
+- Startup Management v1 mutates only supported current-user HKCU Run text values and direct regular current-user Startup-folder files. The manifest unvirtualizes only the fixed Run key on supported Windows builds; older builds, system scope, unsupported formats, and Matasuri's own presence remain read-only.
+- Normal development deployment updates the package in place. Any destructive package operation requires a verified external state backup first, and rejected persistence is preserved with writes blocked rather than overwritten.
 - Learned-energy deviation insights require Established matching power evidence, complete same-duration coverage, current evidence, and a conservative material deviation beyond the learned range.
 - Insight availability never modifies machine-health posture. `New Insight` is a presence modifier, not a severity.
 - The ambient orb physically deforms its silhouette during normal motion; Reduced Motion uses static organic geometry. Orb rendering stays in `Machine.App/Ambient` and requires no runtime network or download.

@@ -84,4 +84,6 @@ $result = Invoke-MatasuriGuardedDestructiveOperation `
     UnregisteredPackage = $context.PackageFullName
     VerifiedBackup = $result.BackupDirectory
     DurableFileCount = @($result.Manifest.Files).Count
+    ActionRecoveryFileCount = @(
+        $result.Manifest.ActionRecoveryFiles).Count
 }

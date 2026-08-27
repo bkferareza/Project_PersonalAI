@@ -5,6 +5,62 @@ namespace Machine.Tests;
 public sealed class DevelopmentStateSafetyScriptTests
 {
     [Fact]
+    public void StartupDevelopmentFixtureIsFixedBoundedAndNonExecuting()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var path = Path.Combine(
+            repositoryRoot,
+            "scripts",
+            "development",
+            "Set-MatasuriStartupDevelopmentFixture.ps1");
+        var script = File.ReadAllText(path);
+
+        Assert.Contains(
+            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+            script);
+        Assert.Contains("MTSR-DEV Startup Fixture", script);
+        Assert.Contains("__matasuri_development_fixture_never_matches__",
+            script);
+        Assert.Contains("[switch]$Remove", script);
+        Assert.Contains("DoNotExpandEnvironmentNames", script);
+        Assert.Contains("cleanup refused to delete it", script);
+        Assert.DoesNotContain("Invoke-Expression", script);
+        Assert.DoesNotContain("Start-Process", script);
+        Assert.DoesNotContain("Remove-Item", script);
+        Assert.DoesNotContain("Stop-Process", script);
+    }
+
+    [Fact]
+    public void PackageManifestUnvirtualizesOnlyTheFixedUserRunKey()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var manifest = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "Machine.App",
+            "Package.appxmanifest"));
+
+        Assert.Contains(
+            "xmlns:virtualization=\"http://schemas.microsoft.com/appx/manifest/virtualization/windows10\"",
+            manifest);
+        Assert.Contains(
+            "<rescap:Capability Name=\"unvirtualizedResources\" />",
+            manifest);
+        Assert.Contains(
+            "<virtualization:ExcludedKey>" +
+            "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\" +
+            "CurrentVersion\\Run</virtualization:ExcludedKey>",
+            manifest);
+        Assert.Equal(
+            1,
+            manifest.Split("<virtualization:ExcludedKey>",
+                StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain(
+            "<desktop6:RegistryWriteVirtualization>",
+            manifest);
+    }
+
+    [Fact]
     public async Task DevelopmentStateGuardPassesIsolatedSafetyScenarios()
     {
         var repositoryRoot = FindRepositoryRoot();

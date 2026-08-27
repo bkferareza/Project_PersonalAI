@@ -54,6 +54,7 @@ if ($result.Restored -and $Relaunch) {
 [pscustomobject]@{
     Restored = $result.Restored
     RestoredFileCount = $result.FileCount
+    RestoredActionRecoveryFileCount = $result.ActionRecoveryFileCount
     SelectedBackup = $result.SelectedBackup
     PreRestoreBackup = $result.CurrentStateBackup
     RelaunchedProcessId = if ($null -eq $resident) {

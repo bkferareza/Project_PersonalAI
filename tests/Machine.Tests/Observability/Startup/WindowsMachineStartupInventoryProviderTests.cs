@@ -167,6 +167,38 @@ public sealed class WindowsMachineStartupInventoryProviderTests
     }
 
     [Fact]
+    public void RegistryEntryIsReadOnlyWithoutFineGrainedUnvirtualization()
+    {
+        var item = WindowsMachineStartupInventoryProvider.MapRegistryEntry(
+            "Agent",
+            "C:\\Agent\\agent.exe",
+            MachineStartupScope.CurrentUser,
+            MachineStartupRegistryView.Shared,
+            MachineStartupRegistryValueKind.String,
+            supportsUnvirtualizedRegistryWrites: false);
+
+        Assert.NotNull(item);
+        Assert.Equal(
+            MachineStartupActionAvailability.Unsupported,
+            item.ActionAvailability);
+    }
+
+    [Theory]
+    [InlineData(20347, false)]
+    [InlineData(20348, true)]
+    [InlineData(26200, true)]
+    public void RegistryWriteSupportUsesDocumentedWindowsBuildFloor(
+        int build,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            WindowsMachineStartupInventoryProvider
+                .IsUnvirtualizedRegistryWriteSupported(
+                    new Version(10, 0, build)));
+    }
+
+    [Fact]
     public void MapStartupFolderEntryUsesFileNameAndExactPath()
     {
         var item =

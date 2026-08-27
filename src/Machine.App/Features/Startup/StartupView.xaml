@@ -6,71 +6,174 @@
     xmlns:local="using:Machine.App.Features"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-<ScrollViewer
-                    HorizontalScrollBarVisibility="Disabled"
-                    VerticalScrollBarVisibility="Auto">
-                    <StackPanel Padding="12,0,12,16" Spacing="10">
-                        <StackPanel Spacing="2">
-                            <TextBlock
-                                Style="{StaticResource PageTitleStyle}"
-                                Text="Startup" />
-                            <TextBlock
-                                Style="{StaticResource SecondaryTextStyle}"
-                                Text="Run keys and Startup folders only" />
-                        </StackPanel>
-                        <Border Style="{StaticResource DashboardCardStyle}">
-                            <StackPanel Spacing="8">
-                                <TextBlock
-                                    Style="{StaticResource SectionTitleStyle}"
-                                    Text="Startup applications" />
-                                <TextBlock
-                                    Style="{StaticResource SecondaryTextStyle}"
-                                    Text="Read-only registrations. Enabled state and startup impact are not inferred." />
-                                <TextBox
-                                    x:Name="StartupSearchBox" x:FieldModifier="internal"
-                                    AutomationProperties.AutomationId="StartupSearchBox"
-                                    PlaceholderText="Search by name, command, or path" />
-                                <TextBlock
-                                    x:Name="StartupInventorySummaryText" x:FieldModifier="internal"
-                                    AutomationProperties.AutomationId="StartupInventorySummaryText"
-                                    Text="0 entries found&#x0a;Showing 0"
-                                    TextWrapping="Wrap" />
-                                <Button
-                                    x:Name="RefreshStartupButton" x:FieldModifier="internal"
-                                    AutomationProperties.AutomationId="RefreshStartupButton"
-                                    Content="Refresh startup applications"
-                                    HorizontalAlignment="Left"
-                                    IsEnabled="False" />
-                                <ListView
-                                    x:Name="StartupApplicationsList" x:FieldModifier="internal"
-                                    AutomationProperties.AutomationId="StartupApplicationsList"
-                                    MaxHeight="430"
-                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                    SelectionMode="None">
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate x:DataType="local:StartupApplicationDisplayItem">
-                                            <StackPanel Margin="0,4" Spacing="2">
-                                                <TextBlock
-                                                    FontWeight="SemiBold"
-                                                    Text="{x:Bind Name}"
-                                                    TextWrapping="Wrap" />
-                                                <TextBlock
-                                                    Style="{StaticResource SecondaryTextStyle}"
-                                                    Text="{x:Bind CommandOrPathDetails}" />
-                                                <TextBlock
-                                                    Style="{StaticResource SecondaryTextStyle}"
-                                                    Text="{x:Bind SourceDetails}" />
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
-                                <TextBlock
-                                    x:Name="StartupInventoryStatusText" x:FieldModifier="internal"
-                                    AutomationProperties.AutomationId="StartupInventoryStatusText"
-                                    Style="{StaticResource SecondaryTextStyle}"
-                                    Text="Loading..." />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
+    <ScrollViewer
+        HorizontalScrollBarVisibility="Disabled"
+        VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="12,0,12,16" Spacing="10">
+            <StackPanel Spacing="2">
+                <TextBlock
+                    Style="{StaticResource PageTitleStyle}"
+                    Text="Startup" />
+                <TextBlock
+                    Style="{StaticResource SecondaryTextStyle}"
+                    Text="Review Run keys and Startup folders. Safe current-user changes require explicit approval." />
+            </StackPanel>
+
+            <Border Style="{StaticResource DashboardCardStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock
+                        Style="{StaticResource SectionTitleStyle}"
+                        Text="Startup applications" />
+                    <TextBlock
+                        Style="{StaticResource SecondaryTextStyle}"
+                        Text="System-scoped and unsupported registrations stay read-only. Disabling an entry affects future sign-ins only and never closes a running app." />
+                    <TextBox
+                        x:Name="StartupSearchBox"
+                        x:FieldModifier="internal"
+                        AutomationProperties.AutomationId="StartupSearchBox"
+                        PlaceholderText="Search by name, command, or path" />
+                    <TextBlock
+                        x:Name="StartupInventorySummaryText"
+                        x:FieldModifier="internal"
+                        AutomationProperties.AutomationId="StartupInventorySummaryText"
+                        Text="0 entries found&#x0a;0 manageable without administrator access&#x0a;Showing 0"
+                        TextWrapping="Wrap" />
+                    <Button
+                        x:Name="RefreshStartupButton"
+                        x:FieldModifier="internal"
+                        AutomationProperties.AutomationId="RefreshStartupButton"
+                        Content="Refresh startup applications"
+                        HorizontalAlignment="Left"
+                        IsEnabled="False" />
+                    <ListView
+                        x:Name="StartupApplicationsList"
+                        x:FieldModifier="internal"
+                        AutomationProperties.AutomationId="StartupApplicationsList"
+                        MaxHeight="410"
+                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                        ScrollViewer.VerticalScrollBarVisibility="Auto"
+                        SelectionMode="None">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:StartupApplicationDisplayItem">
+                                <Grid Margin="0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,10,0" Spacing="2">
+                                        <TextBlock
+                                            FontWeight="SemiBold"
+                                            Text="{x:Bind Name}"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="{x:Bind CommandOrPathDetails}"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="{x:Bind SourceDetails}"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            Text="{x:Bind StateDetails}"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="{x:Bind ManageabilityDetails}"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            Style="{StaticResource SecondaryTextStyle}"
+                                            Text="{x:Bind ManageabilityReason}"
+                                            TextWrapping="Wrap"
+                                            Visibility="{x:Bind ManageabilityReasonVisibility}" />
+                                    </StackPanel>
+                                    <Button
+                                        AutomationProperties.AutomationId="{x:Bind ActionAutomationId}"
+                                        AutomationProperties.Name="{x:Bind ActionAccessibleName}"
+                                        Click="OnStartupActionClicked"
+                                        Content="{x:Bind ActionLabel}"
+                                        Grid.Column="1"
+                                        HorizontalAlignment="Right"
+                                        IsEnabled="{x:Bind IsActionEnabled}"
+                                        Tag="{x:Bind ActionToken}"
+                                        VerticalAlignment="Center"
+                                        Visibility="{x:Bind ActionVisibility}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <TextBlock
+                        x:Name="StartupInventoryStatusText"
+                        x:FieldModifier="internal"
+                        AutomationProperties.AutomationId="StartupInventoryStatusText"
+                        Style="{StaticResource SecondaryTextStyle}"
+                        Text="Loading..." />
+                </StackPanel>
+            </Border>
+
+            <Border
+                x:Name="StartupActionResultBorder"
+                x:FieldModifier="internal"
+                AutomationProperties.AutomationId="StartupActionResultBorder"
+                Style="{StaticResource DashboardCardStyle}"
+                Visibility="Collapsed">
+                <StackPanel Spacing="3">
+                    <TextBlock
+                        x:Name="StartupActionResultTitleText"
+                        x:FieldModifier="internal"
+                        AutomationProperties.AutomationId="StartupActionResultTitleText"
+                        FontWeight="SemiBold"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        x:Name="StartupActionResultDetailText"
+                        x:FieldModifier="internal"
+                        AutomationProperties.AutomationId="StartupActionResultDetailText"
+                        Style="{StaticResource SecondaryTextStyle}"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource DashboardCardStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock
+                        Style="{StaticResource SectionTitleStyle}"
+                        Text="Recent actions" />
+                    <TextBlock
+                        Style="{StaticResource SecondaryTextStyle}"
+                        Text="Verified changes and their explicit restores remain local to this PC." />
+                    <ListView
+                        x:Name="StartupRecentActionsList"
+                        x:FieldModifier="internal"
+                        AutomationProperties.AutomationId="StartupRecentActionsList"
+                        MaxHeight="220"
+                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                        ScrollViewer.VerticalScrollBarVisibility="Auto"
+                        SelectionMode="None">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:StartupActionHistoryPresentation">
+                                <StackPanel Margin="0,4" Spacing="2">
+                                    <TextBlock
+                                        FontWeight="SemiBold"
+                                        Text="{x:Bind Name}"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Text="{x:Bind ActionDetails}"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="{x:Bind VerificationAndTimeDetails}"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <TextBlock
+                        x:Name="StartupRecentActionsEmptyText"
+                        x:FieldModifier="internal"
+                        AutomationProperties.AutomationId="StartupRecentActionsEmptyText"
+                        Style="{StaticResource SecondaryTextStyle}"
+                        Text="No controlled startup actions yet." />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>

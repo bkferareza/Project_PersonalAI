@@ -29,14 +29,29 @@ Snapshots default to:
 Set `MATASURI_DEVELOPMENT_BACKUP_ROOT` or pass `-BackupRoot` to choose another
 user-local location. Each successful snapshot contains only the durable-file
 allowlist plus `manifest.json`, with sizes, SHA-256 checksums, readable schema
-metadata, package identity, app version, and commit. The latest five verified
-snapshots are retained.
+metadata, package identity, app version, and commit. If an unresolved Startup
+folder action references a recovery file under the fixed unredirected path
+`%LOCALAPPDATA%\Matasuri\ActionRecovery\Startup`, the snapshot also binds and
+copies that exact GUID-named file after validating its size and SHA-256. A
+missing, changed, reparse-routed, or unreferenced recovery file invalidates the
+snapshot; registry-action recovery remains wholly in the bounded action JSON.
+The latest five verified snapshots, including their recovery artifacts, are
+retained.
 
 Restore is never automatic. Use the guarded restore task with an exact snapshot
 directory. It validates the selected manifest/files, gracefully stops the exact
 resident, snapshots current state, rejects schema downgrade or mismatch, stages
-all files beside their targets, atomically replaces each target, revalidates the
-result, and only then relaunches.
+all files beside their targets, restores an absent action-recovery file only
+when its exact destination is free, atomically replaces each durable target,
+revalidates the result, and only then relaunches. An exact existing recovery
+file is accepted; a conflicting file is never overwritten.
+
+For live Startup Management validation only,
+`Set-MatasuriStartupDevelopmentFixture.ps1` creates one fixed harmless HKCU Run
+entry named `MTSR-DEV Startup Fixture`. It takes no caller-supplied target or
+command, is idempotent only for the exact expected expandable-string value, and
+refuses conflicting cleanup. Use the same script with `-Remove` after the
+disable-and-restore proof.
 
 These external snapshots protect development deployments. They do not alter the
 semantics of an intentional production uninstall and are not immortal product

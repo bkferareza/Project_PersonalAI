@@ -1,4 +1,5 @@
 using System.Security;
+using System.Security.Cryptography;
 using Machine.Core;
 using Microsoft.Win32;
 
@@ -13,6 +14,10 @@ public sealed class WindowsMachineStartupInventoryProvider
     private static readonly RegistrySource[] RegistrySources =
         CreateRegistrySources(
             Environment.Is64BitOperatingSystem);
+
+    private static readonly bool SupportsUnvirtualizedRegistryWrites =
+        IsUnvirtualizedRegistryWriteSupported(
+            Environment.OSVersion.Version);
 
     public Task<MachineStartupInventorySnapshot> GetAsync(
         CancellationToken cancellationToken = default)
@@ -29,8 +34,21 @@ public sealed class WindowsMachineStartupInventoryProvider
             string? name,
             object? command,
             MachineStartupScope scope,
-            MachineStartupRegistryView registryView)
+            MachineStartupRegistryView registryView,
+            MachineStartupRegistryValueKind? valueKind = null,
+            bool supportsUnvirtualizedRegistryWrites = true)
     {
+        if (valueKind is not null)
+        {
+            return MapActionableRegistryEntry(
+                name,
+                command,
+                scope,
+                registryView,
+                valueKind.Value,
+                supportsUnvirtualizedRegistryWrites);
+        }
+
         var normalizedName = ReadOptionalString(name);
         var normalizedCommand = ReadOptionalString(command);
 
@@ -51,8 +69,24 @@ public sealed class WindowsMachineStartupInventoryProvider
         MapStartupFolderEntry(
             string? fileName,
             string? fullPath,
-            MachineStartupScope scope)
+            MachineStartupScope scope,
+            string? fixedRoot = null,
+            FileAttributes? attributes = null,
+            long? fileLength = null,
+            string? fileSha256 = null)
     {
+        if (fixedRoot is not null && attributes is not null)
+        {
+            return MapActionableStartupFolderEntry(
+                fileName,
+                fullPath,
+                scope,
+                fixedRoot,
+                attributes.Value,
+                fileLength,
+                fileSha256);
+        }
+
         var normalizedFileName = ReadOptionalString(fileName);
         var normalizedPath = ReadOptionalString(fullPath);
 
@@ -173,11 +207,15 @@ public sealed class WindowsMachineStartupInventoryProvider
                             defaultValue: null,
                             RegistryValueOptions
                                 .DoNotExpandEnvironmentNames);
+                        var valueKind = MapRegistryValueKind(
+                            runKey.GetValueKind(valueName));
                         var item = MapRegistryEntry(
                             valueName,
                             command,
                             source.Scope,
-                            source.StartupRegistryView);
+                            source.StartupRegistryView,
+                            valueKind,
+                            SupportsUnvirtualizedRegistryWrites);
 
                         if (item is not null)
                         {
@@ -224,21 +262,54 @@ public sealed class WindowsMachineStartupInventoryProvider
 
             try
             {
-                foreach (var filePath in Directory.EnumerateFiles(
+                var fixedRoot = Path.GetFullPath(source.Path);
+                foreach (var filePath in Directory.EnumerateFileSystemEntries(
                     source.Path,
                     "*",
                     SearchOption.TopDirectoryOnly))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-
-                    var item = MapStartupFolderEntry(
-                        Path.GetFileName(filePath),
-                        filePath,
-                        source.Scope);
-
-                    if (item is not null)
+                    try
                     {
-                        items.Add(item);
+                        var attributes = File.GetAttributes(filePath);
+                        var isRegularFile =
+                            (attributes & FileAttributes.Directory) == 0 &&
+                            (attributes & FileAttributes.ReparsePoint) == 0;
+                        long? length = null;
+                        string? sha256 = null;
+                        if (isRegularFile)
+                        {
+                            var info = new FileInfo(filePath);
+                            length = info.Length;
+                            using var stream = new FileStream(
+                                filePath,
+                                FileMode.Open,
+                                FileAccess.Read,
+                                FileShare.ReadWrite | FileShare.Delete);
+                            sha256 = Convert.ToHexString(
+                                    SHA256.HashData(stream))
+                                .ToLowerInvariant();
+                        }
+
+                        var item = MapStartupFolderEntry(
+                            Path.GetFileName(filePath),
+                            filePath,
+                            source.Scope,
+                            fixedRoot,
+                            attributes,
+                            length,
+                            sha256);
+
+                        if (item is not null)
+                        {
+                            items.Add(item);
+                        }
+                    }
+                    catch (Exception exception)
+                        when (IsReadException(exception))
+                    {
+                        readFailureCount++;
+                        isComplete = false;
                     }
                 }
             }
@@ -272,6 +343,195 @@ public sealed class WindowsMachineStartupInventoryProvider
         exception is IOException or
             UnauthorizedAccessException or
             SecurityException;
+
+    private static MachineStartupApplicationSnapshot?
+        MapActionableRegistryEntry(
+            string? exactName,
+            object? command,
+            MachineStartupScope scope,
+            MachineStartupRegistryView registryView,
+            MachineStartupRegistryValueKind valueKind,
+            bool supportsUnvirtualizedRegistryWrites = true)
+    {
+        if (exactName is null)
+        {
+            return null;
+        }
+
+        var displayName = exactName.Trim();
+        if (displayName.Length == 0)
+        {
+            displayName = "(Default)";
+        }
+
+        var rawData = command as string;
+        var displayCommand = ReadOptionalString(rawData) ??
+            "Unsupported non-text registry value";
+        var stableIdentity = MachineStartupIdentity.CreateRegistryRunEntry(
+            scope, registryView, exactName);
+        var isMatasuri = WindowsStartupSelfProtection.IsMatasuri(
+            displayName, rawData);
+        var kindSupported = valueKind is
+            MachineStartupRegistryValueKind.String or
+            MachineStartupRegistryValueKind.ExpandString;
+        var dataSupported = rawData is { Length: > 0 and <= 8_192 };
+
+        var availability = isMatasuri
+            ? MachineStartupActionAvailability.Protected
+            : !kindSupported || !dataSupported
+                ? MachineStartupActionAvailability.Unsupported
+                : scope != MachineStartupScope.CurrentUser ||
+                    registryView != MachineStartupRegistryView.Shared
+                    ? MachineStartupActionAvailability.PermissionRequired
+                    : !supportsUnvirtualizedRegistryWrites
+                        ? MachineStartupActionAvailability.Unsupported
+                        : MachineStartupActionAvailability.Supported;
+
+        string? normalizedState = null;
+        string? fingerprint = null;
+        if (kindSupported && dataSupported)
+        {
+            normalizedState = WindowsStartupActionState.RegistryEnabled(
+                valueKind, rawData!);
+            var target = new MachineActionTarget(
+                MachineActionTargetKind.StartupRegistryRunEntry,
+                stableIdentity,
+                displayName);
+            fingerprint = MachineActionFingerprint.CreatePrecondition(
+                target,
+                normalizedState,
+                exactName,
+                ((int)valueKind).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                rawData!);
+        }
+
+        return new MachineStartupApplicationSnapshot(
+            Name: displayName,
+            CommandOrPath: displayCommand,
+            Source: MachineStartupSource.RegistryRunKey,
+            Scope: scope,
+            RegistryView: registryView,
+            StableIdentity: stableIdentity,
+            ActionAvailability: availability,
+            ActionNormalizedState: normalizedState,
+            ActionPreconditionFingerprint: fingerprint,
+            RegistryValueName: exactName,
+            RegistryValueKind: valueKind,
+            RegistryValueData: kindSupported ? rawData : null,
+            IsMatasuri: isMatasuri);
+    }
+
+    private static MachineStartupApplicationSnapshot?
+        MapActionableStartupFolderEntry(
+            string? fileName,
+            string? fullPath,
+            MachineStartupScope scope,
+            string fixedRoot,
+            FileAttributes attributes,
+            long? fileLength,
+            string? fileSha256)
+    {
+        var normalizedFileName = ReadOptionalString(fileName);
+        var normalizedPath = ReadOptionalString(fullPath);
+        if (normalizedFileName is null || normalizedPath is null ||
+            string.Equals(normalizedFileName, "desktop.ini",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        string canonicalPath;
+        string canonicalRoot;
+        try
+        {
+            canonicalPath = Path.GetFullPath(normalizedPath);
+            canonicalRoot = Path.GetFullPath(fixedRoot);
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException or NotSupportedException or
+                PathTooLongException)
+        {
+            return null;
+        }
+
+        var direct = string.Equals(
+            Path.GetDirectoryName(canonicalPath)?.TrimEnd(
+                Path.DirectorySeparatorChar),
+            canonicalRoot.TrimEnd(Path.DirectorySeparatorChar),
+            StringComparison.OrdinalIgnoreCase);
+        var regular = direct &&
+            (attributes & FileAttributes.Directory) == 0 &&
+            (attributes & FileAttributes.ReparsePoint) == 0 &&
+            fileLength is >= 0 &&
+            WindowsStartupActionState.IsSha256(fileSha256);
+        var name = Path.GetFileNameWithoutExtension(normalizedFileName);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            name = normalizedFileName;
+        }
+
+        var identityPath = canonicalPath.ToUpperInvariant();
+        var stableIdentity = MachineStartupIdentity.CreateStartupFolderEntry(
+            scope, identityPath);
+        var isMatasuri = WindowsStartupSelfProtection.IsMatasuri(
+            name, canonicalPath);
+        var availability = isMatasuri
+            ? MachineStartupActionAvailability.Protected
+            : !regular
+                ? MachineStartupActionAvailability.Unsupported
+                : scope != MachineStartupScope.CurrentUser
+                    ? MachineStartupActionAvailability.PermissionRequired
+                    : MachineStartupActionAvailability.Supported;
+        var normalizedState = regular
+            ? WindowsStartupActionState.FolderEnabled(
+                fileLength!.Value, fileSha256!)
+            : null;
+        string? fingerprint = null;
+        if (normalizedState is not null)
+        {
+            var target = new MachineActionTarget(
+                MachineActionTargetKind.StartupFolderEntry,
+                stableIdentity,
+                name);
+            fingerprint = MachineActionFingerprint.CreatePrecondition(
+                target,
+                normalizedState,
+                canonicalPath,
+                fileLength.GetValueOrDefault().ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                fileSha256!);
+        }
+
+        return new MachineStartupApplicationSnapshot(
+            Name: name,
+            CommandOrPath: canonicalPath,
+            Source: MachineStartupSource.StartupFolder,
+            Scope: scope,
+            RegistryView: null,
+            StableIdentity: stableIdentity,
+            ActionAvailability: availability,
+            ActionNormalizedState: normalizedState,
+            ActionPreconditionFingerprint: fingerprint,
+            FileLength: fileLength,
+            FileSha256: fileSha256,
+            IsMatasuri: isMatasuri);
+    }
+
+    private static MachineStartupRegistryValueKind MapRegistryValueKind(
+        RegistryValueKind valueKind) => valueKind switch
+    {
+        RegistryValueKind.String => MachineStartupRegistryValueKind.String,
+        RegistryValueKind.ExpandString =>
+            MachineStartupRegistryValueKind.ExpandString,
+        RegistryValueKind.Binary => MachineStartupRegistryValueKind.Binary,
+        RegistryValueKind.DWord => MachineStartupRegistryValueKind.DWord,
+        RegistryValueKind.MultiString =>
+            MachineStartupRegistryValueKind.MultiString,
+        RegistryValueKind.QWord => MachineStartupRegistryValueKind.QWord,
+        RegistryValueKind.None => MachineStartupRegistryValueKind.None,
+        _ => MachineStartupRegistryValueKind.Unknown
+    };
 
     internal static RegistrySource[] CreateRegistrySources(
         bool is64BitOperatingSystem)
@@ -310,6 +570,13 @@ public sealed class WindowsMachineStartupInventoryProvider
             currentUserSource
         ];
     }
+
+    internal static bool IsUnvirtualizedRegistryWriteSupported(
+        Version windowsVersion) =>
+        windowsVersion.Major > 10 ||
+        windowsVersion.Major == 10 &&
+        windowsVersion.Build >=
+            WindowsStartupRegistryVirtualization.MinimumWindowsBuild;
 
     internal static StartupFolderSource[]
         CreateStartupFolderSources(

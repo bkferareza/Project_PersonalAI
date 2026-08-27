@@ -147,6 +147,7 @@ public sealed partial class MainWindow : Window
         IMachinePackagedSoftwareInventoryProvider
             packagedSoftwareInventoryProvider,
         IMachineStartupInventoryProvider startupInventoryProvider,
+        WindowsStartupActionService startupActionService,
         IMachineUserActivityProvider userActivityProvider,
         IMachineNetworkProvider networkProvider,
         IMachineSessionProvider sessionProvider,
@@ -180,6 +181,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(
             packagedSoftwareInventoryProvider);
         ArgumentNullException.ThrowIfNull(startupInventoryProvider);
+        ArgumentNullException.ThrowIfNull(startupActionService);
         ArgumentNullException.ThrowIfNull(userActivityProvider);
         ArgumentNullException.ThrowIfNull(networkProvider);
         ArgumentNullException.ThrowIfNull(sessionProvider);
@@ -245,6 +247,7 @@ public sealed partial class MainWindow : Window
             () => ReevaluateFindings());
         StartupPage.Initialize(
             startupInventoryProvider,
+            startupActionService,
             _windowCancellationTokenSource.Token,
             () => ReevaluateFindings());
         ServicesPage.Initialize(
