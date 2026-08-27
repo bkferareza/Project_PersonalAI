@@ -9,6 +9,7 @@ public sealed partial class OllamaMachineStateExplainer
     : IMachineStateExplainer
 {
     private const string ChatEndpoint = "api/chat";
+    private const string ModelResidency = "10m";
     private const int FindingsContextLimit = 8;
     private const string UserMessagePrefix =
         "Explain this verified machine snapshot:";
@@ -106,7 +107,7 @@ public sealed partial class OllamaMachineStateExplainer
             Model: _modelName,
             Stream: false,
             Think: false,
-            KeepAlive: "5m",
+            KeepAlive: ModelResidency,
             Messages:
             [
                 new ChatMessage(

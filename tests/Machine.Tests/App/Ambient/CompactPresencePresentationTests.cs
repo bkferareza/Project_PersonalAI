@@ -520,6 +520,10 @@ public sealed class CompactPresencePresentationTests
         Assert.Contains("Text=\"What Matasuri has learned\"", xaml);
         Assert.Contains("Text=\"Learned contexts\"", xaml);
         Assert.Contains("Text=\"Established patterns\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"OverviewNextHourEnergyText\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"AiOutlookText\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"RefreshUsageOutlookButton\"", xaml);
+        Assert.Contains("Text=\"AI outlook\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"NetworkNavigationItem\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"NetworkPage\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"HealthNavigationItem\"", xaml);

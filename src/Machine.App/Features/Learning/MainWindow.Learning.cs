@@ -49,6 +49,12 @@ public sealed partial class MainWindow
             _healthHistoryService.GetSnapshot(),
             _latestOllamaStatusSnapshot,
             OverviewPage);
+
+        if (_detailsExpanded &&
+            OverviewPage.Visibility == Microsoft.UI.Xaml.Visibility.Visible)
+        {
+            _ = EnsureUsageOutlookAsync(forceRefresh: false);
+        }
     }
 
     private MachineTodayLearnedEnergyComparison

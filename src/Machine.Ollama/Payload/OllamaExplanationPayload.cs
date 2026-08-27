@@ -421,6 +421,7 @@ public sealed partial class OllamaMachineStateExplainer
     [JsonSerializable(typeof(ChatRequest))]
     [JsonSerializable(typeof(ChatResponse))]
     [JsonSerializable(typeof(MachineSnapshotPayload))]
+    [JsonSerializable(typeof(UsageOutlookPayload))]
     private sealed partial class ExplainerJsonSerializerContext
         : JsonSerializerContext
     {

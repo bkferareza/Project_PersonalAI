@@ -47,6 +47,7 @@ public sealed partial class MainWindow : Window
     private readonly IMachineProcessProvider _processProvider;
     private readonly IOllamaStatusProvider _ollamaStatusProvider;
     private readonly IMachineStateExplainer _machineStateExplainer;
+    private readonly IMachineUsageOutlookGenerator _usageOutlookGenerator;
     private readonly IMachineUserActivityProvider _userActivityProvider;
     private readonly IMachineNetworkProvider _networkProvider;
     private readonly IMachineSessionProvider _sessionProvider;
@@ -68,6 +69,8 @@ public sealed partial class MainWindow : Window
     private readonly MachineInsightTriggerPolicy
         _insightTriggerPolicy = new();
     private readonly MachineInsightArbiter _insightArbiter = new();
+    private readonly MachineUsageOutlookCachePolicy
+        _usageOutlookCachePolicy = new();
     private readonly MachineEnergyAccumulator _energyAccumulator = new(
         Stopwatch.Frequency);
     private readonly CompactPresenceInteraction
@@ -101,6 +104,7 @@ public sealed partial class MainWindow : Window
     private MachineTodayEnergyCostProjection? _latestTodayEnergyCost;
     private MachineHistoryEnergyCostSummary? _latestThirtyDayEnergyCost;
     private MachineUsageForecast? _latestUsageForecast;
+    private MachineUsageOutlook? _latestUsageOutlook;
     private MachineInsightCandidate? _currentInsight;
     private double _pendingHistoryEnergyWattHours;
     private DateTimeOffset? _lastStorageHealthRefreshAt;
@@ -113,6 +117,7 @@ public sealed partial class MainWindow : Window
     private bool _windowPresentationConfigured;
     private bool _isOllamaServiceAvailable;
     private bool _isExplanationRequestRunning;
+    private bool _isUsageOutlookRequestRunning;
     private bool _isHealthRequestRunning;
     private MachineOverallState _latestOverallState =
         MachineOverallState.Unknown;
@@ -142,6 +147,7 @@ public sealed partial class MainWindow : Window
         IMachineProcessProvider processProvider,
         IOllamaStatusProvider ollamaStatusProvider,
         IMachineStateExplainer machineStateExplainer,
+        IMachineUsageOutlookGenerator usageOutlookGenerator,
         IMachineStorageProvider storageProvider,
         IMachineFolderInspectionProvider folderInspectionProvider,
         IMachineSoftwareInventoryProvider softwareInventoryProvider,
@@ -176,6 +182,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(processProvider);
         ArgumentNullException.ThrowIfNull(ollamaStatusProvider);
         ArgumentNullException.ThrowIfNull(machineStateExplainer);
+        ArgumentNullException.ThrowIfNull(usageOutlookGenerator);
         ArgumentNullException.ThrowIfNull(storageProvider);
         ArgumentNullException.ThrowIfNull(folderInspectionProvider);
         ArgumentNullException.ThrowIfNull(softwareInventoryProvider);
@@ -209,6 +216,7 @@ public sealed partial class MainWindow : Window
         _processProvider = processProvider;
         _ollamaStatusProvider = ollamaStatusProvider;
         _machineStateExplainer = machineStateExplainer;
+        _usageOutlookGenerator = usageOutlookGenerator;
         _userActivityProvider = userActivityProvider;
         _networkProvider = networkProvider;
         _sessionProvider = sessionProvider;
@@ -288,6 +296,8 @@ public sealed partial class MainWindow : Window
     {
         OverviewPage.ExplainMachineStateButton.Click +=
             OnExplainMachineStateClicked;
+        OverviewPage.RefreshUsageOutlookButton.Click +=
+            OnRefreshUsageOutlookClicked;
 
         HealthPage.RefreshHealthButton.Click += OnRefreshHealthClicked;
 

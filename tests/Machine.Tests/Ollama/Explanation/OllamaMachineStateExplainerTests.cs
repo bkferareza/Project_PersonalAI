@@ -44,7 +44,7 @@ public sealed class OllamaMachineStateExplainerTests
             .GetProperty("think")
             .GetBoolean());
         Assert.Equal(
-            "5m",
+            "10m",
             handler.RequestJson
                 .GetProperty("keep_alive")
                 .GetString());

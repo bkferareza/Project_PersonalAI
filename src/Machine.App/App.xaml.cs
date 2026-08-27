@@ -111,10 +111,12 @@ public partial class App : Application
         _electricityRateHttpClient = electricityRateHttpClient;
         var electricityRateEnrichment = new ElectricityRateEnrichmentService(
             electricityRateHttpClient, new FileElectricityRateCache());
-        IMachineStateExplainer machineStateExplainer =
-            new OllamaMachineStateExplainer(
-                inferenceHttpClient,
-                "qwen3.5:4b");
+        var localInterpreter = new OllamaMachineStateExplainer(
+            inferenceHttpClient,
+            "qwen3.5:4b");
+        IMachineStateExplainer machineStateExplainer = localInterpreter;
+        IMachineUsageOutlookGenerator usageOutlookGenerator =
+            localInterpreter;
         string? presentationValidationArguments = null;
 #if DEBUG
         presentationValidationArguments = string.Join(
@@ -135,6 +137,7 @@ public partial class App : Application
             processProvider,
             ollamaStatusProvider,
             machineStateExplainer,
+            usageOutlookGenerator,
             storageProvider,
             folderInspectionProvider,
             softwareInventoryProvider,

@@ -190,6 +190,12 @@ public sealed partial class MainWindow
             snapshot.Version)
             ? UnavailableValue
             : snapshot.Version;
+        UpdateUsageOutlookButtonState();
+        if (_detailsExpanded &&
+            OverviewPage.Visibility == Visibility.Visible)
+        {
+            _ = EnsureUsageOutlookAsync(forceRefresh: false);
+        }
 
         if (!snapshot.IsRunningModelStatusAvailable)
         {
@@ -225,7 +231,13 @@ public sealed partial class MainWindow
         ClearOllamaModels(
             "Loaded-model status is unavailable.");
         LearningPage.UpdateRuntimeStatus(_latestOllamaStatusSnapshot);
+        if (_latestUsageOutlook is null)
+        {
+            OverviewPage.AiOutlookStatusText.Text =
+                "AI outlook unavailable · local runtime offline.";
+        }
         UpdateExplainMachineStateButtonState();
+        UpdateUsageOutlookButtonState();
     }
 
     private void ClearOllamaModels(string status)
@@ -270,6 +282,172 @@ public sealed partial class MainWindow
         }
 
         await GenerateInsightAsync(decision);
+    }
+
+    private async void OnRefreshUsageOutlookClicked(
+        object sender,
+        RoutedEventArgs e) =>
+        await EnsureUsageOutlookAsync(forceRefresh: true);
+
+    private async Task EnsureUsageOutlookAsync(bool forceRefresh)
+    {
+        var request = CreateUsageOutlookRequest();
+        var isOverviewVisible = _detailsExpanded &&
+            OverviewPage.Visibility == Visibility.Visible;
+        if (request is null ||
+            !_isOllamaServiceAvailable ||
+            _windowCancellationTokenSource.IsCancellationRequested)
+        {
+            UpdateUsageOutlookButtonState();
+            return;
+        }
+
+        var decision = _usageOutlookCachePolicy.Request(
+            request,
+            DateTimeOffset.UtcNow,
+            isOverviewVisible,
+            forceRefresh);
+        if (decision.Kind == MachineUsageOutlookDecisionKind.UseCached &&
+            decision.CachedOutlook is { } cached)
+        {
+            PresentUsageOutlook(cached, elapsed: null, fromCache: true);
+            UpdateUsageOutlookButtonState();
+            return;
+        }
+        if (!decision.ShouldGenerate)
+        {
+            UpdateUsageOutlookButtonState();
+            return;
+        }
+
+        _isUsageOutlookRequestRunning = true;
+        ApplyShellAtmosphere();
+        ApplyPresenceVisualMode();
+        UpdateUsageOutlookButtonState();
+        OverviewPage.RefreshUsageOutlookButton.Content = "Refreshing...";
+        OverviewPage.AiOutlookProgressRing.Visibility = Visibility.Visible;
+        OverviewPage.AiOutlookProgressRing.IsActive = true;
+        OverviewPage.AiOutlookStatusText.Text =
+            "Generating from precomputed local forecast evidence...";
+        var stopwatch = Stopwatch.StartNew();
+        MachineUsageOutlook? generated = null;
+
+        try
+        {
+            generated = await _usageOutlookGenerator.GenerateAsync(
+                request,
+                _windowCancellationTokenSource.Token);
+            stopwatch.Stop();
+            _windowCancellationTokenSource.Token
+                .ThrowIfCancellationRequested();
+
+            var currentRequest = CreateUsageOutlookRequest();
+            if (currentRequest is not null &&
+                string.Equals(
+                    decision.Fingerprint,
+                    MachineUsageOutlookCachePolicy.CreateFingerprint(
+                        currentRequest),
+                    StringComparison.Ordinal))
+            {
+                PresentUsageOutlook(
+                    generated,
+                    stopwatch.Elapsed,
+                    fromCache: false);
+            }
+        }
+        catch (OperationCanceledException)
+            when (_windowCancellationTokenSource.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+        }
+        catch (Exception exception)
+        {
+            stopwatch.Stop();
+            Debug.WriteLine(exception);
+            OverviewPage.AiOutlookStatusText.Text =
+                "AI outlook unavailable · deterministic forecast remains active.";
+        }
+        finally
+        {
+            stopwatch.Stop();
+            _usageOutlookCachePolicy.Complete(
+                decision,
+                generated,
+                DateTimeOffset.UtcNow);
+            _isUsageOutlookRequestRunning = false;
+            ApplyShellAtmosphere();
+            ApplyPresenceVisualMode();
+            if (!_windowCancellationTokenSource.IsCancellationRequested)
+            {
+                OverviewPage.RefreshUsageOutlookButton.Content =
+                    "Refresh outlook";
+                OverviewPage.AiOutlookProgressRing.IsActive = false;
+                OverviewPage.AiOutlookProgressRing.Visibility =
+                    Visibility.Collapsed;
+                UpdateUsageOutlookButtonState();
+            }
+        }
+    }
+
+    private MachineUsageOutlookRequest? CreateUsageOutlookRequest()
+    {
+        var forecast = _latestUsageForecast;
+        if (forecast is null || !forecast.HasNextObservedHourForecast)
+        {
+            return null;
+        }
+
+        var learning = _learningService.GetDashboardSnapshot(
+            DateTimeOffset.UtcNow);
+        var baseline = learning.CurrentBaseline;
+        var relevantPatterns = learning.BroaderPatterns
+            .Where(pattern =>
+                pattern.Confidence == MachineLearningConfidence.Established &&
+                pattern.Freshness != MachineLearningFreshness.Stale)
+            .OrderBy(pattern => forecast.CurrentContext is { } context &&
+                pattern.ActivityState == context.ActivityState
+                    ? 0
+                    : 1)
+            .ThenBy(pattern => pattern.StartHour)
+            .Take(2)
+            .ToArray();
+        return new(
+            forecast,
+            learning.Readiness.MemoryState,
+            baseline?.SampleCount ?? 0,
+            baseline?.ObservedDayCount ?? 0,
+            learning.Readiness.PatternReadiness.TotalProfileCount,
+            learning.Readiness.PatternReadiness.EstablishedProfileCount,
+            relevantPatterns);
+    }
+
+    private void PresentUsageOutlook(
+        MachineUsageOutlook outlook,
+        TimeSpan? elapsed,
+        bool fromCache)
+    {
+        _latestUsageOutlook = outlook;
+        OverviewPage.AiOutlookText.Text = outlook.Text;
+        var latency = elapsed is { } duration
+            ? $" · {duration.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture)}s"
+            : string.Empty;
+        OverviewPage.AiOutlookMetadataText.Text = outlook.Source ==
+                MachineExplanationSource.DeterministicFallback
+            ? "Precomputed local safeguard"
+            : fromCache
+                ? $"Cached locally · {outlook.Model}"
+                : $"Generated locally · {outlook.Model}{latency}";
+        OverviewPage.AiOutlookStatusText.Text = string.Empty;
+    }
+
+    private void UpdateUsageOutlookButtonState()
+    {
+        OverviewPage.RefreshUsageOutlookButton.IsEnabled =
+            _latestUsageForecast?.HasNextObservedHourForecast == true &&
+            _isOllamaServiceAvailable &&
+            !_usageOutlookCachePolicy.IsRequestInFlight &&
+            !_isUsageOutlookRequestRunning &&
+            !_windowCancellationTokenSource.IsCancellationRequested;
     }
 
     private async Task GenerateInsightAsync(

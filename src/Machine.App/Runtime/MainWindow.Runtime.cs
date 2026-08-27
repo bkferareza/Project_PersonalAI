@@ -469,9 +469,11 @@ public sealed partial class MainWindow
     {
 #if DEBUG
         return _presentationValidationOptions.IsGenerating ||
-            _isExplanationRequestRunning;
+            _isExplanationRequestRunning ||
+            _isUsageOutlookRequestRunning;
 #else
-        return _isExplanationRequestRunning;
+        return _isExplanationRequestRunning ||
+            _isUsageOutlookRequestRunning;
 #endif
     }
 
