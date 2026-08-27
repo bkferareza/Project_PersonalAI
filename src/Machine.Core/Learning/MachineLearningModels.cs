@@ -38,6 +38,29 @@ public enum MachineLearningDataHealth
     PersistenceTemporarilyUnavailable
 }
 
+public enum MachineLearningMemoryState
+{
+    Calibrating,
+    Active,
+    PersistenceAtRisk
+}
+
+public enum MachineLearningPatternReadinessBlocker
+{
+    None,
+    InsufficientProfiles,
+    NoAdjacentContexts,
+    InsufficientSamples,
+    InsufficientDistinctDays,
+    NoEstablishedAdjacentContexts,
+    StaleEvidence,
+    MissingTypicalRanges,
+    IncompatibleCpuBehavior,
+    IncompatibleMemoryBehavior,
+    IncompatibleNetworkBehavior,
+    FullDayRunExcluded
+}
+
 public sealed record MachineLearningObservation(
     DateTimeOffset Timestamp,
     double CpuUsagePercent,
@@ -254,7 +277,39 @@ public sealed record MachineLearningDashboardSnapshot(
     MachineLearningDataHealth DataHealth,
     MachineLearningMetadata Metadata,
     IReadOnlyList<MachineLearningContextProfile> ContextProfiles,
-    IReadOnlyList<MachineLearningRecurringPattern> BroaderPatterns);
+    IReadOnlyList<MachineLearningRecurringPattern> BroaderPatterns,
+    MachineLearningReadinessSummary Readiness);
+
+public sealed record MachineLearningReadinessSummary(
+    MachineLearningMemoryState MemoryState,
+    MachineLearningPatternReadiness PatternReadiness);
+
+public sealed record MachineLearningPatternReadiness(
+    int TotalProfileCount,
+    int ProfilesWithSufficientSamples,
+    int ProfilesWithSufficientDistinctDays,
+    int EstablishedProfileCount,
+    int FreshEstablishedProfileCount,
+    int TemporallyEligibleProfileCount,
+    int AdjacentCandidatePairCount,
+    int PairsWithSufficientSamples,
+    int PairsWithSufficientDistinctDays,
+    int PairsMeetingEvidenceThresholds,
+    int EstablishedPairCount,
+    int TemporallyEligiblePairCount,
+    int PairsReachingCompatibilityComparison,
+    int CompatiblePairCount,
+    int ConfidenceRejectedPairCount,
+    int StaleRejectedPairCount,
+    int MissingRangeRejectedPairCount,
+    int CpuRejectedPairCount,
+    int MemoryRejectedPairCount,
+    int NetworkRejectedPairCount,
+    int CandidateRunCount,
+    int FullDayRunRejectedCount,
+    int PatternLimitTruncatedCount,
+    int PatternsProduced,
+    MachineLearningPatternReadinessBlocker PrimaryBlocker);
 
 public sealed record MachineLearningDiagnostics(
     long AcceptedObservationCount,

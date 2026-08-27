@@ -243,7 +243,11 @@ public sealed class MachineLearningService
             _dataHealth,
             CreateMetadata(),
             profiles,
-            _patterns);
+            _patterns,
+            MachineLearningReadinessProjector.Project(
+                profiles,
+                _patterns,
+                _dataHealth));
     }
 
     public MachineLearnedContext? GetLearnedContext(

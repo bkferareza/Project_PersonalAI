@@ -37,12 +37,35 @@ public sealed partial class LearningView
         var baseline = snapshot.CurrentBaseline;
         var confidence = baseline?.Confidence ??
             MachineLearningConfidence.Calibrating;
+        var readiness = snapshot.Readiness.PatternReadiness;
+        var memoryState = FormatMemoryState(snapshot.Readiness.MemoryState);
 
-        overview.LearningConfidenceText.Text = confidence.ToString();
-        overview.LearningObservedDurationText.Text =
-            $"{FormatDuration(snapshot.ObservedDuration)} observed";
-        overview.LearningObservationText.Text =
-            FormatSampleCount(snapshot.ObservationCount);
+        overview.LearningConfidenceText.Text =
+            $"Behavior memory · {memoryState}";
+        overview.LearningObservedDurationText.Text = baseline is null
+            ? "Current context · Waiting for verified telemetry"
+            : $"Current context · {FormatLearningHour(baseline.LocalHour)} · " +
+                $"{FormatActivity(baseline.ActivityState)} · " +
+                FormatContextMaturity(confidence);
+        overview.LearningObservationText.Text = baseline is null
+            ? $"{FormatSampleCount(snapshot.ObservationCount)} observed"
+            : $"{FormatSampleCount(baseline.SampleCount)} across " +
+                $"{baseline.ObservedDayCount:N0} " +
+                (baseline.ObservedDayCount == 1 ? "day" : "days") +
+                $" · {readiness.EstablishedProfileCount:N0} established " +
+                (readiness.EstablishedProfileCount == 1
+                    ? "profile"
+                    : "profiles") +
+                $" · {FormatPatternReadinessCompact(readiness)}";
+
+        LearningPageMemoryStateText.Text =
+            $"Behavior memory · {memoryState}";
+        LearningPageMemoryEvidenceText.Text =
+            $"{readiness.TotalProfileCount:N0} learned " +
+            (readiness.TotalProfileCount == 1 ? "profile" : "profiles") +
+            $" · {readiness.EstablishedProfileCount:N0} established · " +
+            $"{readiness.PatternsProduced:N0} recognized " +
+            (readiness.PatternsProduced == 1 ? "pattern" : "patterns");
 
         var sessionCount = snapshot.Metadata.LifetimeMachineSessionCount;
         LearningPageObservedText.Text =
@@ -73,8 +96,9 @@ public sealed partial class LearningView
             $"{MachineLearningService.MaximumEpisodeCount:N0}";
         LearningPageCurrentContextText.Text = current is null
             ? "Waiting for verified telemetry"
-            : $"{current.ActivityState} · " +
-                $"{current.Timestamp.ToLocalTime():h tt}";
+            : $"{current.Timestamp.ToLocalTime():h tt} · " +
+                $"{FormatActivity(current.ActivityState)} · " +
+                FormatContextMaturity(confidence);
 
         LearningPageCurrentBucketText.Text = baseline is null
             ? "Waiting"
@@ -86,6 +110,27 @@ public sealed partial class LearningView
             $"{baseline?.ObservedDayCount ?? 0:N0} / " +
             $"{MachineLearningService.EstablishedObservedDayCount:N0}";
         LearningPageConfidenceText.Text = confidence.ToString();
+        LearningPageConfidenceRulesText.Text =
+            FormatCurrentContextMaturity(baseline);
+
+        LearningPatternReadinessHeadlineText.Text =
+            FormatPatternReadinessHeadline(readiness);
+        LearningPatternProfileReadinessText.Text =
+            $"{readiness.TotalProfileCount:N0} profiles · " +
+            $"{readiness.ProfilesWithSufficientSamples:N0} meet " +
+            $"{MachineLearningService.EstablishedSampleCount:N0} samples · " +
+            $"{readiness.ProfilesWithSufficientDistinctDays:N0} meet " +
+            $"{MachineLearningService.EstablishedObservedDayCount:N0} days · " +
+            $"{readiness.EstablishedProfileCount:N0} established";
+        LearningPatternPairReadinessText.Text =
+            $"{readiness.AdjacentCandidatePairCount:N0} same-activity adjacent pairs · " +
+            $"{readiness.PairsMeetingEvidenceThresholds:N0} meet evidence thresholds · " +
+            $"{readiness.EstablishedPairCount:N0} established · " +
+            $"{readiness.TemporallyEligiblePairCount:N0} current · " +
+            $"{readiness.PairsReachingCompatibilityComparison:N0} compared · " +
+            $"{readiness.CompatiblePairCount:N0} compatible";
+        LearningPatternReadinessReasonText.Text =
+            FormatPatternReadinessReason(readiness);
         UpdateCurrentPowerProjection(currentPower);
         UpdateTodayLearnedEnergyComparison(todayComparison);
 
@@ -113,6 +158,8 @@ public sealed partial class LearningView
             .Select(CreateLearningPatternDisplayItem)
             .ToArray();
         LearningPatternsList.ItemsSource = patterns;
+        LearningPatternsEmptyText.Text =
+            FormatPatternReadinessReason(readiness);
         LearningPatternsEmptyText.Visibility = patterns.Length == 0
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -338,6 +385,158 @@ public sealed partial class LearningView
             MachineLearningEvidenceMaturity.Provisional =>
                 "Early estimate · Provisional",
             _ => "Still learning · Insufficient"
+        };
+
+    private static string FormatMemoryState(
+        MachineLearningMemoryState state) => state switch
+        {
+            MachineLearningMemoryState.Active => "Active",
+            MachineLearningMemoryState.PersistenceAtRisk =>
+                "Persistence at risk",
+            _ => "Calibrating"
+        };
+
+    private static string FormatContextMaturity(
+        MachineLearningConfidence confidence) => confidence switch
+        {
+            MachineLearningConfidence.Established => "Established",
+            MachineLearningConfidence.Provisional => "Provisional",
+            _ => "Calibrating"
+        };
+
+    private static string FormatCurrentContextMaturity(
+        MachineLearningBaseline? baseline)
+    {
+        if (baseline is null)
+        {
+            return "Provisional needs 12 samples. Established needs 168 " +
+                "samples across 7 distinct observed days.";
+        }
+
+        if (baseline.Confidence == MachineLearningConfidence.Established)
+        {
+            return $"Established from {baseline.SampleCount:N0} samples across " +
+                $"{baseline.ObservedDayCount:N0} distinct observed days. " +
+                "Freshness is tracked separately.";
+        }
+
+        var samplesForEstablished = Math.Max(
+            0,
+            MachineLearningService.EstablishedSampleCount -
+                baseline.SampleCount);
+        var daysForEstablished = Math.Max(
+            0,
+            MachineLearningService.EstablishedObservedDayCount -
+                baseline.ObservedDayCount);
+        if (baseline.Confidence == MachineLearningConfidence.Calibrating)
+        {
+            var samplesForProvisional = Math.Max(
+                0,
+                MachineLearningService.ProvisionalSampleCount -
+                    baseline.SampleCount);
+            return $"{samplesForProvisional:N0} more " +
+                (samplesForProvisional == 1 ? "sample" : "samples") +
+                " for Provisional. " +
+                FormatEstablishedEvidenceRemaining(
+                    samplesForEstablished,
+                    daysForEstablished);
+        }
+
+        return FormatEstablishedEvidenceRemaining(
+            samplesForEstablished,
+            daysForEstablished);
+    }
+
+    private static string FormatEstablishedEvidenceRemaining(
+        long samplesRemaining,
+        int daysRemaining)
+    {
+        if (samplesRemaining == 0 && daysRemaining == 0)
+        {
+            return "Established evidence thresholds are met; the next " +
+                "accepted observation will refresh maturity.";
+        }
+
+        var requirements = new List<string>();
+        if (samplesRemaining > 0)
+        {
+            requirements.Add($"{samplesRemaining:N0} more " +
+                (samplesRemaining == 1 ? "sample" : "samples"));
+        }
+        if (daysRemaining > 0)
+        {
+            requirements.Add($"{daysRemaining:N0} more distinct observed " +
+                (daysRemaining == 1 ? "day" : "days"));
+        }
+        return $"Established needs {string.Join(" and ", requirements)}. " +
+            "Both thresholds must be met; freshness is tracked separately.";
+    }
+
+    private static string FormatPatternReadinessHeadline(
+        MachineLearningPatternReadiness readiness) =>
+        readiness.PatternsProduced > 0
+            ? $"{readiness.PatternsProduced:N0} broader " +
+                (readiness.PatternsProduced == 1 ? "pattern" : "patterns") +
+                " recognized"
+            : "Still learning broader patterns";
+
+    private static string FormatPatternReadinessCompact(
+        MachineLearningPatternReadiness readiness) =>
+        readiness.PrimaryBlocker switch
+        {
+            MachineLearningPatternReadinessBlocker.None =>
+                $"{readiness.PatternsProduced:N0} broader " +
+                    (readiness.PatternsProduced == 1 ? "pattern" : "patterns"),
+            MachineLearningPatternReadinessBlocker.InsufficientDistinctDays =>
+                $"patterns need {MachineLearningService.EstablishedObservedDayCount:N0} distinct days",
+            MachineLearningPatternReadinessBlocker.InsufficientSamples =>
+                $"patterns need {MachineLearningService.EstablishedSampleCount:N0} samples per context",
+            MachineLearningPatternReadinessBlocker.NoAdjacentContexts =>
+                "patterns need adjacent same-activity contexts",
+            MachineLearningPatternReadinessBlocker.StaleEvidence =>
+                "pattern evidence is stale",
+            _ => "pattern readiness is still building"
+        };
+
+    private static string FormatPatternReadinessReason(
+        MachineLearningPatternReadiness readiness) =>
+        readiness.PrimaryBlocker switch
+        {
+            MachineLearningPatternReadinessBlocker.None =>
+                $"{readiness.PatternsProduced:N0} pattern " +
+                    (readiness.PatternsProduced == 1 ? "is" : "are") +
+                    " recognized from current compatible evidence.",
+            MachineLearningPatternReadinessBlocker.InsufficientProfiles =>
+                "At least two learned contexts are needed before adjacent " +
+                    "behavior can be compared.",
+            MachineLearningPatternReadinessBlocker.NoAdjacentContexts =>
+                "Learned contexts exist, but no same-activity neighboring " +
+                    "hours are available yet.",
+            MachineLearningPatternReadinessBlocker.InsufficientSamples =>
+                $"No adjacent pair has reached {MachineLearningService.EstablishedSampleCount:N0} " +
+                    "samples in both contexts yet.",
+            MachineLearningPatternReadinessBlocker.InsufficientDistinctDays =>
+                $"Adjacent contexts have enough samples, but no pair spans " +
+                    $"{MachineLearningService.EstablishedObservedDayCount:N0} distinct observed days yet.",
+            MachineLearningPatternReadinessBlocker.NoEstablishedAdjacentContexts =>
+                "No adjacent pair has become Established in both contexts yet.",
+            MachineLearningPatternReadinessBlocker.StaleEvidence =>
+                "Established adjacent contexts exist, but their evidence is stale.",
+            MachineLearningPatternReadinessBlocker.MissingTypicalRanges =>
+                "Current established pairs are still waiting for comparable " +
+                    "CPU and memory ranges.",
+            MachineLearningPatternReadinessBlocker.IncompatibleCpuBehavior =>
+                "Current adjacent contexts differ too much in CPU behavior " +
+                    "to form one broader pattern.",
+            MachineLearningPatternReadinessBlocker.IncompatibleMemoryBehavior =>
+                "Current adjacent contexts differ too much in memory behavior " +
+                    "to form one broader pattern.",
+            MachineLearningPatternReadinessBlocker.IncompatibleNetworkBehavior =>
+                "Current adjacent contexts have incompatible dominant network behavior.",
+            MachineLearningPatternReadinessBlocker.FullDayRunExcluded =>
+                "A full-day run is intentionally excluded because it is not " +
+                    "a bounded recurring window.",
+            _ => "Pattern readiness is still being evaluated from verified evidence."
         };
 
     private static string FormatActivity(

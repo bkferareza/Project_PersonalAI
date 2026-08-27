@@ -43,6 +43,19 @@
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
                                     Text="Current learned context" />
+                                <TextBlock
+                                    x:Name="LearningPageMemoryStateText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningPageMemoryStateText"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Text="Behavior memory · Calibrating"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="LearningPageMemoryEvidenceText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningPageMemoryEvidenceText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="0 learned profiles · 0 established · 0 recognized patterns"
+                                    TextWrapping="Wrap" />
                                 <Grid ColumnSpacing="14" RowSpacing="10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -148,7 +161,7 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Early observations" />
+                                    Text="Current context maturity" />
                                 <Grid ColumnSpacing="14" RowSpacing="8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -171,7 +184,7 @@
                                         <TextBlock x:Name="LearningPageObservedDaysText" x:FieldModifier="internal" Text="0 / 7" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
-                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="CONFIDENCE" />
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="CONTEXT MATURITY" />
                                         <TextBlock x:Name="LearningPageConfidenceText" x:FieldModifier="internal" Text="Calibrating" />
                                     </StackPanel>
                                 </Grid>
@@ -179,6 +192,41 @@
                                     x:Name="LearningPageConfidenceRulesText" x:FieldModifier="internal"
                                     Style="{StaticResource SecondaryTextStyle}"
                                     Text="Confidence measures evidence: Provisional requires 12 samples; Established requires 168 samples across 7 observed days. Freshness measures recency separately." />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="7">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Pattern readiness" />
+                                <TextBlock
+                                    x:Name="LearningPatternReadinessHeadlineText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningPatternReadinessHeadlineText"
+                                    FontWeight="SemiBold"
+                                    Text="Still learning broader patterns"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="LearningPatternProfileReadinessText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningPatternProfileReadinessText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="0 profiles · 0 meet 168 samples · 0 meet 7 days · 0 established"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="LearningPatternPairReadinessText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningPatternPairReadinessText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="0 same-activity adjacent pairs · 0 meet evidence thresholds · 0 compatible"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="LearningPatternReadinessReasonText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningPatternReadinessReasonText"
+                                    Text="Pattern readiness is still being evaluated from verified evidence."
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Recomputed after profile maturity, freshness, compatibility, or restored-state changes."
+                                    TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 

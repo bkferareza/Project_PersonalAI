@@ -188,17 +188,20 @@
                                     AutomationProperties.AutomationId="LearningConfidenceText"
                                     FontSize="18"
                                     FontWeight="SemiBold"
-                                    Text="Calibrating" />
+                                    Text="Behavior memory · Calibrating"
+                                    TextWrapping="Wrap" />
                                 <TextBlock
                                     x:Name="LearningObservedDurationText" x:FieldModifier="internal"
                                     AutomationProperties.AutomationId="LearningObservedDurationText"
                                     Style="{StaticResource SecondaryTextStyle}"
-                                    Text="0m observed" />
+                                    Text="Current context · Waiting for verified telemetry"
+                                    TextWrapping="Wrap" />
                                 <TextBlock
                                     x:Name="LearningObservationText" x:FieldModifier="internal"
                                     AutomationProperties.AutomationId="LearningObservationText"
                                     Style="{StaticResource SecondaryTextStyle}"
-                                    Text="0 samples" />
+                                    Text="0 samples observed"
+                                    TextWrapping="Wrap" />
                                 <TextBlock
                                     Margin="0,3,0,0"
                                     Style="{StaticResource SecondaryTextStyle}"

@@ -546,6 +546,173 @@ public sealed class MachineLearningHierarchyTests
             DateTimeOffset.UnixEpoch));
     }
 
+    [Fact]
+    public void ReadinessSeparatesActiveMemoryFromDistinctDayPatternGate()
+    {
+        var profiles = new[]
+        {
+            CreateProfile(2) with
+            {
+                Confidence = MachineLearningConfidence.Provisional,
+                LifetimeSampleCount = 168,
+                DistinctObservedDayCount = 4
+            },
+            CreateProfile(3) with
+            {
+                Confidence = MachineLearningConfidence.Provisional,
+                LifetimeSampleCount = 168,
+                DistinctObservedDayCount = 4
+            }
+        };
+
+        var summary = MachineLearningReadinessProjector.Project(
+            profiles,
+            [],
+            MachineLearningDataHealth.Healthy);
+
+        Assert.Equal(MachineLearningMemoryState.Active,
+            summary.MemoryState);
+        Assert.Equal(2,
+            summary.PatternReadiness.ProfilesWithSufficientSamples);
+        Assert.Equal(0,
+            summary.PatternReadiness.ProfilesWithSufficientDistinctDays);
+        Assert.Equal(1,
+            summary.PatternReadiness.AdjacentCandidatePairCount);
+        Assert.Equal(1,
+            summary.PatternReadiness.PairsWithSufficientSamples);
+        Assert.Equal(0,
+            summary.PatternReadiness.PairsWithSufficientDistinctDays);
+        Assert.Equal(
+            MachineLearningPatternReadinessBlocker.InsufficientDistinctDays,
+            summary.PatternReadiness.PrimaryBlocker);
+    }
+
+    [Fact]
+    public void ReadinessDiagnosesStaleEstablishedAdjacentEvidence()
+    {
+        var profiles = new[]
+        {
+            CreateProfile(2,
+                freshness: MachineLearningFreshness.Stale),
+            CreateProfile(3,
+                freshness: MachineLearningFreshness.Stale)
+        };
+
+        var readiness = MachineLearningReadinessProjector.Project(
+            profiles,
+            [],
+            MachineLearningDataHealth.Healthy).PatternReadiness;
+
+        Assert.Equal(1, readiness.EstablishedPairCount);
+        Assert.Equal(0, readiness.TemporallyEligiblePairCount);
+        Assert.Equal(1, readiness.StaleRejectedPairCount);
+        Assert.Equal(
+            MachineLearningPatternReadinessBlocker.StaleEvidence,
+            readiness.PrimaryBlocker);
+    }
+
+    [Fact]
+    public void ReadinessUsesSameActivityAdjacencyAcrossMidnight()
+    {
+        var profiles = new[]
+        {
+            CreateProfile(23),
+            CreateProfile(0)
+        };
+        var patterns = MachineRecurringPatternSynthesizer.Synthesize(
+            profiles,
+            DateTimeOffset.UnixEpoch);
+
+        var readiness = MachineLearningReadinessProjector.Project(
+            profiles,
+            patterns,
+            MachineLearningDataHealth.Healthy).PatternReadiness;
+
+        Assert.Equal(1, readiness.AdjacentCandidatePairCount);
+        Assert.Equal(1, readiness.CompatiblePairCount);
+        Assert.Equal(1, readiness.CandidateRunCount);
+        Assert.Single(patterns);
+        Assert.Equal(MachineLearningPatternReadinessBlocker.None,
+            readiness.PrimaryBlocker);
+    }
+
+    [Fact]
+    public void ReadinessDoesNotJoinDifferentActivityStates()
+    {
+        var profiles = new[]
+        {
+            CreateProfile(2, MachineUserActivityState.Active),
+            CreateProfile(3, MachineUserActivityState.Idle)
+        };
+
+        var readiness = MachineLearningReadinessProjector.Project(
+            profiles,
+            [],
+            MachineLearningDataHealth.Healthy).PatternReadiness;
+
+        Assert.Equal(0, readiness.AdjacentCandidatePairCount);
+        Assert.Equal(
+            MachineLearningPatternReadinessBlocker.NoAdjacentContexts,
+            readiness.PrimaryBlocker);
+    }
+
+    [Fact]
+    public void ReadinessReportsPersistenceRiskWithoutDiscardingMemory()
+    {
+        var summary = MachineLearningReadinessProjector.Project(
+            [CreateProfile(2)],
+            [],
+            MachineLearningDataHealth.PersistenceTemporarilyUnavailable);
+
+        Assert.Equal(MachineLearningMemoryState.PersistenceAtRisk,
+            summary.MemoryState);
+        Assert.Equal(1, summary.PatternReadiness.TotalProfileCount);
+    }
+
+    [Fact]
+    public void PatternGeneratorRunsWhenAdjacentProfilesBecomeEstablished()
+    {
+        var service = new MachineLearningService();
+        var start = CreateLocalTime(2026, 1, 1, 2);
+
+        for (var day = 0; day < 6; day++)
+        {
+            ObserveHourlyContext(service, start.AddDays(day));
+            ObserveHourlyContext(service, start.AddDays(day).AddHours(1));
+        }
+
+        var before = service.GetDashboardSnapshot(
+            start.AddDays(5).AddHours(1).AddMinutes(12));
+        Assert.Empty(before.BroaderPatterns);
+        Assert.Equal(
+            MachineLearningPatternReadinessBlocker.InsufficientSamples,
+            before.Readiness.PatternReadiness.PrimaryBlocker);
+
+        ObserveHourlyContext(service, start.AddDays(6));
+        Assert.Empty(service.BroaderPatterns);
+        ObserveHourlyContext(service, start.AddDays(6).AddHours(1));
+
+        var after = service.GetDashboardSnapshot(
+            start.AddDays(6).AddHours(1).AddMinutes(12));
+        Assert.All(after.ContextProfiles, profile => Assert.Equal(
+            MachineLearningConfidence.Established,
+            profile.Confidence));
+        Assert.Single(after.BroaderPatterns);
+        Assert.Equal(MachineLearningPatternReadinessBlocker.None,
+            after.Readiness.PatternReadiness.PrimaryBlocker);
+    }
+
+    private static void ObserveHourlyContext(
+        MachineLearningService service,
+        DateTimeOffset start)
+    {
+        for (var sample = 0; sample < 24; sample++)
+        {
+            Assert.True(service.Observe(CreateObservation(
+                start.AddSeconds(sample * 30))));
+        }
+    }
+
     private static MachineLearningObservation CreateObservation(
         DateTimeOffset timestamp,
         double cpu = 20,

@@ -16,20 +16,7 @@ public static class MachineRecurringPatternSynthesizer
         var results = new List<MachineLearningRecurringPattern>();
         foreach (var activityState in Enum.GetValues<MachineUserActivityState>())
         {
-            var eligible = profiles
-                .Where(profile =>
-                    profile.ActivityState == activityState &&
-                    profile.Confidence == MachineLearningConfidence.Established &&
-                    profile.Freshness != MachineLearningFreshness.Stale &&
-                    profile.Cpu.TypicalRange is not null &&
-                    profile.Memory.TypicalRange is not null &&
-                    profile.LocalHour is >= 0 and <= 23)
-                .GroupBy(profile => profile.LocalHour)
-                .Select(group => group
-                    .OrderByDescending(profile => profile.LastReinforcedAt)
-                    .First())
-                .OrderBy(profile => profile.LocalHour)
-                .ToArray();
+            var eligible = SelectEligibleProfiles(profiles, activityState);
 
             var runs = BuildRuns(eligible);
             MergeMidnightRun(runs);
@@ -50,6 +37,23 @@ public static class MachineRecurringPatternSynthesizer
             .Take(MachineLearningPolicy.MaximumPatternCount)
             .ToArray();
     }
+
+    internal static MachineLearningContextProfile[] SelectEligibleProfiles(
+        IReadOnlyList<MachineLearningContextProfile> profiles,
+        MachineUserActivityState activityState) => profiles
+            .Where(profile =>
+                profile.ActivityState == activityState &&
+                profile.Confidence == MachineLearningConfidence.Established &&
+                profile.Freshness != MachineLearningFreshness.Stale &&
+                profile.Cpu.TypicalRange is not null &&
+                profile.Memory.TypicalRange is not null &&
+                profile.LocalHour is >= 0 and <= 23)
+            .GroupBy(profile => profile.LocalHour)
+            .Select(group => group
+                .OrderByDescending(profile => profile.LastReinforcedAt)
+                .First())
+            .OrderBy(profile => profile.LocalHour)
+            .ToArray();
 
     public static bool AreProfilesCompatible(
         MachineLearningContextProfile left,
@@ -76,7 +80,7 @@ public static class MachineRecurringPatternSynthesizer
                 right.DominantNetworkActivityClass);
     }
 
-    private static List<List<MachineLearningContextProfile>> BuildRuns(
+    internal static List<List<MachineLearningContextProfile>> BuildRuns(
         IReadOnlyList<MachineLearningContextProfile> profiles)
     {
         var runs = new List<List<MachineLearningContextProfile>>();
@@ -98,7 +102,7 @@ public static class MachineRecurringPatternSynthesizer
         return runs;
     }
 
-    private static void MergeMidnightRun(
+    internal static void MergeMidnightRun(
         List<List<MachineLearningContextProfile>> runs)
     {
         if (runs.Count < 2 ||
@@ -188,7 +192,7 @@ public static class MachineRecurringPatternSynthesizer
             pattern.MemberContexts.SequenceEqual(keys));
     }
 
-    private static bool AreNetworkClassesCompatible(
+    internal static bool AreNetworkClassesCompatible(
         MachineNetworkActivityClass? left,
         MachineNetworkActivityClass? right)
     {
