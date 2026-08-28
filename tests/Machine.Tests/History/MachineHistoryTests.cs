@@ -123,6 +123,88 @@ public sealed class MachineHistoryTests
     }
 
     [Fact]
+    public async Task DayRolloverPersistenceKeepsMergedMeansWithinBounds()
+    {
+        var prior = DateTimeOffset.Parse("2026-08-26T05:45:00Z");
+        const double freePercent = 35.96968682040063d;
+        var activeHour = new MachineHistoryRollup(
+            prior.AddMinutes(-45),
+            prior.AddMinutes(15),
+            TimeSpan.FromMinutes(45).Ticks,
+            null,
+            null,
+            null,
+            null,
+            new(85, freePercent, freePercent, freePercent),
+            new(TimeSpan.FromMinutes(45).Ticks, 0, 0, 0, 0),
+            new(TimeSpan.FromMinutes(45).Ticks, 0));
+        var activeFive = new MachineHistoryRollup(
+            prior,
+            prior.AddMinutes(5),
+            TimeSpan.FromMinutes(4).Ticks,
+            null,
+            null,
+            null,
+            null,
+            new(10, freePercent, freePercent, freePercent),
+            new(TimeSpan.FromMinutes(4).Ticks, 0, 0, 0, 0),
+            new(TimeSpan.FromMinutes(4).Ticks, 0));
+        var persisted = new MachineHistoryPersistedState(
+            MachineHistoryService.PersistenceSchemaVersion,
+            [],
+            [],
+            [],
+            [],
+            activeFive,
+            activeHour,
+            null,
+            null,
+            [],
+            null,
+            true,
+            null,
+            null,
+            prior.AddHours(-1),
+            prior,
+            prior);
+        var service = CreateService();
+        await service.LoadAsync(new RecordingHistoryStore(persisted));
+        var resumedAt = prior.AddDays(2);
+        service.BeginSession(resumedAt);
+        service.Observe(Observation(resumedAt.AddSeconds(30)) with
+        {
+            SystemVolumeFreePercent = freePercent
+        });
+
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "Machine.Tests",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new FileMachineHistoryStore(directory);
+            Assert.True(await service.SaveFinalSnapshotAsync(
+                store,
+                resumedAt.AddMinutes(1)));
+
+            var restored = new MachineHistoryService();
+            await restored.LoadAsync(store);
+            Assert.Equal(MachineHistoryDataStatus.Healthy,
+                restored.DataStatus);
+            Assert.True(restored.GetSnapshot(
+                MachineHistoryRange.Last7Days,
+                resumedAt.AddMinutes(1)).Rollups.Count > 0);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void OfflineGapRemainsMissingAndIsNotIdle()
     {
         var service = CreateService();
@@ -804,6 +886,12 @@ public sealed class MachineHistoryTests
 
     private sealed class RecordingHistoryStore : IMachineHistoryStore
     {
+        public RecordingHistoryStore(
+            MachineHistoryPersistedState? state = null)
+        {
+            State = state;
+        }
+
         public MachineHistoryPersistedState? State { get; private set; }
 
         public Task<MachineHistoryPersistedState?> LoadAsync(

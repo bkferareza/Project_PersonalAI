@@ -410,11 +410,13 @@ internal static class MachineHistoryAggregation
             ? left.Mean
             : (left.Mean * left.SampleCount +
                right.Mean * right.SampleCount) / total;
+        var minimum = Math.Min(left.Minimum, right.Minimum);
+        var maximum = Math.Max(left.Maximum, right.Maximum);
         return new(
             count,
-            Math.Min(left.Minimum, right.Minimum),
-            Math.Max(left.Maximum, right.Maximum),
-            mean);
+            minimum,
+            maximum,
+            Math.Clamp(mean, minimum, maximum));
     }
 
     private static MachineHistoryRollup AddStateDurations(
