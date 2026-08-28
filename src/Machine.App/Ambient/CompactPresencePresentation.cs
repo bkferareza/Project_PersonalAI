@@ -21,9 +21,81 @@ public enum CompactPresenceVisualMode
 
 public readonly record struct CompactPresenceVisualState(
     CompactPresenceVisualMode PostureMode,
+    bool IsGenerating,
     bool HasNewUnseenInsight)
 {
-    public CompactPresenceVisualMode Mode => PostureMode;
+    public CompactPresenceVisualMode Mode => IsGenerating
+        ? CompactPresenceVisualMode.Generating
+        : PostureMode;
+}
+
+public readonly record struct AmbientOrbBlendState(
+    double AttentionAmount,
+    double WarningAmount,
+    double CriticalAmount,
+    double UnknownAmount,
+    double GeneratingAmount,
+    double HoverAmount);
+
+public static class AmbientOrbTransitionModel
+{
+    private const double AppearanceResponsePerSecond = 7.5d;
+    private const double ModifierResponsePerSecond = 9d;
+
+    public static AmbientOrbBlendState CreateTarget(
+        CompactPresenceVisualState state,
+        bool isHovered) => new(
+            state.PostureMode == CompactPresenceVisualMode.Attention
+                ? 1d
+                : 0d,
+            state.PostureMode == CompactPresenceVisualMode.Warning
+                ? 1d
+                : 0d,
+            state.PostureMode == CompactPresenceVisualMode.Critical
+                ? 1d
+                : 0d,
+            state.PostureMode == CompactPresenceVisualMode.Unknown
+                ? 1d
+                : 0d,
+            state.IsGenerating ? 1d : 0d,
+            isHovered ? 1d : 0d);
+
+    public static AmbientOrbBlendState Advance(
+        AmbientOrbBlendState current,
+        AmbientOrbBlendState target,
+        TimeSpan elapsed,
+        bool animationsEnabled = true)
+    {
+        if (!animationsEnabled)
+        {
+            return target;
+        }
+
+        var seconds = Math.Max(0d, elapsed.TotalSeconds);
+        var appearanceAmount = 1d - Math.Exp(
+            -AppearanceResponsePerSecond * seconds);
+        var modifierAmount = 1d - Math.Exp(
+            -ModifierResponsePerSecond * seconds);
+        return new(
+            Lerp(current.AttentionAmount, target.AttentionAmount,
+                appearanceAmount),
+            Lerp(current.WarningAmount, target.WarningAmount,
+                appearanceAmount),
+            Lerp(current.CriticalAmount, target.CriticalAmount,
+                appearanceAmount),
+            Lerp(current.UnknownAmount, target.UnknownAmount,
+                appearanceAmount),
+            Lerp(current.GeneratingAmount, target.GeneratingAmount,
+                modifierAmount),
+            Lerp(current.HoverAmount, target.HoverAmount,
+                modifierAmount));
+    }
+
+    private static double Lerp(double current, double target, double amount) =>
+        Math.Clamp(
+            current + (target - current) * Math.Clamp(amount, 0d, 1d),
+            0d,
+            1d);
 }
 
 public readonly record struct CompactPresenceSize(
@@ -106,26 +178,25 @@ public static class CompactPresenceLayout
         bool showNewInsightBloom) => SelectVisualState(
             overallState,
             isGenerating,
-            showNewInsightBloom).PostureMode;
+            showNewInsightBloom).Mode;
 
     public static CompactPresenceVisualState SelectVisualState(
         Machine.Core.MachineOverallState overallState,
         bool isGenerating,
         bool hasNewUnseenInsight) => new(
-            isGenerating
-                ? CompactPresenceVisualMode.Generating
-                : overallState switch
-                {
-                    Machine.Core.MachineOverallState.Stable =>
-                        CompactPresenceVisualMode.Stable,
-                    Machine.Core.MachineOverallState.Attention =>
-                        CompactPresenceVisualMode.Attention,
-                    Machine.Core.MachineOverallState.Warning =>
-                        CompactPresenceVisualMode.Warning,
-                    Machine.Core.MachineOverallState.Critical =>
-                        CompactPresenceVisualMode.Critical,
-                    _ => CompactPresenceVisualMode.Unknown
-                },
+            overallState switch
+            {
+                Machine.Core.MachineOverallState.Stable =>
+                    CompactPresenceVisualMode.Stable,
+                Machine.Core.MachineOverallState.Attention =>
+                    CompactPresenceVisualMode.Attention,
+                Machine.Core.MachineOverallState.Warning =>
+                    CompactPresenceVisualMode.Warning,
+                Machine.Core.MachineOverallState.Critical =>
+                    CompactPresenceVisualMode.Critical,
+                _ => CompactPresenceVisualMode.Unknown
+            },
+            isGenerating,
             hasNewUnseenInsight);
 
     public static bool IsSurfaceInteractive(

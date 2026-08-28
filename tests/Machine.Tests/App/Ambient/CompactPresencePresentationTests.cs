@@ -265,6 +265,257 @@ public sealed class CompactPresencePresentationTests
     }
 
     [Fact]
+    public void PostureTransitionKeepsPhaseAndBlendsByElapsedTime()
+    {
+        var stable = AmbientOrbTransitionModel.CreateTarget(
+            new(
+                CompactPresenceVisualMode.Stable,
+                IsGenerating: false,
+                HasNewUnseenInsight: false),
+            isHovered: false);
+        var attention = AmbientOrbTransitionModel.CreateTarget(
+            new(
+                CompactPresenceVisualMode.Attention,
+                IsGenerating: false,
+                HasNewUnseenInsight: false),
+            isHovered: false);
+
+        var entering = AmbientOrbTransitionModel.Advance(
+            stable,
+            attention,
+            TimeSpan.FromMilliseconds(50));
+        var continuing = AmbientOrbTransitionModel.Advance(
+            entering,
+            attention,
+            TimeSpan.FromMilliseconds(50));
+        var before = AmbientOrbMotionModel.CreateForProgress(
+            0.42d,
+            CompactPresenceVisualMode.Stable,
+            stable);
+        var during = AmbientOrbMotionModel.CreateForProgress(
+            0.42d,
+            CompactPresenceVisualMode.Attention,
+            entering);
+
+        Assert.InRange(entering.AttentionAmount, 0.01d, 0.99d);
+        Assert.True(continuing.AttentionAmount >
+            entering.AttentionAmount);
+        Assert.Equal(before.CycleProgress, during.CycleProgress);
+        Assert.Equal(before.BreathAmount, during.BreathAmount);
+    }
+
+    [Fact]
+    public void EverySemanticTransitionPreservesTheUnderlyingBreathPhase()
+    {
+        var modes = new[]
+        {
+            CompactPresenceVisualMode.Stable,
+            CompactPresenceVisualMode.Attention,
+            CompactPresenceVisualMode.Warning,
+            CompactPresenceVisualMode.Critical,
+            CompactPresenceVisualMode.Unknown
+        };
+        const double phase = 0.37d;
+
+        foreach (var fromMode in modes)
+        {
+            foreach (var toMode in modes)
+            {
+                var current = AmbientOrbTransitionModel.CreateTarget(
+                    new(fromMode, false, false),
+                    isHovered: false);
+                var target = AmbientOrbTransitionModel.CreateTarget(
+                    new(toMode, false, false),
+                    isHovered: false);
+                var transition = AmbientOrbTransitionModel.Advance(
+                    current,
+                    target,
+                    TimeSpan.FromMilliseconds(80));
+                var motion = AmbientOrbMotionModel.CreateForProgress(
+                    phase,
+                    toMode,
+                    transition);
+
+                Assert.Equal(phase, motion.CycleProgress, precision: 12);
+                Assert.Equal(
+                    AmbientOrbMotionModel.CreateForProgress(
+                        phase,
+                        fromMode,
+                        current).BreathAmount,
+                    motion.BreathAmount);
+            }
+        }
+    }
+
+    [Fact]
+    public void TransitionInterpolationDependsOnTimeNotFrameCount()
+    {
+        var current = AmbientOrbTransitionModel.CreateTarget(
+            new(
+                CompactPresenceVisualMode.Warning,
+                IsGenerating: false,
+                HasNewUnseenInsight: false),
+            isHovered: false);
+        var target = AmbientOrbTransitionModel.CreateTarget(
+            new(
+                CompactPresenceVisualMode.Stable,
+                IsGenerating: true,
+                HasNewUnseenInsight: false),
+            isHovered: true);
+
+        var oneStep = AmbientOrbTransitionModel.Advance(
+            current,
+            target,
+            TimeSpan.FromMilliseconds(200));
+        var fourSteps = current;
+        for (var index = 0; index < 4; index++)
+        {
+            fourSteps = AmbientOrbTransitionModel.Advance(
+                fourSteps,
+                target,
+                TimeSpan.FromMilliseconds(50));
+        }
+
+        Assert.Equal(oneStep.WarningAmount,
+            fourSteps.WarningAmount, precision: 12);
+        Assert.Equal(oneStep.GeneratingAmount,
+            fourSteps.GeneratingAmount, precision: 12);
+        Assert.Equal(oneStep.HoverAmount,
+            fourSteps.HoverAmount, precision: 12);
+    }
+
+    [Fact]
+    public void HoverGeneratingAndInsightAreAdditiveWithoutPhaseReset()
+    {
+        var ordinary = new CompactPresenceVisualState(
+            CompactPresenceVisualMode.Warning,
+            IsGenerating: false,
+            HasNewUnseenInsight: false);
+        var modified = ordinary with
+        {
+            IsGenerating = true,
+            HasNewUnseenInsight = true
+        };
+        var current = AmbientOrbTransitionModel.CreateTarget(
+            ordinary,
+            isHovered: false);
+        var target = AmbientOrbTransitionModel.CreateTarget(
+            modified,
+            isHovered: true);
+        var blend = AmbientOrbTransitionModel.Advance(
+            current,
+            target,
+            TimeSpan.FromMilliseconds(100));
+        var normal = AmbientOrbMotionModel.CreateForProgress(
+            0.63d,
+            ordinary.PostureMode,
+            current);
+        var wake = AmbientOrbMotionModel.CreateForProgress(
+            0.63d,
+            modified.PostureMode,
+            blend,
+            AmbientOrbInsightModifier.Wake,
+            insightProgress: 0.42d);
+
+        Assert.Equal(CompactPresenceVisualMode.Warning,
+            modified.PostureMode);
+        Assert.True(modified.IsGenerating);
+        Assert.Equal(normal.CycleProgress, wake.CycleProgress);
+        Assert.Equal(normal.BreathAmount, wake.BreathAmount);
+        Assert.True(wake.GeneratingAmount > 0d);
+        Assert.True(wake.HoverAmount > 0d);
+        Assert.True(wake.NewInsightAmount > 0d);
+    }
+
+    [Fact]
+    public void InsightNewnessDoesNotReplacePostureOrGeneratingTargets()
+    {
+        var unseen = new CompactPresenceVisualState(
+            CompactPresenceVisualMode.Attention,
+            IsGenerating: true,
+            HasNewUnseenInsight: true);
+        var seen = unseen with { HasNewUnseenInsight = false };
+
+        Assert.Equal(
+            AmbientOrbTransitionModel.CreateTarget(
+                unseen,
+                isHovered: false),
+            AmbientOrbTransitionModel.CreateTarget(
+                seen,
+                isHovered: false));
+        Assert.Equal(CompactPresenceVisualMode.Generating, unseen.Mode);
+        Assert.Equal(CompactPresenceVisualMode.Attention,
+            unseen.PostureMode);
+    }
+
+    [Fact]
+    public void PhaseWrapIsVisuallyContinuous()
+    {
+        var sequence = AmbientOrbFrameSequence.Create();
+        var beforePixels = new byte[
+            AmbientOrbFrameSequence.CanvasSize *
+            AmbientOrbFrameSequence.CanvasSize * 4];
+        var afterPixels = new byte[beforePixels.Length];
+        sequence.RenderInto(beforePixels, 0.9999d, animationsEnabled: true);
+        sequence.RenderInto(afterPixels, 0.0001d, animationsEnabled: true);
+        var before = new AmbientOrbFrame(
+            AmbientOrbFrameSequence.CanvasSize,
+            AmbientOrbFrameSequence.CanvasSize,
+            beforePixels);
+        var after = new AmbientOrbFrame(
+            AmbientOrbFrameSequence.CanvasSize,
+            AmbientOrbFrameSequence.CanvasSize,
+            afterPixels);
+
+        Assert.InRange(AmbientOrbFrameSequence.MeanAlphaDifference(
+            before,
+            after), 0d, 0.15d);
+    }
+
+    [Fact]
+    public void HiddenDashboardIntervalAdvancesLogicalPhaseWithoutFrameZero()
+    {
+        var before = AmbientOrbMotionModel.Create(
+            TimeSpan.FromSeconds(2.3d),
+            CompactPresenceVisualMode.Stable);
+        var after = AmbientOrbMotionModel.Create(
+            TimeSpan.FromSeconds(12.3d),
+            CompactPresenceVisualMode.Stable);
+
+        Assert.Equal(before.CycleProgress,
+            after.CycleProgress, precision: 12);
+        Assert.NotEqual(AmbientOrbMotionModel.StaticCycleProgress,
+            after.CycleProgress);
+        Assert.NotEqual(before.SlowDriftProgress,
+            after.SlowDriftProgress);
+    }
+
+    [Fact]
+    public void ReducedMotionAppliesSemanticTargetWithoutAFrameTimerRamp()
+    {
+        var stable = AmbientOrbTransitionModel.CreateTarget(
+            new(
+                CompactPresenceVisualMode.Stable,
+                IsGenerating: false,
+                HasNewUnseenInsight: false),
+            isHovered: false);
+        var critical = AmbientOrbTransitionModel.CreateTarget(
+            new(
+                CompactPresenceVisualMode.Critical,
+                IsGenerating: true,
+                HasNewUnseenInsight: true),
+            isHovered: false);
+
+        Assert.Equal(
+            critical,
+            AmbientOrbTransitionModel.Advance(
+                stable,
+                critical,
+                TimeSpan.Zero,
+                animationsEnabled: false));
+    }
+
+    [Fact]
     public void NewInsightIsAnOverlayWithoutChangingPosture()
     {
         var state = CompactPresenceLayout.SelectVisualState(
@@ -281,6 +532,7 @@ public sealed class CompactPresencePresentationTests
             insightProgress: 0.42d);
 
         Assert.Equal(CompactPresenceVisualMode.Stable, state.PostureMode);
+        Assert.False(state.IsGenerating);
         Assert.True(state.HasNewUnseenInsight);
         Assert.Equal(normal.PostureMode, wake.PostureMode);
         Assert.True(wake.HasNewUnseenInsight);

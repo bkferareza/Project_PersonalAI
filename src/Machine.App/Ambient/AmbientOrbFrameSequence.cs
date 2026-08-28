@@ -10,6 +10,7 @@ public enum AmbientOrbInsightModifier
 public readonly record struct AmbientOrbMotionParameters(
     CompactPresenceVisualMode PostureMode,
     double CycleProgress,
+    double SlowDriftProgress,
     double BreathAmount,
     double BaseRadius,
     double Expansion,
@@ -19,15 +20,20 @@ public readonly record struct AmbientOrbMotionParameters(
     double HighlightX,
     double HighlightY,
     double HoverAmount,
+    double GeneratingAmount,
     double NewInsightAmount,
     bool HasNewUnseenInsight,
-    bool ReducedMotion);
+    bool ReducedMotion,
+    AmbientOrbBlendState BlendState);
 
 public static class AmbientOrbMotionModel
 {
     public static readonly TimeSpan StableCycleDuration =
         TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan SlowDriftDuration =
+        TimeSpan.FromSeconds(47);
     public const double StaticCycleProgress = 0.16d;
+    public const double StaticSlowDriftProgress = 0.23d;
 
     public static AmbientOrbMotionParameters Create(
         TimeSpan elapsed,
@@ -42,13 +48,17 @@ public static class AmbientOrbMotionModel
         var progress = reducedMotion
             ? StaticCycleProgress
             : seconds / StableCycleDuration.TotalSeconds % 1d;
+        var slowDriftProgress = reducedMotion
+            ? StaticSlowDriftProgress
+            : seconds / SlowDriftDuration.TotalSeconds % 1d;
         return CreateForProgress(
             progress,
             postureMode,
             hoverAmount,
             insightModifier,
             insightProgress,
-            reducedMotion);
+            reducedMotion,
+            slowDriftProgress);
     }
 
     public static AmbientOrbMotionParameters CreateForProgress(
@@ -58,66 +68,111 @@ public static class AmbientOrbMotionModel
         AmbientOrbInsightModifier insightModifier =
             AmbientOrbInsightModifier.None,
         double insightProgress = 0d,
-        bool reducedMotion = false)
+        bool reducedMotion = false,
+        double slowDriftProgress = StaticSlowDriftProgress)
     {
         var mode = postureMode == CompactPresenceVisualMode.NewInsight
             ? CompactPresenceVisualMode.Stable
             : postureMode;
+        var isGenerating = mode == CompactPresenceVisualMode.Generating;
+        if (isGenerating)
+        {
+            mode = CompactPresenceVisualMode.Stable;
+        }
+        var blendState = AmbientOrbTransitionModel.CreateTarget(
+            new CompactPresenceVisualState(
+                mode,
+                isGenerating,
+                insightModifier != AmbientOrbInsightModifier.None),
+            isHovered: false) with
+        {
+            HoverAmount = Math.Clamp(hoverAmount, 0d, 1d)
+        };
+        return CreateForProgress(
+            cycleProgress,
+            mode,
+            blendState,
+            insightModifier,
+            insightProgress,
+            reducedMotion,
+            slowDriftProgress);
+    }
+
+    public static AmbientOrbMotionParameters CreateForProgress(
+        double cycleProgress,
+        CompactPresenceVisualMode postureMode,
+        AmbientOrbBlendState blendState,
+        AmbientOrbInsightModifier insightModifier =
+            AmbientOrbInsightModifier.None,
+        double insightProgress = 0d,
+        bool reducedMotion = false,
+        double slowDriftProgress = StaticSlowDriftProgress)
+    {
         var progress = reducedMotion
             ? StaticCycleProgress
             : WrapUnit(cycleProgress);
-        var phase = Math.Tau * progress;
+        var cyclePhase = Math.Tau * progress;
+        var slowProgress = reducedMotion
+            ? StaticSlowDriftProgress
+            : WrapUnit(slowDriftProgress);
+        var slowPhase = Math.Tau * slowProgress;
         var breath = CreateOrganicBreathEnvelope(progress);
-        var hover = Math.Clamp(hoverAmount, 0d, 1d);
+        var hover = Math.Clamp(blendState.HoverAmount, 0d, 1d);
+        var generating = Math.Clamp(
+            blendState.GeneratingAmount,
+            0d,
+            1d);
         var wake = insightModifier == AmbientOrbInsightModifier.Wake &&
             !reducedMotion
                 ? CreateWakeEnvelope(Math.Clamp(insightProgress, 0d, 1d))
                 : 0d;
-        var baseRadius = mode switch
-        {
-            CompactPresenceVisualMode.Critical => 21.65d,
-            CompactPresenceVisualMode.Warning => 21.55d,
-            CompactPresenceVisualMode.Attention => 21.5d,
-            CompactPresenceVisualMode.Unknown => 21.1d,
-            _ => 21.4d
-        };
-        var breathExpansion = mode switch
-        {
-            CompactPresenceVisualMode.Critical => 0.95d,
-            CompactPresenceVisualMode.Warning => 1.08d,
-            CompactPresenceVisualMode.Attention => 1.25d,
-            CompactPresenceVisualMode.Unknown => 0.85d,
-            _ => 1.45d
-        };
+        var baseRadius = BlendPostureValue(
+            blendState,
+            stable: 21.4d,
+            attention: 21.5d,
+            warning: 21.55d,
+            critical: 21.65d,
+            unknown: 21.1d);
+        var breathExpansion = BlendPostureValue(
+            blendState,
+            stable: 1.45d,
+            attention: 1.25d,
+            warning: 1.08d,
+            critical: 0.95d,
+            unknown: 0.85d);
         var expansion = breathExpansion * breath +
-            0.18d * hover + 0.82d * wake;
-        var drift = 0.52d * Math.Sin(phase * 0.72d + 0.35d) +
-            0.17d * Math.Sin(phase * 1.31d - 0.8d);
+            0.18d * hover + 0.10d * generating + 0.82d * wake;
+        var drift = 0.52d * Math.Sin(slowPhase + 0.35d) +
+            0.17d * Math.Sin(2d * slowPhase - 0.8d);
         var centerX = 47.5d + drift + 0.10d * hover;
         var centerY = 47.5d - 0.46d * breath +
-            0.20d * Math.Sin(phase * 0.63d - 0.4d) -
+            0.20d * Math.Sin(slowPhase - 0.4d) -
             0.18d * wake;
         var highlightX = centerX - 5.3d - 0.62d * breath -
             0.55d * wake;
         var highlightY = centerY - 5.8d -
-            0.35d * Math.Sin(phase * 0.78d + 0.2d) -
+            0.35d * Math.Sin(slowPhase + 0.2d) -
             0.45d * wake;
 
         return new(
-            mode,
+            postureMode,
             progress,
+            slowProgress,
             breath,
             baseRadius,
             expansion,
-            phase + 0.24d * Math.Sin(phase * 0.57d),
+            slowPhase + 0.24d * Math.Sin(2d * slowPhase) +
+                0.48d * Math.Sin(cyclePhase),
             centerX,
             centerY,
             highlightX,
             highlightY,
             hover,
+            generating,
             wake,
             insightModifier != AmbientOrbInsightModifier.None,
-            reducedMotion);
+            reducedMotion,
+            blendState);
     }
 
     public static double GetContourRadius(
@@ -126,14 +181,14 @@ public static class AmbientOrbMotionModel
     {
         var phase = motion.DeformationPhase;
         return motion.BaseRadius + motion.Expansion +
-            0.72d * Math.Sin(2d * angle + 0.35d + phase * 0.22d) +
-            0.46d * Math.Sin(3d * angle - 0.75d - phase * 0.17d) +
-            0.22d * Math.Sin(5d * angle + 1.10d + phase * 0.11d) +
+            0.72d * Math.Sin(2d * angle + 0.35d + phase) +
+            0.46d * Math.Sin(3d * angle - 0.75d - phase) +
+            0.22d * Math.Sin(5d * angle + 1.10d + 2d * phase) +
             (0.28d + 0.34d * motion.BreathAmount) *
-                Math.Sin(angle - 0.80d + phase * 0.31d) +
+                Math.Sin(angle - 0.80d + phase) +
             motion.NewInsightAmount *
                 (0.22d + 0.38d * Math.Sin(
-                    3d * angle - phase * 0.35d));
+                    3d * angle - phase));
     }
 
     private static double CreateOrganicBreathEnvelope(double progress)
@@ -183,6 +238,31 @@ public static class AmbientOrbMotionModel
 
         var wrapped = value - Math.Floor(value);
         return wrapped < 0d ? wrapped + 1d : wrapped;
+    }
+
+    private static double BlendPostureValue(
+        AmbientOrbBlendState blend,
+        double stable,
+        double attention,
+        double warning,
+        double critical,
+        double unknown)
+    {
+        var attentionAmount = Math.Clamp(blend.AttentionAmount, 0d, 1d);
+        var warningAmount = Math.Clamp(blend.WarningAmount, 0d, 1d);
+        var criticalAmount = Math.Clamp(blend.CriticalAmount, 0d, 1d);
+        var unknownAmount = Math.Clamp(blend.UnknownAmount, 0d, 1d);
+        var stableAmount = Math.Max(
+            0d,
+            1d - attentionAmount - warningAmount - criticalAmount -
+                unknownAmount);
+        var total = stableAmount + attentionAmount + warningAmount +
+            criticalAmount + unknownAmount;
+        return total <= double.Epsilon
+            ? stable
+            : (stable * stableAmount + attention * attentionAmount +
+                warning * warningAmount + critical * criticalAmount +
+                unknown * unknownAmount) / total;
     }
 }
 
@@ -257,7 +337,10 @@ public sealed class AmbientOrbFrameSequence
         byte[] destination,
         double cycleProgress,
         bool animationsEnabled,
-        double insightProgress = 0d)
+        double insightProgress = 0d,
+        AmbientOrbBlendState? blendState = null,
+        double slowDriftProgress =
+            AmbientOrbMotionModel.StaticSlowDriftProgress)
     {
         ArgumentNullException.ThrowIfNull(destination);
         if (destination.Length != CanvasSize * CanvasSize * 4)
@@ -279,7 +362,9 @@ public sealed class AmbientOrbFrameSequence
                     ? AmbientOrbInsightModifier.UnseenCue
                     : InsightModifier,
             insightProgress,
-            reducedMotion: !animationsEnabled);
+            reducedMotion: !animationsEnabled,
+            blendState: blendState,
+            slowDriftProgress: slowDriftProgress);
     }
 
     public bool IsHitTestVisible(int x, int y, int frameIndex = 0)
@@ -437,22 +522,35 @@ internal static class AmbientOrbProceduralRenderer
         double hoverAmount,
         AmbientOrbInsightModifier insightModifier,
         double insightProgress,
-        bool reducedMotion)
+        bool reducedMotion,
+        AmbientOrbBlendState? blendState = null,
+        double slowDriftProgress =
+            AmbientOrbMotionModel.StaticSlowDriftProgress)
     {
         Array.Clear(pixels);
-        var motion = AmbientOrbMotionModel.CreateForProgress(
-            cycleProgress,
-            mode,
-            hoverAmount,
-            insightModifier,
-            insightProgress,
-            reducedMotion);
-        var profile = GetProfile(motion.PostureMode);
-        var phase2 = 0.35d + motion.DeformationPhase * 0.22d;
-        var phase3 = -0.75d - motion.DeformationPhase * 0.17d;
-        var phase5 = 1.10d + motion.DeformationPhase * 0.11d;
-        var phase1 = -0.80d + motion.DeformationPhase * 0.31d;
-        var wakePhase3 = -motion.DeformationPhase * 0.35d;
+        var motion = blendState is { } blend
+            ? AmbientOrbMotionModel.CreateForProgress(
+                cycleProgress,
+                NormalizePostureMode(mode),
+                blend,
+                insightModifier,
+                insightProgress,
+                reducedMotion,
+                slowDriftProgress)
+            : AmbientOrbMotionModel.CreateForProgress(
+                cycleProgress,
+                mode,
+                hoverAmount,
+                insightModifier,
+                insightProgress,
+                reducedMotion,
+                slowDriftProgress);
+        var profile = GetProfile(motion.BlendState);
+        var phase2 = 0.35d + motion.DeformationPhase;
+        var phase3 = -0.75d - motion.DeformationPhase;
+        var phase5 = 1.10d + 2d * motion.DeformationPhase;
+        var phase1 = -0.80d + motion.DeformationPhase;
+        var wakePhase3 = -motion.DeformationPhase;
         var phase2Sin = Math.Sin(phase2);
         var phase2Cos = Math.Cos(phase2);
         var phase3Sin = Math.Sin(phase3);
@@ -463,7 +561,7 @@ internal static class AmbientOrbProceduralRenderer
         var phase1Cos = Math.Cos(phase1);
         var wake3Sin = Math.Sin(wakePhase3);
         var wake3Cos = Math.Cos(wakePhase3);
-        var generatingPhase = Math.Tau * motion.CycleProgress * 0.82d;
+        var generatingPhase = Math.Tau * motion.CycleProgress;
         var generatingX = motion.CenterX + 8d * Math.Cos(generatingPhase);
         var generatingY = motion.CenterY + 6d * Math.Sin(generatingPhase);
 
@@ -567,8 +665,7 @@ internal static class AmbientOrbProceduralRenderer
                     membrane * profile.MembraneAlpha,
                     profile.Membrane);
 
-                if (motion.PostureMode ==
-                    CompactPresenceVisualMode.Generating)
+                if (motion.GeneratingAmount > 0.001d)
                 {
                     var activity = Gaussian(
                         geometry.X - generatingX,
@@ -576,7 +673,8 @@ internal static class AmbientOrbProceduralRenderer
                         4.8d,
                         3.5d);
                     AddLayer(ref red, ref green, ref blue, ref alpha,
-                        bodyMask * activity * 0.30d,
+                        bodyMask * activity * 0.30d *
+                            motion.GeneratingAmount,
                         profile.Membrane);
                 }
 
@@ -630,7 +728,49 @@ internal static class AmbientOrbProceduralRenderer
         return result;
     }
 
-    private static OrbProfile GetProfile(
+    private static OrbProfile GetProfile(AmbientOrbBlendState blend)
+    {
+        var attention = Math.Clamp(blend.AttentionAmount, 0d, 1d);
+        var warning = Math.Clamp(blend.WarningAmount, 0d, 1d);
+        var critical = Math.Clamp(blend.CriticalAmount, 0d, 1d);
+        var unknown = Math.Clamp(blend.UnknownAmount, 0d, 1d);
+        var sum = attention + warning + critical + unknown;
+        if (sum > 1d)
+        {
+            attention /= sum;
+            warning /= sum;
+            critical /= sum;
+            unknown /= sum;
+            sum = 1d;
+        }
+
+        var posture = BlendProfiles(
+            GetProfileForMode(CompactPresenceVisualMode.Stable),
+            1d - sum,
+            GetProfileForMode(CompactPresenceVisualMode.Attention),
+            attention,
+            GetProfileForMode(CompactPresenceVisualMode.Warning),
+            warning,
+            GetProfileForMode(CompactPresenceVisualMode.Critical),
+            critical,
+            GetProfileForMode(CompactPresenceVisualMode.Unknown),
+            unknown);
+        return LerpProfile(
+            posture,
+            GetProfileForMode(CompactPresenceVisualMode.Generating),
+            Math.Clamp(blend.GeneratingAmount, 0d, 1d) * 0.72d);
+    }
+
+    private static CompactPresenceVisualMode NormalizePostureMode(
+        CompactPresenceVisualMode mode) => mode switch
+        {
+            CompactPresenceVisualMode.Generating or
+            CompactPresenceVisualMode.NewInsight =>
+                CompactPresenceVisualMode.Stable,
+            _ => mode
+        };
+
+    private static OrbProfile GetProfileForMode(
         CompactPresenceVisualMode mode) => mode switch
     {
         CompactPresenceVisualMode.Attention => new(
@@ -664,6 +804,120 @@ internal static class AmbientOrbProceduralRenderer
             new(121, 142, 167), new(190, 207, 225),
             new(232, 239, 247), new(158, 190, 209))
     };
+
+    private static OrbProfile BlendProfiles(
+        OrbProfile stable,
+        double stableAmount,
+        OrbProfile attention,
+        double attentionAmount,
+        OrbProfile warning,
+        double warningAmount,
+        OrbProfile critical,
+        double criticalAmount,
+        OrbProfile unknown,
+        double unknownAmount)
+    {
+        return new(
+            BlendValue(stable.HaloAlpha, attention.HaloAlpha,
+                warning.HaloAlpha, critical.HaloAlpha,
+                unknown.HaloAlpha),
+            BlendValue(stable.BodyAlpha, attention.BodyAlpha,
+                warning.BodyAlpha, critical.BodyAlpha,
+                unknown.BodyAlpha),
+            BlendValue(stable.ShadowAlpha, attention.ShadowAlpha,
+                warning.ShadowAlpha, critical.ShadowAlpha,
+                unknown.ShadowAlpha),
+            BlendValue(stable.AccentAlpha, attention.AccentAlpha,
+                warning.AccentAlpha, critical.AccentAlpha,
+                unknown.AccentAlpha),
+            BlendValue(stable.CoreAlpha, attention.CoreAlpha,
+                warning.CoreAlpha, critical.CoreAlpha,
+                unknown.CoreAlpha),
+            BlendValue(stable.MembraneAlpha, attention.MembraneAlpha,
+                warning.MembraneAlpha, critical.MembraneAlpha,
+                unknown.MembraneAlpha),
+            BlendColor(stable.Halo, attention.Halo, warning.Halo,
+                critical.Halo, unknown.Halo),
+            BlendColor(stable.Body, attention.Body, warning.Body,
+                critical.Body, unknown.Body),
+            BlendColor(stable.Shadow, attention.Shadow, warning.Shadow,
+                critical.Shadow, unknown.Shadow),
+            BlendColor(stable.Accent, attention.Accent, warning.Accent,
+                critical.Accent, unknown.Accent),
+            BlendColor(stable.Core, attention.Core, warning.Core,
+                critical.Core, unknown.Core),
+            BlendColor(stable.Membrane, attention.Membrane,
+                warning.Membrane, critical.Membrane, unknown.Membrane),
+            BlendColor(stable.Cue, attention.Cue, warning.Cue,
+                critical.Cue, unknown.Cue));
+
+        double BlendValue(
+            double stableValue,
+            double attentionValue,
+            double warningValue,
+            double criticalValue,
+            double unknownValue) =>
+            stableValue * stableAmount +
+            attentionValue * attentionAmount +
+            warningValue * warningAmount +
+            criticalValue * criticalAmount +
+            unknownValue * unknownAmount;
+
+        OrbColor BlendColor(
+            OrbColor stableColor,
+            OrbColor attentionColor,
+            OrbColor warningColor,
+            OrbColor criticalColor,
+            OrbColor unknownColor) => new(
+                ToByte(BlendValue(
+                    stableColor.Red,
+                    attentionColor.Red,
+                    warningColor.Red,
+                    criticalColor.Red,
+                    unknownColor.Red)),
+                ToByte(BlendValue(
+                    stableColor.Green,
+                    attentionColor.Green,
+                    warningColor.Green,
+                    criticalColor.Green,
+                    unknownColor.Green)),
+                ToByte(BlendValue(
+                    stableColor.Blue,
+                    attentionColor.Blue,
+                    warningColor.Blue,
+                    criticalColor.Blue,
+                    unknownColor.Blue)));
+    }
+
+    private static OrbProfile LerpProfile(
+        OrbProfile from,
+        OrbProfile to,
+        double amount)
+    {
+        var t = Math.Clamp(amount, 0d, 1d);
+        return new(
+            LerpValue(from.HaloAlpha, to.HaloAlpha),
+            LerpValue(from.BodyAlpha, to.BodyAlpha),
+            LerpValue(from.ShadowAlpha, to.ShadowAlpha),
+            LerpValue(from.AccentAlpha, to.AccentAlpha),
+            LerpValue(from.CoreAlpha, to.CoreAlpha),
+            LerpValue(from.MembraneAlpha, to.MembraneAlpha),
+            LerpColor(from.Halo, to.Halo),
+            LerpColor(from.Body, to.Body),
+            LerpColor(from.Shadow, to.Shadow),
+            LerpColor(from.Accent, to.Accent),
+            LerpColor(from.Core, to.Core),
+            LerpColor(from.Membrane, to.Membrane),
+            LerpColor(from.Cue, to.Cue));
+
+        double LerpValue(double first, double second) =>
+            first + (second - first) * t;
+
+        OrbColor LerpColor(OrbColor first, OrbColor second) => new(
+            ToByte(LerpValue(first.Red, second.Red)),
+            ToByte(LerpValue(first.Green, second.Green)),
+            ToByte(LerpValue(first.Blue, second.Blue)));
+    }
 
     private static double Combine(
         double sinAngle,
