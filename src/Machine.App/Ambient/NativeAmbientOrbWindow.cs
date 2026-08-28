@@ -12,6 +12,11 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         0x08000000;  // WS_EX_NOACTIVATE
     private const uint WindowStyle = 0x80000000; // WS_POPUP
     private const int WindowLongUserData = -21;
+    private const int WindowLongStyle = -16;
+    private const int WindowLongExtendedStyle = -20;
+    private const long WindowStyleCaption = 0x00C00000L;
+    private const long WindowStyleThickFrame = 0x00040000L;
+    private const long WindowExtendedStyleToolWindow = 0x00000080L;
     private const uint ShowNoActivate = 0x0010;
     private const uint ShowWindow = 0x0040;
     private const uint UpdateLayeredWindowAlpha = 0x00000002;
@@ -25,7 +30,27 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     private const int WindowMessageNonClientHitTest = 0x0084;
     private const int WindowMessageEraseBackground = 0x0014;
     private const int WindowMessageTimer = 0x0113;
+    private const int WindowMessageSettingChange = 0x001A;
+    private const int WindowMessageDisplayChange = 0x007E;
+    private const int WindowMessageDpiChanged = 0x02E0;
+    private const uint WindowMessageEvaluateFullscreen = 0x8042;
     private const uint AnimationTimerId = 1;
+    private const uint FullscreenSafetyTimerId = 2;
+    private const uint FullscreenEvaluationTimerId = 3;
+    private const uint FullscreenSafetyIntervalMilliseconds = 1_500;
+    private const uint FullscreenEventDelayMilliseconds = 120;
+    private const uint EventSystemForeground = 0x0003;
+    private const uint EventSystemMinimizeStart = 0x0016;
+    private const uint EventSystemMinimizeEnd = 0x0017;
+    private const uint EventObjectShow = 0x8002;
+    private const uint EventObjectHide = 0x8003;
+    private const uint EventObjectLocationChange = 0x800B;
+    private const uint WinEventOutOfContext = 0x0000;
+    private const uint WinEventSkipOwnProcess = 0x0002;
+    private const int DwmExtendedFrameBounds = 9;
+    private const int DwmCloaked = 14;
+    private const uint MonitorDefaultToNearest = 2;
+    private const uint GetWindowOwner = 4;
     private const int HitTestTransparent = -1;
     private const int HitTestClient = 1;
     private const int MouseActivateNoActivate = 3;
@@ -41,6 +66,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     private static ushort _windowClassAtom;
     private readonly AmbientOrbLifecycle _lifecycle = new();
     private readonly Action _onOrbClicked;
+    private readonly WinEventProcedure _winEventProcedure;
     private readonly byte[] _renderPixels = new byte[
         AmbientOrbFrameSequence.CanvasSize *
         AmbientOrbFrameSequence.CanvasSize * 4];
@@ -64,16 +90,28 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     private IntPtr _pixelBuffer;
     private GCHandle _selfHandle;
     private UIntPtr _animationTimerHandle;
+    private UIntPtr _fullscreenSafetyTimerHandle;
+    private UIntPtr _fullscreenEvaluationTimerHandle;
+    private IntPtr _foregroundEventHook;
+    private IntPtr _minimizeEventHook;
+    private IntPtr _visibilityEventHook;
+    private IntPtr _locationEventHook;
+    private AmbientFullscreenSuppressionState _fullscreenState;
+    private AmbientForegroundClassification _lastForegroundClassification;
     private long? _lastRenderedTimestamp;
     private long? _wakeStartedTimestamp;
     private int _frameIndex;
+    private int _requestedX;
+    private int _requestedY;
     private bool _isHovered;
+    private bool _isPresentationRequested;
     private bool _wakePending;
 
     public NativeAmbientOrbWindow(Action onOrbClicked)
     {
         _onOrbClicked = onOrbClicked ?? throw new ArgumentNullException(
             nameof(onOrbClicked));
+        _winEventProcedure = OnWinEvent;
         _renderedFrame = new AmbientOrbFrame(
             AmbientOrbFrameSequence.CanvasSize,
             AmbientOrbFrameSequence.CanvasSize,
@@ -84,6 +122,11 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
 
     public bool IsDisposed => _lifecycle.IsDisposed;
 
+    public bool IsFullscreenSuppressed => _fullscreenState.IsSuppressed;
+
+    public AmbientForegroundClassification LastForegroundClassification =>
+        _lastForegroundClassification;
+
     public TimeSpan FrameInterval => TimeSpan.FromSeconds(
         1d / AmbientOrbFrameSequence.FramesPerSecond);
 
@@ -91,7 +134,11 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
 
     public CompactPresenceVisualState VisualState => _visualState;
 
-    public bool ShouldAnimate => _lifecycle.ShouldAnimate;
+    public bool ShouldAnimate => _lifecycle.ShouldAnimate &&
+        AmbientFullscreenPresentationPolicy.ShouldRasterize(
+            _isPresentationRequested,
+            _fullscreenState.IsSuppressed,
+            _lifecycle.AnimationsEnabled);
 
     public bool IsAnimationTimerRunning =>
         _animationTimerHandle != UIntPtr.Zero && _lifecycle.IsTimerRunning;
@@ -182,6 +229,31 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         EnsureWindow();
+        _isPresentationRequested = true;
+        _requestedX = x;
+        _requestedY = y;
+        SetWindowPos(
+            _windowHandle,
+            new IntPtr(-1),
+            _requestedX,
+            _requestedY,
+            AmbientOrbFrameSequence.CanvasSize,
+            AmbientOrbFrameSequence.CanvasSize,
+            ShowNoActivate);
+        EvaluateFullscreenSuppression();
+        if (!AmbientFullscreenPresentationPolicy.ShouldPresent(
+                _isPresentationRequested,
+                _fullscreenState.IsSuppressed))
+        {
+            HideSurface();
+            return;
+        }
+
+        ShowRequestedSurface();
+    }
+
+    private void ShowRequestedSurface()
+    {
         var timerTransition = _lifecycle.ShowWithTimerTransition();
         if (_wakePending && _lifecycle.AnimationsEnabled &&
             _visualState.HasNewUnseenInsight)
@@ -192,8 +264,8 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         SetWindowPos(
             _windowHandle,
             new IntPtr(-1),
-            x,
-            y,
+            _requestedX,
+            _requestedY,
             AmbientOrbFrameSequence.CanvasSize,
             AmbientOrbFrameSequence.CanvasSize,
             ShowNoActivate | ShowWindow);
@@ -202,6 +274,12 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
     }
 
     public void Hide()
+    {
+        _isPresentationRequested = false;
+        HideSurface();
+    }
+
+    private void HideSurface()
     {
         if (IsDisposed || _windowHandle == IntPtr.Zero)
         {
@@ -238,6 +316,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
 
         ApplyTimerTransition(_lifecycle.Hide());
         StopAnimationTimer();
+        StopFullscreenMonitoring();
         _lifecycle.Dispose();
 
         if (_windowHandle != IntPtr.Zero)
@@ -328,6 +407,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         }
 
         _previousBitmap = SelectObject(_deviceContext, _bitmap);
+        StartFullscreenMonitoring();
     }
 
     private void PresentCurrentFrame()
@@ -450,6 +530,312 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         return 1d;
     }
 
+    private void StartFullscreenMonitoring()
+    {
+        if (_windowHandle == IntPtr.Zero ||
+            _foregroundEventHook != IntPtr.Zero)
+        {
+            return;
+        }
+
+        var flags = WinEventOutOfContext | WinEventSkipOwnProcess;
+        _foregroundEventHook = SetWinEventHook(
+            EventSystemForeground,
+            EventSystemForeground,
+            IntPtr.Zero,
+            _winEventProcedure,
+            0,
+            0,
+            flags);
+        _minimizeEventHook = SetWinEventHook(
+            EventSystemMinimizeStart,
+            EventSystemMinimizeEnd,
+            IntPtr.Zero,
+            _winEventProcedure,
+            0,
+            0,
+            flags);
+        _visibilityEventHook = SetWinEventHook(
+            EventObjectShow,
+            EventObjectHide,
+            IntPtr.Zero,
+            _winEventProcedure,
+            0,
+            0,
+            flags);
+        _locationEventHook = SetWinEventHook(
+            EventObjectLocationChange,
+            EventObjectLocationChange,
+            IntPtr.Zero,
+            _winEventProcedure,
+            0,
+            0,
+            flags);
+        _fullscreenSafetyTimerHandle = SetTimer(
+            _windowHandle,
+            new UIntPtr(FullscreenSafetyTimerId),
+            FullscreenSafetyIntervalMilliseconds,
+            IntPtr.Zero);
+    }
+
+    private void StopFullscreenMonitoring()
+    {
+        if (_fullscreenEvaluationTimerHandle != UIntPtr.Zero)
+        {
+            KillTimer(_windowHandle, _fullscreenEvaluationTimerHandle);
+            _fullscreenEvaluationTimerHandle = UIntPtr.Zero;
+        }
+        if (_fullscreenSafetyTimerHandle != UIntPtr.Zero)
+        {
+            KillTimer(_windowHandle, _fullscreenSafetyTimerHandle);
+            _fullscreenSafetyTimerHandle = UIntPtr.Zero;
+        }
+
+        Unhook(ref _foregroundEventHook);
+        Unhook(ref _minimizeEventHook);
+        Unhook(ref _visibilityEventHook);
+        Unhook(ref _locationEventHook);
+
+        static void Unhook(ref IntPtr hook)
+        {
+            if (hook == IntPtr.Zero)
+            {
+                return;
+            }
+
+            UnhookWinEvent(hook);
+            hook = IntPtr.Zero;
+        }
+    }
+
+    private void OnWinEvent(
+        IntPtr hook,
+        uint eventType,
+        IntPtr windowHandle,
+        int objectId,
+        int childId,
+        uint eventThread,
+        uint eventTime)
+    {
+        if (eventType >= EventObjectShow &&
+            (objectId != 0 || childId != 0))
+        {
+            return;
+        }
+
+        if (_windowHandle != IntPtr.Zero && !IsDisposed)
+        {
+            PostMessage(
+                _windowHandle,
+                WindowMessageEvaluateFullscreen,
+                IntPtr.Zero,
+                IntPtr.Zero);
+        }
+    }
+
+    private void ScheduleFullscreenEvaluation(uint delayMilliseconds)
+    {
+        if (_windowHandle == IntPtr.Zero || IsDisposed ||
+            _fullscreenEvaluationTimerHandle != UIntPtr.Zero)
+        {
+            return;
+        }
+
+        _fullscreenEvaluationTimerHandle = SetTimer(
+            _windowHandle,
+            new UIntPtr(FullscreenEvaluationTimerId),
+            Math.Max(1u, delayMilliseconds),
+            IntPtr.Zero);
+    }
+
+    private void EvaluateFullscreenSuppression()
+    {
+        if (_windowHandle == IntPtr.Zero || IsDisposed)
+        {
+            return;
+        }
+
+        _lastForegroundClassification =
+            CaptureForegroundClassification();
+        var wasSuppressed = _fullscreenState.IsSuppressed;
+        var decision = AmbientFullscreenSuppressionPolicy.Evaluate(
+            _fullscreenState,
+            _lastForegroundClassification,
+            DateTimeOffset.UnixEpoch + Stopwatch.GetElapsedTime(
+                _phaseOriginTimestamp,
+                Stopwatch.GetTimestamp()));
+        _fullscreenState = decision.State;
+
+        if (_fullscreenState.IsSuppressed != wasSuppressed)
+        {
+            if (!AmbientFullscreenPresentationPolicy.ShouldPresent(
+                    _isPresentationRequested,
+                    _fullscreenState.IsSuppressed))
+            {
+                HideSurface();
+            }
+            else
+            {
+                ShowRequestedSurface();
+            }
+        }
+
+        if (decision.RecheckAfter is { } delay)
+        {
+            ScheduleFullscreenEvaluation((uint)Math.Clamp(
+                Math.Ceiling(delay.TotalMilliseconds),
+                1d,
+                uint.MaxValue));
+        }
+    }
+
+    private AmbientForegroundClassification
+        CaptureForegroundClassification()
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero)
+        {
+            return AmbientForegroundClassification.Ignored;
+        }
+
+        var orbBounds = new Rect
+        {
+            Left = _requestedX,
+            Top = _requestedY,
+            Right = _requestedX + AmbientOrbFrameSequence.CanvasSize,
+            Bottom = _requestedY + AmbientOrbFrameSequence.CanvasSize
+        };
+        var orbMonitor = MonitorFromRect(
+            ref orbBounds,
+            MonitorDefaultToNearest);
+        var foregroundMonitor = MonitorFromWindow(
+            foreground,
+            MonitorDefaultToNearest);
+        if (orbMonitor == IntPtr.Zero || foregroundMonitor == IntPtr.Zero)
+        {
+            return AmbientForegroundClassification.Ignored;
+        }
+
+        var monitorInfo = new MonitorInfo
+        {
+            Size = (uint)Marshal.SizeOf<MonitorInfo>()
+        };
+        if (!GetMonitorInfo(foregroundMonitor, ref monitorInfo))
+        {
+            return AmbientForegroundClassification.Ignored;
+        }
+
+        var windowBounds = default(Rect);
+        if (DwmGetWindowAttribute(
+                foreground,
+                DwmExtendedFrameBounds,
+                out windowBounds,
+                Marshal.SizeOf<Rect>()) != 0 ||
+            windowBounds.Right <= windowBounds.Left ||
+            windowBounds.Bottom <= windowBounds.Top)
+        {
+            if (!GetWindowRect(foreground, out windowBounds))
+            {
+                return AmbientForegroundClassification.Ignored;
+            }
+        }
+
+        var cloaked = 0u;
+        _ = DwmGetWindowAttribute(
+            foreground,
+            DwmCloaked,
+            out cloaked,
+            sizeof(uint));
+        _ = GetWindowThreadProcessId(foreground, out var processId);
+        var style = GetWindowLongValue(foreground, WindowLongStyle);
+        var extendedStyle = GetWindowLongValue(
+            foreground,
+            WindowLongExtendedStyle);
+        var snapshot = new AmbientForegroundWindowSnapshot(
+            foreground.ToInt64(),
+            foregroundMonitor.ToInt64(),
+            IsWindowVisible(foreground),
+            cloaked != 0,
+            processId == (uint)Environment.ProcessId,
+            (extendedStyle & WindowExtendedStyleToolWindow) != 0,
+            GetWindow(foreground, GetWindowOwner) != IntPtr.Zero,
+            foreground == GetShellWindow() ||
+                foreground == GetDesktopWindow(),
+            IsZoomed(foreground),
+            (style & WindowStyleCaption) != 0,
+            (style & WindowStyleThickFrame) != 0,
+            ToBounds(windowBounds),
+            ToBounds(monitorInfo.Monitor),
+            ToBounds(monitorInfo.WorkArea));
+        return AmbientFullscreenClassifier.Classify(
+            snapshot,
+            orbMonitor.ToInt64());
+    }
+
+    private void ClampRequestedBoundsToTopology()
+    {
+        if (_windowHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var requestedBounds = new Rect
+        {
+            Left = _requestedX,
+            Top = _requestedY,
+            Right = _requestedX + AmbientOrbFrameSequence.CanvasSize,
+            Bottom = _requestedY + AmbientOrbFrameSequence.CanvasSize
+        };
+        var monitor = MonitorFromRect(
+            ref requestedBounds,
+            MonitorDefaultToNearest);
+        var monitorInfo = new MonitorInfo
+        {
+            Size = (uint)Marshal.SizeOf<MonitorInfo>()
+        };
+        if (monitor == IntPtr.Zero ||
+            !GetMonitorInfo(monitor, ref monitorInfo))
+        {
+            return;
+        }
+
+        var maximumX = Math.Max(
+            monitorInfo.WorkArea.Left,
+            monitorInfo.WorkArea.Right -
+                AmbientOrbFrameSequence.CanvasSize);
+        var maximumY = Math.Max(
+            monitorInfo.WorkArea.Top,
+            monitorInfo.WorkArea.Bottom -
+                AmbientOrbFrameSequence.CanvasSize);
+        _requestedX = Math.Clamp(
+            _requestedX,
+            monitorInfo.WorkArea.Left,
+            maximumX);
+        _requestedY = Math.Clamp(
+            _requestedY,
+            monitorInfo.WorkArea.Top,
+            maximumY);
+        SetWindowPos(
+            _windowHandle,
+            new IntPtr(-1),
+            _requestedX,
+            _requestedY,
+            AmbientOrbFrameSequence.CanvasSize,
+            AmbientOrbFrameSequence.CanvasSize,
+            ShowNoActivate);
+    }
+
+    private static AmbientScreenBounds ToBounds(Rect rect) => new(
+        rect.Left,
+        rect.Top,
+        rect.Right,
+        rect.Bottom);
+
+    private static long GetWindowLongValue(IntPtr handle, int index) =>
+        IntPtr.Size == 8
+            ? GetWindowLongPtr64(handle, index).ToInt64()
+            : GetWindowLong32(handle, index);
+
     private void ApplyTimerTransition(
         AmbientOrbTimerTransition transition)
     {
@@ -547,16 +933,43 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
                 return new IntPtr(MouseActivateNoActivate);
             case WindowMessageEraseBackground:
                 return new IntPtr(1);
+            case WindowMessageEvaluateFullscreen:
+                ScheduleFullscreenEvaluation(
+                    FullscreenEventDelayMilliseconds);
+                return IntPtr.Zero;
+            case WindowMessageSettingChange:
+            case WindowMessageDisplayChange:
+            case WindowMessageDpiChanged:
+                ClampRequestedBoundsToTopology();
+                ScheduleFullscreenEvaluation(1);
+                break;
             case WindowMessageTimer:
-                if (unchecked((ulong)wParam.ToInt64()) ==
-                    _animationTimerHandle.ToUInt64())
+                var timerIdentity = unchecked((ulong)wParam.ToInt64());
+                if (timerIdentity == _animationTimerHandle.ToUInt64())
                 {
                     AdvanceFrame();
+                    return IntPtr.Zero;
+                }
+                if (timerIdentity ==
+                    _fullscreenEvaluationTimerHandle.ToUInt64())
+                {
+                    KillTimer(
+                        _windowHandle,
+                        _fullscreenEvaluationTimerHandle);
+                    _fullscreenEvaluationTimerHandle = UIntPtr.Zero;
+                    EvaluateFullscreenSuppression();
+                    return IntPtr.Zero;
+                }
+                if (timerIdentity ==
+                    _fullscreenSafetyTimerHandle.ToUInt64())
+                {
+                    EvaluateFullscreenSuppression();
                     return IntPtr.Zero;
                 }
                 break;
             case WindowMessageNonClientDestroy:
                 StopAnimationTimer();
+                StopFullscreenMonitoring();
                 SetWindowData(handle, IntPtr.Zero);
                 break;
         }
@@ -658,6 +1071,16 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         uint message,
         IntPtr wParam,
         IntPtr lParam);
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    private delegate void WinEventProcedure(
+        IntPtr hook,
+        uint eventType,
+        IntPtr windowHandle,
+        int objectId,
+        int childId,
+        uint eventThread,
+        uint eventTime);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct WindowClass
@@ -769,6 +1192,15 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
         public int Bottom;
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MonitorInfo
+    {
+        public uint Size;
+        public Rect Monitor;
+        public Rect WorkArea;
+        public uint Flags;
+    }
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr CreateWindowEx(
         int extendedStyle,
@@ -786,6 +1218,64 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyWindow(IntPtr handle);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWinEventHook(
+        uint eventMinimum,
+        uint eventMaximum,
+        IntPtr eventHookModule,
+        WinEventProcedure eventProcedure,
+        uint processId,
+        uint threadId,
+        uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnhookWinEvent(IntPtr eventHook);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessage(
+        IntPtr handle,
+        uint message,
+        IntPtr wParam,
+        IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetShellWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDesktopWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool IsWindowVisible(IntPtr handle);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool IsZoomed(IntPtr handle);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetWindow(IntPtr handle, uint command);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(
+        IntPtr handle,
+        out uint processId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr MonitorFromWindow(
+        IntPtr handle,
+        uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr MonitorFromRect(
+        ref Rect rect,
+        uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool GetMonitorInfo(
+        IntPtr monitor,
+        ref MonitorInfo monitorInfo);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr DefWindowProc(
@@ -842,6 +1332,20 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr handle, out Rect rect);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(
+        IntPtr handle,
+        int attribute,
+        out Rect value,
+        int valueSize);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(
+        IntPtr handle,
+        int attribute,
+        out uint value,
+        int valueSize);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UpdateLayeredWindow(
