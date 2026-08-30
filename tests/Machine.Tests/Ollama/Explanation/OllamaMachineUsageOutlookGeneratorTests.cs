@@ -10,7 +10,7 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
 {
     private const string ModelName = "qwen3.5:4b";
     private const string ValidOutlook =
-        "Nasa 0.150 kWh at ~PHP 2.22 ang deterministic next observed-hour estimate.";
+        "For the next observed hour, projected energy is 0.150 kWh, estimated at about ₱2.22.";
     private static readonly DateTimeOffset Now =
         new(2026, 8, 28, 14, 0, 0, TimeSpan.Zero);
     private static readonly Uri Loopback =
@@ -67,8 +67,13 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
             next.GetProperty("energy").GetString());
         Assert.Equal("0.140–0.160 kWh",
             next.GetProperty("energy_range").GetString());
-        Assert.Equal("PHP 2.22",
+        Assert.Equal("₱2.22",
             next.GetProperty("estimated_cost").GetString());
+        Assert.Equal("₱2.07–₱2.37",
+            next.GetProperty("estimated_cost_range").GetString());
+        Assert.Equal("₱14.7833/kWh",
+            payload.GetProperty("published_rate_reference")
+                .GetProperty("rate").GetString());
         Assert.Equal(2,
             payload.GetProperty("relevant_established_patterns")
                 .GetArrayLength());
@@ -99,11 +104,31 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
         await generator.GenerateAsync(Request());
 
         var system = Message(handler.Json, "system");
-        Assert.Contains("already computed", system,
+        Assert.Contains("English only", system,
             StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Do not independently multiply", system,
-            StringComparison.Ordinal);
+        Assert.Contains("concise natural English", system,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Taglish", system,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Filipino", system,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("already complete", system,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Never calculate a new value", system,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Never translate currency", system,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("provided formatted monetary values", system,
+            StringComparison.OrdinalIgnoreCase);
         Assert.Contains("missing value", system,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not provide an end-of-day number", system,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("needs to spend or pay", system,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not repeat UI labels mechanically", system,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("one to three short declarative sentences", system,
             StringComparison.OrdinalIgnoreCase);
         Assert.Contains("observed PC electricity", system,
             StringComparison.OrdinalIgnoreCase);
@@ -118,7 +143,7 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
     {
         using var handler = new CaptureHandler(() =>
             ChatResponse(
-                "Kulang pa ang matching evidence para sa end-of-day projection.",
+                "There is not enough learned evidence for an end-of-day projection yet.",
                 ModelName));
         using var client = Client(handler);
         var generator = new OllamaMachineStateExplainer(client, ModelName);
@@ -161,11 +186,48 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
     }
 
     [Fact]
+    public async Task PartialEndOfDayForecastOmitsNumbersFromModelContext()
+    {
+        using var handler = new CaptureHandler(() =>
+            ChatResponse(
+                "There is not enough learned coverage for a reliable end-of-day projection yet.",
+                ModelName));
+        using var client = Client(handler);
+        var generator = new OllamaMachineStateExplainer(client, ModelName);
+        var original = Request();
+        var request = original with
+        {
+            Forecast = original.Forecast with
+            {
+                ForecastCoverage = 0.04d,
+                AvailabilityReason = MachineUsageForecastAvailabilityReason
+                    .PartialFutureCoverage
+            }
+        };
+
+        await generator.GenerateAsync(request);
+
+        var payload = UserPayload(handler.Json);
+        Assert.Equal(JsonValueKind.Null,
+            payload.GetProperty("end_of_day").ValueKind);
+        Assert.Contains("Insufficient for conversational end-of-day",
+            payload.GetProperty("forecast_availability").GetString(),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("11.83", payload.GetRawText(),
+            StringComparison.Ordinal);
+        Assert.Equal(0.800d,
+            request.Forecast.ProjectedEndOfDayObservedEnergyKilowattHours);
+        Assert.Equal(11.83m,
+            request.Forecast.ProjectedEndOfDayEstimatedCost);
+        Assert.True(request.Forecast.HasEndOfDayForecast);
+    }
+
+    [Fact]
     public async Task InventedNumericClaimFallsBackWithoutChangingForecast()
     {
         using var handler = new CaptureHandler(() =>
             ChatResponse(
-                "Aabot sa 999.999 kWh ang PC ngayong araw.",
+                "The projected energy is 999.999 kWh.",
                 ModelName));
         using var client = Client(handler);
         var generator = new OllamaMachineStateExplainer(client, ModelName);

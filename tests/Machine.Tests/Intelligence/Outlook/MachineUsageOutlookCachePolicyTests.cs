@@ -103,6 +103,49 @@ public sealed class MachineUsageOutlookCachePolicyTests
     }
 
     [Fact]
+    public void PromptPolicyVersionChangesOnlyGeneratedProseFingerprint()
+    {
+        var request = Request();
+        var forecast = request.Forecast;
+
+        var legacyFingerprint =
+            MachineUsageOutlookCachePolicy.CreateFingerprint(
+                request,
+                "taglish-v1");
+        var currentFingerprint =
+            MachineUsageOutlookCachePolicy.CreateFingerprint(
+                request,
+                MachineUsageOutlookPromptPolicy.CurrentVersion);
+
+        Assert.NotEqual(legacyFingerprint, currentFingerprint);
+        Assert.Same(forecast, request.Forecast);
+        Assert.Equal(0.800d,
+            request.Forecast.ProjectedEndOfDayObservedEnergyKilowattHours);
+        Assert.Equal(MachineUsageForecastAvailabilityReason.Available,
+            request.Forecast.AvailabilityReason);
+    }
+
+    [Fact]
+    public void ConversationalEndOfDayRequiresCompleteAvailability()
+    {
+        var forecast = Request().Forecast;
+
+        Assert.True(
+            MachineUsageOutlookPromptPolicy.CanExposeEndOfDayProjection(
+                forecast));
+        Assert.False(
+            MachineUsageOutlookPromptPolicy.CanExposeEndOfDayProjection(
+                forecast with
+                {
+                    ForecastCoverage = 0.04d,
+                    AvailabilityReason =
+                        MachineUsageForecastAvailabilityReason
+                            .PartialFutureCoverage
+                }));
+        Assert.True(forecast.HasEndOfDayForecast);
+    }
+
+    [Fact]
     public void ManualRefreshBypassesFreshCache()
     {
         var policy = SeedCache();
@@ -254,7 +297,7 @@ public sealed class MachineUsageOutlookCachePolicyTests
     }
 
     private static MachineUsageOutlook Outlook(DateTimeOffset at) => new(
-        "Ang next observed hour ay nasa 0.150 kWh.",
+        "The next observed hour is projected at 0.150 kWh.",
         "qwen3.5:4b",
         at,
         MachineExplanationSource.LocalModel);

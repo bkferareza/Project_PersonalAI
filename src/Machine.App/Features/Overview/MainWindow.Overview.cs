@@ -345,7 +345,7 @@ public sealed partial class MainWindow
             if (currentRequest is not null &&
                 string.Equals(
                     decision.Fingerprint,
-                    MachineUsageOutlookCachePolicy.CreateFingerprint(
+                    _usageOutlookCachePolicy.CreateRequestFingerprint(
                         currentRequest),
                     StringComparison.Ordinal))
             {

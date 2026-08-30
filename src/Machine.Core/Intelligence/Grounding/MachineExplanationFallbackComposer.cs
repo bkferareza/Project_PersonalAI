@@ -7,7 +7,7 @@ public static class MachineExplanationFallbackComposer
         if (findings is null ||
             findings.OverallState == MachineOverallState.Unknown)
         {
-            return "Kulang ang verified data para matukoy ang current state.";
+            return "There is not enough verified data to determine the current state.";
         }
 
         var primaryFinding = findings.Findings
@@ -37,37 +37,37 @@ public static class MachineExplanationFallbackComposer
         return findings.OverallState switch
         {
             MachineOverallState.Stable =>
-                "Wala akong nakikitang deterministic issue sa current snapshot.",
+                "No deterministic issue is visible in the current snapshot.",
             MachineOverallState.Attention =>
-                "May verified condition na kailangan kong bantayan.",
+                "A verified condition currently needs attention.",
             MachineOverallState.Warning =>
-                "May verified warning condition sa current snapshot.",
+                "The current snapshot contains a verified warning condition.",
             MachineOverallState.Critical =>
-                "May verified critical condition sa current snapshot.",
+                "The current snapshot contains a verified critical condition.",
             _ =>
-                "Kulang ang verified data para matukoy ang current state."
+                "There is not enough verified data to determine the current state."
         };
     }
 
     private static string? ComposeObservation(string code) => code switch
     {
         "data.folder-scan.partial" =>
-            "Partial pa ang storage inspection, kaya lower bounds " +
-                "lang ang measured folder sizes.",
+            "The storage inspection is partial, so measured folder sizes " +
+                "are lower bounds.",
         "data.software.classic.partial" =>
-            "Partial ang latest classic software inventory.",
+            "The latest classic software inventory is partial.",
         "data.software.packaged.partial" =>
-            "Partial ang latest packaged-software inventory.",
+            "The latest packaged-software inventory is partial.",
         "data.startup.partial" =>
-            "Partial ang latest startup inventory.",
+            "The latest startup inventory is partial.",
         "health.restart.pending" =>
-            "May pending Windows restart na recorded.",
+            "Windows reports a pending restart.",
         "data.windows-update.partial" =>
-            "Partial ang latest Windows Update status.",
+            "The latest Windows Update status is partial.",
         "data.reboot-pending.partial" =>
-            "Partial ang latest restart evidence.",
+            "The latest restart evidence is partial.",
         "data.reliability.partial" =>
-            "Partial ang latest Windows reliability history.",
+            "The latest Windows reliability history is partial.",
         _ => null
     };
 }

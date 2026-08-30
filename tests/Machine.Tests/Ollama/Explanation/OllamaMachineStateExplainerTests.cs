@@ -10,9 +10,9 @@ public sealed class OllamaMachineStateExplainerTests
 {
     private const string ModelName = "qwen3.5:4b";
     private const string StableInsight =
-        "Kalma ang takbo ko ngayon. Kumpleto ang current capacity data.";
+        "No deterministic issue is visible in the current snapshot.";
     private const string StableFallback =
-        "Wala akong nakikitang deterministic issue sa current snapshot.";
+        "No deterministic issue is visible in the current snapshot.";
     private static readonly Uri LoopbackBaseAddress =
         new("http://127.0.0.1:11434/");
 
@@ -71,7 +71,7 @@ public sealed class OllamaMachineStateExplainerTests
     public async Task ExplainAsyncPayloadExcludesAllProcessData()
     {
         const string insight =
-            "Mataas ang CPU usage sa current snapshot.";
+            "Current CPU usage is 72.4%.";
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(insight, ModelName));
         using var httpClient = CreateHttpClient(handler);
@@ -113,6 +113,9 @@ public sealed class OllamaMachineStateExplainerTests
             72.4d,
             payload.GetProperty("cpu_usage_percent").GetDouble());
         Assert.Equal(
+            37.5d,
+            payload.GetProperty("memory_usage_percent").GetDouble());
+        Assert.Equal(
             12_884_901_888UL,
             payload.GetProperty("used_memory_bytes").GetUInt64());
         Assert.Equal(
@@ -145,7 +148,7 @@ public sealed class OllamaMachineStateExplainerTests
     public async Task ExplainAsyncSendsOnlyBoundedAllowedContext()
     {
         const string insight =
-            "Critical ang verified storage condition sa current snapshot.";
+            "The verified storage condition is critical.";
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(insight, ModelName));
         using var httpClient = CreateHttpClient(handler);
@@ -360,7 +363,7 @@ public sealed class OllamaMachineStateExplainerTests
     public async Task ExplainAsyncSendsBoundedDeterministicFindings()
     {
         const string insight =
-            "Critical ang verified condition sa current snapshot.";
+            "The verified condition is critical.";
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(insight, ModelName));
         using var httpClient = CreateHttpClient(handler);
@@ -496,7 +499,47 @@ public sealed class OllamaMachineStateExplainerTests
             systemMessage,
             StringComparison.Ordinal);
         Assert.Contains(
-            "process kasi",
+            "English only",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "concise, natural, precise English",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "Taglish",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "Filipino",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "All numeric calculations are already complete",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Never calculate, convert, round, or invent",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "provided formatted monetary values",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Never translate currency",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "observed, learned, expected, estimated, and projected",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "needs to spend or pay",
+            systemMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "household bill",
             systemMessage,
             StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
@@ -570,8 +613,8 @@ public sealed class OllamaMachineStateExplainerTests
         var explanation = await explainer.ExplainAsync(request);
 
         Assert.Equal(
-            "Partial pa ang storage inspection, " +
-                "kaya lower bounds lang ang measured folder sizes.",
+            "The storage inspection is partial, so measured folder sizes " +
+                "are lower bounds.",
             explanation.Text);
         Assert.Equal(ModelName, explanation.Model);
         Assert.Equal(

@@ -14,6 +14,9 @@ public sealed partial class OllamaMachineStateExplainer
             CpuUsagePercent: isBoundedLearnedInsight
                 ? null
                 : request.Resources.CpuUsagePercent,
+            MemoryUsagePercent: isBoundedLearnedInsight
+                ? null
+                : CalculateMemoryUsagePercent(request.Resources),
             UsedMemoryBytes: isBoundedLearnedInsight
                 ? null
                 : request.Resources.UsedMemoryBytes,
@@ -62,6 +65,16 @@ public sealed partial class OllamaMachineStateExplainer
 
         return $"{UserMessagePrefix}\n{payloadJson}";
     }
+
+    private static double? CalculateMemoryUsagePercent(
+        MachineResourceSnapshot resources) =>
+        resources.TotalMemoryBytes == 0
+            ? null
+            : Math.Clamp(
+                resources.UsedMemoryBytes * 100d /
+                    resources.TotalMemoryBytes,
+                0d,
+                100d);
 
     private static StorageSnapshotPayload? CreateStoragePayload(
         MachineStorageExplanationContext? storage)

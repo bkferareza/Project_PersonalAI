@@ -19,6 +19,15 @@ public sealed class MachineUsageOutlookCachePolicy
     private CachedOutlook? _cache;
     private MachineUsageOutlookDecision? _activeDecision;
     private DateTimeOffset? _retryAfter;
+    private readonly string _promptPolicyVersion;
+
+    public MachineUsageOutlookCachePolicy(
+        string promptPolicyVersion =
+            MachineUsageOutlookPromptPolicy.CurrentVersion)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(promptPolicyVersion);
+        _promptPolicyVersion = promptPolicyVersion;
+    }
 
     public bool IsRequestInFlight => _activeDecision is not null;
 
@@ -34,7 +43,7 @@ public sealed class MachineUsageOutlookCachePolicy
             return NoDecision;
         }
 
-        var fingerprint = CreateFingerprint(request);
+        var fingerprint = CreateRequestFingerprint(request);
         if (!forceRefresh &&
             _cache is { } cache &&
             string.Equals(cache.Fingerprint, fingerprint,
@@ -86,9 +95,21 @@ public sealed class MachineUsageOutlookCachePolicy
     }
 
     public static string CreateFingerprint(
-        MachineUsageOutlookRequest request)
+        MachineUsageOutlookRequest request) => CreateFingerprint(
+            request,
+            MachineUsageOutlookPromptPolicy.CurrentVersion);
+
+    public string CreateRequestFingerprint(
+        MachineUsageOutlookRequest request) => CreateFingerprint(
+            request,
+            _promptPolicyVersion);
+
+    public static string CreateFingerprint(
+        MachineUsageOutlookRequest request,
+        string promptPolicyVersion)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(promptPolicyVersion);
         var forecast = request.Forecast;
         var today = forecast.Today;
         var currentUsage = forecast.CurrentHourUsage;
@@ -106,6 +127,7 @@ public sealed class MachineUsageOutlookCachePolicy
                 pattern.CrossesMidnight))
             .ToArray();
         var material = string.Join('|',
+            promptPolicyVersion,
             forecast.CurrentContext?.LocalHour,
             forecast.CurrentContext?.ActivityState,
             request.GlobalLearningState,

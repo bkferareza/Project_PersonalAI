@@ -344,8 +344,8 @@ public sealed class MachineExplanationSafetyTests
             MachineExplanationFallbackComposer.Compose(findings);
 
         Assert.Equal(
-            "Partial pa ang storage inspection, kaya lower bounds " +
-                "lang ang measured folder sizes.",
+            "The storage inspection is partial, so measured folder sizes " +
+                "are lower bounds.",
             fallback);
         Assert.DoesNotContain("startup", fallback);
     }

@@ -48,6 +48,8 @@ public sealed partial class OllamaMachineStateExplainer
     private sealed record MachineSnapshotPayload(
         [property: JsonPropertyName("cpu_usage_percent")]
         double? CpuUsagePercent,
+        [property: JsonPropertyName("memory_usage_percent")]
+        double? MemoryUsagePercent,
         [property: JsonPropertyName("used_memory_bytes")]
         ulong? UsedMemoryBytes,
         [property: JsonPropertyName("total_memory_bytes")]
