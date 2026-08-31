@@ -1,4 +1,5 @@
 using Machine.Core;
+using Machine.Inference;
 using Machine.Ollama;
 using Machine.Windows;
 using Microsoft.UI.Xaml;
@@ -11,7 +12,7 @@ public partial class App : Application
     private HttpClient? _ollamaHttpClient;
     private HttpClient? _ollamaInferenceHttpClient;
     private HttpClient? _electricityRateHttpClient;
-    private IOllamaRuntimeBootstrapper? _ollamaRuntimeBootstrapper;
+    private ILocalInferenceRuntime? _localInferenceRuntime;
     private IMachineGpuTelemetryProvider? _gpuTelemetryProvider;
     private readonly CancellationTokenSource _appCancellationTokenSource = new();
     private MachineShutdownCoordinator? _shutdownCoordinator;
@@ -90,11 +91,6 @@ public partial class App : Application
             Timeout = TimeSpan.FromSeconds(2),
         };
         _ollamaHttpClient = ollamaHttpClient;
-        IOllamaStatusProvider ollamaStatusProvider =
-            new OllamaStatusProvider(ollamaHttpClient);
-        var runtimeBootstrapper = new OllamaRuntimeBootstrapper(
-            ollamaHttpClient);
-        _ollamaRuntimeBootstrapper = runtimeBootstrapper;
         var inferenceHttpClient = new HttpClient
         {
             BaseAddress = new Uri(
@@ -103,6 +99,10 @@ public partial class App : Application
             Timeout = TimeSpan.FromMinutes(2),
         };
         _ollamaInferenceHttpClient = inferenceHttpClient;
+        var localInferenceRuntime = new OllamaLocalInferenceRuntime(
+            ollamaHttpClient,
+            inferenceHttpClient);
+        _localInferenceRuntime = localInferenceRuntime;
         var electricityRateHttpClient = new HttpClient(
             new HttpClientHandler { AllowAutoRedirect = false })
         {
@@ -111,8 +111,8 @@ public partial class App : Application
         _electricityRateHttpClient = electricityRateHttpClient;
         var electricityRateEnrichment = new ElectricityRateEnrichmentService(
             electricityRateHttpClient, new FileElectricityRateCache());
-        var localInterpreter = new OllamaMachineStateExplainer(
-            inferenceHttpClient,
+        var localInterpreter = new LocalMachineIntelligenceGenerator(
+            localInferenceRuntime,
             "qwen3.5:4b");
         IMachineStateExplainer machineStateExplainer = localInterpreter;
         IMachineUsageOutlookGenerator usageOutlookGenerator =
@@ -135,7 +135,7 @@ public partial class App : Application
             identityProvider,
             resourceProvider,
             processProvider,
-            ollamaStatusProvider,
+            localInferenceRuntime,
             machineStateExplainer,
             usageOutlookGenerator,
             storageProvider,
@@ -169,7 +169,7 @@ public partial class App : Application
         _shutdownCoordinator = new MachineShutdownCoordinator(
             learningService,
             learningStore,
-            runtimeBootstrapper,
+            localInferenceRuntime,
             _appCancellationTokenSource,
             window.StopForApplicationShutdown,
             DisposeHttpResources,
@@ -182,7 +182,7 @@ public partial class App : Application
         window.StartPresence(
             activationDisposition ==
                 MatasuriActivationDisposition.EstablishAmbientPresence);
-        _ = BootstrapOllamaAsync();
+        _ = BootstrapLocalInferenceAsync();
         _ = EnsureStartupTaskEnabledAsync();
         MatasuriActivationRouter.ProcessPendingRedirectedActivation(this);
 #if DEBUG
@@ -261,13 +261,13 @@ public partial class App : Application
         }
     }
 
-    private async Task BootstrapOllamaAsync()
+    private async Task BootstrapLocalInferenceAsync()
     {
         try
         {
-            if (_ollamaRuntimeBootstrapper is not null)
+            if (_localInferenceRuntime is not null)
             {
-                await _ollamaRuntimeBootstrapper.EnsureAvailableAsync(
+                await _localInferenceRuntime.EnsureAvailableAsync(
                     _appCancellationTokenSource.Token);
             }
         }
@@ -277,7 +277,7 @@ public partial class App : Application
         }
         catch
         {
-            // The regular Ollama status flow reports an unavailable runtime.
+            // The regular runtime status flow reports an unavailable runtime.
         }
     }
 
@@ -331,7 +331,7 @@ public partial class App : Application
         _ollamaInferenceHttpClient = null;
         _electricityRateHttpClient?.Dispose();
         _electricityRateHttpClient = null;
-        _ollamaRuntimeBootstrapper = null;
+        _localInferenceRuntime = null;
         _gpuTelemetryProvider?.Dispose();
         _gpuTelemetryProvider = null;
     }

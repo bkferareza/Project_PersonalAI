@@ -1,50 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Machine.Ollama;
+namespace Machine.Inference;
 
-public sealed partial class OllamaMachineStateExplainer
+public sealed partial class LocalMachineIntelligenceGenerator
 {
-    private sealed record ChatRequest(
-        [property: JsonPropertyName("model")]
-        string Model,
-        [property: JsonPropertyName("stream")]
-        bool Stream,
-        [property: JsonPropertyName("think")]
-        bool Think,
-        [property: JsonPropertyName("keep_alive")]
-        string KeepAlive,
-        [property: JsonPropertyName("messages")]
-        ChatMessage[] Messages,
-        [property: JsonPropertyName("options")]
-        ChatOptions Options);
-
-    private sealed record ChatMessage(
-        [property: JsonPropertyName("role")]
-        string Role,
-        [property: JsonPropertyName("content")]
-        string Content);
-
-    private sealed record ChatOptions(
-        [property: JsonPropertyName("temperature")]
-        double Temperature,
-        [property: JsonPropertyName("num_ctx")]
-        int ContextLength,
-        [property: JsonPropertyName("num_predict")]
-        int MaximumPredictedTokens);
-
-    private sealed record ChatResponse(
-        [property: JsonPropertyName("model")]
-        string? Model,
-        [property: JsonPropertyName("message")]
-        ChatResponseMessage? Message);
-
-    private sealed record ChatResponseMessage(
-        [property: JsonPropertyName("content")]
-        string? Content,
-        [property: JsonPropertyName("tool_calls")]
-        JsonElement ToolCalls);
-
     private sealed record MachineSnapshotPayload(
         [property: JsonPropertyName("cpu_usage_percent")]
         double? CpuUsagePercent,
@@ -420,8 +380,6 @@ public sealed partial class OllamaMachineStateExplainer
         [property: JsonPropertyName("detail")]
         string Detail);
 
-    [JsonSerializable(typeof(ChatRequest))]
-    [JsonSerializable(typeof(ChatResponse))]
     [JsonSerializable(typeof(MachineSnapshotPayload))]
     [JsonSerializable(typeof(UsageOutlookPayload))]
     private sealed partial class ExplainerJsonSerializerContext

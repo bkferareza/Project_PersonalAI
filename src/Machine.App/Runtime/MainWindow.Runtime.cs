@@ -50,8 +50,8 @@ public sealed partial class MainWindow
             RunTelemetryLoopAsync(cancellationToken);
         var processLoop =
             RunProcessLoopAsync(cancellationToken);
-        var ollamaStatusLoop =
-            RunOllamaStatusLoopAsync(cancellationToken);
+        var inferenceStatusLoop =
+            RunInferenceStatusLoopAsync(cancellationToken);
         var healthLoop = RunHealthLoopAsync(cancellationToken);
 
         await Task.WhenAll(
@@ -88,7 +88,7 @@ public sealed partial class MainWindow
         await Task.WhenAll(
             telemetryLoop,
             processLoop,
-            ollamaStatusLoop,
+            inferenceStatusLoop,
             healthLoop);
     }
 

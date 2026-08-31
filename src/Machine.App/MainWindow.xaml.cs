@@ -38,14 +38,14 @@ public sealed partial class MainWindow : Window
         TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProcessRefreshInterval =
         TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan OllamaRefreshInterval =
+    private static readonly TimeSpan InferenceRefreshInterval =
         TimeSpan.FromSeconds(10);
     private static readonly TimeSpan HealthRefreshInterval =
         TimeSpan.FromMinutes(10);
     private readonly IMachineIdentityProvider _identityProvider;
     private readonly IMachineResourceProvider _resourceProvider;
     private readonly IMachineProcessProvider _processProvider;
-    private readonly IOllamaStatusProvider _ollamaStatusProvider;
+    private readonly ILocalInferenceRuntime _inferenceRuntime;
     private readonly IMachineStateExplainer _machineStateExplainer;
     private readonly IMachineUsageOutlookGenerator _usageOutlookGenerator;
     private readonly IMachineUserActivityProvider _userActivityProvider;
@@ -108,14 +108,14 @@ public sealed partial class MainWindow : Window
     private MachineInsightCandidate? _currentInsight;
     private double _pendingHistoryEnergyWattHours;
     private DateTimeOffset? _lastStorageHealthRefreshAt;
-    private OllamaStatusSnapshot? _latestOllamaStatusSnapshot;
+    private LocalInferenceStatus? _latestInferenceStatus;
     private MachineFindingsSnapshot _latestFindingsSnapshot =
         MachineFindingsEvaluator.Evaluate(new());
     private bool _contentLoadStarted;
     private bool _detailsExpanded;
     private bool _hasSuccessfulExplanation;
     private bool _windowPresentationConfigured;
-    private bool _isOllamaServiceAvailable;
+    private bool _isInferenceRuntimeAvailable;
     private bool _isExplanationRequestRunning;
     private bool _isUsageOutlookRequestRunning;
     private bool _isHealthRequestRunning;
@@ -145,7 +145,7 @@ public sealed partial class MainWindow : Window
         IMachineIdentityProvider identityProvider,
         IMachineResourceProvider resourceProvider,
         IMachineProcessProvider processProvider,
-        IOllamaStatusProvider ollamaStatusProvider,
+        ILocalInferenceRuntime inferenceRuntime,
         IMachineStateExplainer machineStateExplainer,
         IMachineUsageOutlookGenerator usageOutlookGenerator,
         IMachineStorageProvider storageProvider,
@@ -180,7 +180,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(identityProvider);
         ArgumentNullException.ThrowIfNull(resourceProvider);
         ArgumentNullException.ThrowIfNull(processProvider);
-        ArgumentNullException.ThrowIfNull(ollamaStatusProvider);
+        ArgumentNullException.ThrowIfNull(inferenceRuntime);
         ArgumentNullException.ThrowIfNull(machineStateExplainer);
         ArgumentNullException.ThrowIfNull(usageOutlookGenerator);
         ArgumentNullException.ThrowIfNull(storageProvider);
@@ -214,7 +214,7 @@ public sealed partial class MainWindow : Window
         _identityProvider = identityProvider;
         _resourceProvider = resourceProvider;
         _processProvider = processProvider;
-        _ollamaStatusProvider = ollamaStatusProvider;
+        _inferenceRuntime = inferenceRuntime;
         _machineStateExplainer = machineStateExplainer;
         _usageOutlookGenerator = usageOutlookGenerator;
         _userActivityProvider = userActivityProvider;

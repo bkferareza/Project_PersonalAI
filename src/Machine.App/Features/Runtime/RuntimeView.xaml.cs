@@ -14,7 +14,7 @@ public sealed record ProcessDisplayItem(
     string Name,
     string Details);
 
-public sealed record OllamaModelDisplayItem(
+public sealed record LocalInferenceModelDisplayItem(
     string Name,
     string ModelDetails,
     string RuntimeDetails);

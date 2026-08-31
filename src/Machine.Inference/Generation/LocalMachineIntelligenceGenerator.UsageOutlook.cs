@@ -1,14 +1,13 @@
 using System.Globalization;
-using System.Net.Http.Json;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Machine.Core;
 
-namespace Machine.Ollama;
+namespace Machine.Inference;
 
-public sealed partial class OllamaMachineStateExplainer
+public sealed partial class LocalMachineIntelligenceGenerator
     : IMachineUsageOutlookGenerator
 {
     private const string OutlookUserMessagePrefix =
@@ -53,47 +52,31 @@ public sealed partial class OllamaMachineStateExplainer
         var payloadJson = JsonSerializer.Serialize(
             payload,
             OutlookPayloadSerializerContext.UsageOutlookPayload);
-        var chatRequest = new ChatRequest(
+        var inferenceRequest = new LocalInferenceRequest(
             Model: _modelName,
-            Stream: false,
-            Think: false,
-            KeepAlive: ModelResidency,
             Messages:
             [
-                new ChatMessage("system", OutlookSystemMessage),
-                new ChatMessage(
-                    "user",
+                new LocalInferenceMessage(
+                    LocalInferenceMessageRole.System,
+                    OutlookSystemMessage),
+                new LocalInferenceMessage(
+                    LocalInferenceMessageRole.User,
                     $"{OutlookUserMessagePrefix}\n{payloadJson}")
             ],
-            Options: new ChatOptions(
-                Temperature: 0.1d,
-                ContextLength: 2048,
-                MaximumPredictedTokens: 128));
+            ContextLength: 2048,
+            MaximumOutputTokens: 128,
+            Temperature: 0.1d,
+            DisableReasoning: true,
+            Timeout: TimeSpan.FromMinutes(2));
 
-        using var response = await _httpClient.PostAsJsonAsync(
-            ChatEndpoint,
-            chatRequest,
-            ExplainerJsonSerializerContext.Default.ChatRequest,
+        var result = await _runtime.GenerateAsync(
+            inferenceRequest,
             cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        ChatResponse? chatResponse;
-        try
-        {
-            chatResponse = await response.Content.ReadFromJsonAsync(
-                ExplainerJsonSerializerContext.Default.ChatResponse,
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (JsonException)
-        {
-            return CreateOutlookFallback(request);
-        }
 
         cancellationToken.ThrowIfCancellationRequested();
-        var text = chatResponse?.Message?.Content?.Trim();
-        if (chatResponse?.Message is null ||
-            ContainsToolCalls(chatResponse.Message.ToolCalls) ||
-            string.IsNullOrWhiteSpace(chatResponse.Model) ||
+        var text = result.Text?.Trim();
+        if (!result.IsSuccess ||
+            result.ContainsToolCalls ||
             !MachineUsageOutlookTextValidator.IsValid(
                 text,
                 payloadJson))
@@ -103,7 +86,7 @@ public sealed partial class OllamaMachineStateExplainer
 
         return new(
             text!,
-            chatResponse.Model,
+            result.Model!,
             DateTimeOffset.UtcNow,
             MachineExplanationSource.LocalModel);
     }

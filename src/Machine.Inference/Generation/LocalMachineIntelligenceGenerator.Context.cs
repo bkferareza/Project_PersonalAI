@@ -1,9 +1,9 @@
 using System.Text.Json;
 using Machine.Core;
 
-namespace Machine.Ollama;
+namespace Machine.Inference;
 
-public sealed partial class OllamaMachineStateExplainer
+public sealed partial class LocalMachineIntelligenceGenerator
 {
     private static string CreateUserMessage(
         MachineStateExplanationRequest request)

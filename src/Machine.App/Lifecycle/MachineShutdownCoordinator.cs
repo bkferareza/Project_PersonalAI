@@ -13,7 +13,7 @@ public sealed class MachineShutdownCoordinator
     private readonly IMachineHealthHistoryStore? _healthHistoryStore;
     private readonly MachineHistoryService? _historyService;
     private readonly IMachineHistoryStore? _historyStore;
-    private readonly IOllamaRuntimeBootstrapper _runtimeBootstrapper;
+    private readonly ILocalInferenceRuntime _inferenceRuntime;
     private readonly CancellationTokenSource _applicationCancellation;
     private readonly Action _stopWindowWork;
     private readonly Action _disposeHttpResources;
@@ -24,7 +24,7 @@ public sealed class MachineShutdownCoordinator
     public MachineShutdownCoordinator(
         MachineLearningService learningService,
         IMachineLearningStore learningStore,
-        IOllamaRuntimeBootstrapper runtimeBootstrapper,
+        ILocalInferenceRuntime inferenceRuntime,
         CancellationTokenSource applicationCancellation,
         Action stopWindowWork,
         Action disposeHttpResources,
@@ -37,7 +37,7 @@ public sealed class MachineShutdownCoordinator
     {
         ArgumentNullException.ThrowIfNull(learningService);
         ArgumentNullException.ThrowIfNull(learningStore);
-        ArgumentNullException.ThrowIfNull(runtimeBootstrapper);
+        ArgumentNullException.ThrowIfNull(inferenceRuntime);
         ArgumentNullException.ThrowIfNull(applicationCancellation);
         ArgumentNullException.ThrowIfNull(stopWindowWork);
         ArgumentNullException.ThrowIfNull(disposeHttpResources);
@@ -58,7 +58,7 @@ public sealed class MachineShutdownCoordinator
         _healthHistoryStore = healthHistoryStore;
         _historyService = historyService;
         _historyStore = historyStore;
-        _runtimeBootstrapper = runtimeBootstrapper;
+        _inferenceRuntime = inferenceRuntime;
         _applicationCancellation = applicationCancellation;
         _stopWindowWork = stopWindowWork;
         _disposeHttpResources = disposeHttpResources;
@@ -90,7 +90,7 @@ public sealed class MachineShutdownCoordinator
                 _learningStore,
                 DateTimeOffset.UtcNow,
                 timeout.Token);
-            var runtimeShutdown = _runtimeBootstrapper.ShutdownAsync(
+            var runtimeShutdown = _inferenceRuntime.ShutdownAsync(
                 timeout.Token);
             var healthSave = _healthHistoryService is null ||
                 _healthHistoryStore is null

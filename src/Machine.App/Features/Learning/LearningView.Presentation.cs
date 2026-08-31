@@ -27,7 +27,7 @@ public sealed partial class LearningView
         MachineLearnedUsageSnapshot learnedUsage,
         MachineUsageForecast forecast,
         MachineHealthHistorySnapshot healthHistory,
-        OllamaStatusSnapshot? ollamaStatus,
+        LocalInferenceStatus? inferenceStatus,
         OverviewView overview)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -228,7 +228,7 @@ public sealed partial class LearningView
                 $"{item.OccurredAt.ToLocalTime():MMM d HH:mm:ss} · {FormatActivityKind(item.Kind)}",
                 FormatActivityDetail(item)))
             .ToArray();
-        UpdateRuntimeStatus(ollamaStatus);
+        UpdateRuntimeStatus(inferenceStatus);
     }
 
     private void UpdateCurrentPowerProjection(
@@ -949,7 +949,7 @@ public sealed partial class LearningView
                 CultureInfo.CurrentCulture);
 
     internal void UpdateRuntimeStatus(
-        OllamaStatusSnapshot? snapshot)
+        LocalInferenceStatus? snapshot)
     {
         if (snapshot is null)
         {
@@ -958,17 +958,16 @@ public sealed partial class LearningView
             return;
         }
 
-        LearningAiRuntimeText.Text = snapshot.IsServiceAvailable
+        LearningAiRuntimeText.Text = snapshot.IsRuntimeAvailable
             ? "Online"
             : "Offline";
-        LearningAiModelText.Text = !snapshot.IsServiceAvailable ||
-            !snapshot.IsRunningModelStatusAvailable
+        LearningAiModelText.Text = !snapshot.IsRuntimeAvailable
                 ? "Loaded-model status unavailable"
-                : snapshot.RunningModels.Count == 0
+                : snapshot.LoadedModels.Count == 0
                     ? "No model loaded"
-                    : snapshot.RunningModels.Count == 1
-                        ? $"{snapshot.RunningModels[0].Name} loaded"
-                        : $"{snapshot.RunningModels.Count:N0} models loaded";
+                    : snapshot.LoadedModels.Count == 1
+                        ? $"{snapshot.LoadedModels[0].Name} loaded"
+                        : $"{snapshot.LoadedModels.Count:N0} models loaded";
     }
 
     private static string FormatDuration(TimeSpan duration) =>

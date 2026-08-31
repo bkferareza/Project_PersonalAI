@@ -47,7 +47,7 @@ public sealed partial class MainWindow
             learnedUsage,
             forecast,
             _healthHistoryService.GetSnapshot(),
-            _latestOllamaStatusSnapshot,
+            _latestInferenceStatus,
             OverviewPage);
 
         if (_detailsExpanded &&

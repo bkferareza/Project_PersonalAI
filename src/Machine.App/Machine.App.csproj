@@ -57,6 +57,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Machine.Core\Machine.Core.csproj" />
+    <ProjectReference Include="..\Machine.Inference\Machine.Inference.csproj" />
     <ProjectReference Include="..\Machine.Ollama\Machine.Ollama.csproj" />
     <ProjectReference Include="..\Machine.Windows\Machine.Windows.csproj" />
   </ItemGroup>

@@ -218,12 +218,30 @@ public sealed class MachineShutdownCoordinatorTests
         }
     }
 
-    private sealed class RecordingRuntime : IOllamaRuntimeBootstrapper
+    private sealed class RecordingRuntime : ILocalInferenceRuntime
     {
         public int ShutdownCount { get; private set; }
-        public Task<OllamaRuntimeBootstrapResult> EnsureAvailableAsync(
+        public Task<LocalInferenceStartResult> EnsureAvailableAsync(
             CancellationToken cancellationToken = default) =>
-            Task.FromResult(new OllamaRuntimeBootstrapResult(true, false, true));
+            Task.FromResult(new LocalInferenceStartResult(true, false, true));
+        public Task<LocalInferenceStatus> GetStatusAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new LocalInferenceStatus(
+                true,
+                "Test",
+                "1",
+                LocalInferenceModelState.Asleep,
+                [],
+                null,
+                true,
+                DateTimeOffset.UtcNow));
+        public Task<LocalInferenceResult> GenerateAsync(
+            LocalInferenceRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+        public Task RequestUnloadAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
         public Task ShutdownAsync(CancellationToken cancellationToken = default)
         {
             ShutdownCount++;

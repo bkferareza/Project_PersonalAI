@@ -129,16 +129,16 @@ public sealed partial class MainWindow
         }
     }
 
-    private async Task RunOllamaStatusLoopAsync(
+    private async Task RunInferenceStatusLoopAsync(
         CancellationToken cancellationToken)
     {
         try
         {
             while (true)
             {
-                await RefreshOllamaStatusAsync(cancellationToken);
+                await RefreshInferenceStatusAsync(cancellationToken);
                 await Task.Delay(
-                    OllamaRefreshInterval,
+                    InferenceRefreshInterval,
                     cancellationToken);
             }
         }
@@ -148,17 +148,17 @@ public sealed partial class MainWindow
         }
     }
 
-    private async Task RefreshOllamaStatusAsync(
+    private async Task RefreshInferenceStatusAsync(
         CancellationToken cancellationToken)
     {
         try
         {
-            var snapshot = await _ollamaStatusProvider.GetStatusAsync(
+            var snapshot = await _inferenceRuntime.GetStatusAsync(
                 cancellationToken);
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            UpdateOllamaStatus(snapshot);
+            UpdateInferenceStatus(snapshot);
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -168,28 +168,28 @@ public sealed partial class MainWindow
         catch (Exception exception)
         {
             Debug.WriteLine(exception);
-            _latestOllamaStatusSnapshot = null;
-            ShowOllamaOffline();
+            _latestInferenceStatus = null;
+            ShowInferenceUnavailable();
         }
     }
 
-    private void UpdateOllamaStatus(
-        OllamaStatusSnapshot snapshot)
+    private void UpdateInferenceStatus(
+        LocalInferenceStatus snapshot)
     {
-        _latestOllamaStatusSnapshot = snapshot;
-        LearningPage.UpdateRuntimeStatus(_latestOllamaStatusSnapshot);
-        if (!snapshot.IsServiceAvailable)
+        _latestInferenceStatus = snapshot;
+        LearningPage.UpdateRuntimeStatus(_latestInferenceStatus);
+        if (!snapshot.IsRuntimeAvailable)
         {
-            ShowOllamaOffline();
+            ShowInferenceUnavailable();
             return;
         }
 
-        _isOllamaServiceAvailable = true;
+        _isInferenceRuntimeAvailable = true;
         RuntimePage.OllamaServiceStatusText.Text = "Online";
         RuntimePage.OllamaVersionText.Text = string.IsNullOrWhiteSpace(
-            snapshot.Version)
+            snapshot.RuntimeVersion)
             ? UnavailableValue
-            : snapshot.Version;
+            : snapshot.RuntimeVersion;
         UpdateUsageOutlookButtonState();
         if (_detailsExpanded &&
             OverviewPage.Visibility == Visibility.Visible)
@@ -197,16 +197,8 @@ public sealed partial class MainWindow
             _ = EnsureUsageOutlookAsync(forceRefresh: false);
         }
 
-        if (!snapshot.IsRunningModelStatusAvailable)
-        {
-            ClearOllamaModels(
-                "Loaded-model status is unavailable.");
-            UpdateExplainMachineStateButtonState();
-            return;
-        }
-
-        var displayItems = snapshot.RunningModels
-            .Select(CreateOllamaModelDisplayItem)
+        var displayItems = snapshot.LoadedModels
+            .Select(CreateInferenceModelDisplayItem)
             .ToArray();
 
         RuntimePage.OllamaRunningModelsList.ItemsSource = displayItems;
@@ -223,14 +215,14 @@ public sealed partial class MainWindow
         UpdateExplainMachineStateButtonState();
     }
 
-    private void ShowOllamaOffline()
+    private void ShowInferenceUnavailable()
     {
-        _isOllamaServiceAvailable = false;
+        _isInferenceRuntimeAvailable = false;
         RuntimePage.OllamaServiceStatusText.Text = "Offline";
         RuntimePage.OllamaVersionText.Text = UnavailableValue;
-        ClearOllamaModels(
+        ClearInferenceModels(
             "Loaded-model status is unavailable.");
-        LearningPage.UpdateRuntimeStatus(_latestOllamaStatusSnapshot);
+        LearningPage.UpdateRuntimeStatus(_latestInferenceStatus);
         if (_latestUsageOutlook is null)
         {
             OverviewPage.AiOutlookStatusText.Text =
@@ -240,30 +232,30 @@ public sealed partial class MainWindow
         UpdateUsageOutlookButtonState();
     }
 
-    private void ClearOllamaModels(string status)
+    private void ClearInferenceModels(string status)
     {
         RuntimePage.OllamaRunningModelsList.ItemsSource =
-            Array.Empty<OllamaModelDisplayItem>();
+            Array.Empty<LocalInferenceModelDisplayItem>();
         RuntimePage.OllamaLoadedModelsStatusText.Text = status;
     }
 
-    private static OllamaModelDisplayItem
-        CreateOllamaModelDisplayItem(
-            OllamaRunningModel model)
+    private static LocalInferenceModelDisplayItem
+        CreateInferenceModelDisplayItem(
+            LocalInferenceLoadedModel model)
     {
         var parameterSize = string.IsNullOrWhiteSpace(
             model.ParameterSize)
             ? UnavailableValue
             : model.ParameterSize;
         var quantizationLevel = string.IsNullOrWhiteSpace(
-            model.QuantizationLevel)
+            model.Quantization)
             ? UnavailableValue
-            : model.QuantizationLevel;
+            : model.Quantization;
 
-        return new OllamaModelDisplayItem(
+        return new LocalInferenceModelDisplayItem(
             model.Name,
             $"{parameterSize} · {quantizationLevel}",
-            $"{FormatBytes(model.SizeVramBytes)} VRAM · " +
+            $"{FormatBytes(model.ResidentBytes)} resident · " +
             $"{model.ContextLength.ToString("N0", CultureInfo.InvariantCulture)} context");
     }
 
@@ -295,7 +287,7 @@ public sealed partial class MainWindow
         var isOverviewVisible = _detailsExpanded &&
             OverviewPage.Visibility == Visibility.Visible;
         if (request is null ||
-            !_isOllamaServiceAvailable ||
+            !_isInferenceRuntimeAvailable ||
             _windowCancellationTokenSource.IsCancellationRequested)
         {
             UpdateUsageOutlookButtonState();
@@ -444,7 +436,7 @@ public sealed partial class MainWindow
     {
         OverviewPage.RefreshUsageOutlookButton.IsEnabled =
             _latestUsageForecast?.HasNextObservedHourForecast == true &&
-            _isOllamaServiceAvailable &&
+            _isInferenceRuntimeAvailable &&
             !_usageOutlookCachePolicy.IsRequestInFlight &&
             !_isUsageOutlookRequestRunning &&
             !_windowCancellationTokenSource.IsCancellationRequested;
@@ -623,7 +615,7 @@ public sealed partial class MainWindow
         _latestIdentity is not null &&
         _latestResourceSnapshot is not null &&
         _latestProcessSnapshots.Count > 0 &&
-        _isOllamaServiceAvailable &&
+        _isInferenceRuntimeAvailable &&
         !_windowCancellationTokenSource.IsCancellationRequested;
 
     private void UpdateExplainMachineStateButtonState()

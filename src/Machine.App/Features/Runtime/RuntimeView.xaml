@@ -88,7 +88,7 @@
                                     x:Name="OllamaRunningModelsList" x:FieldModifier="internal"
                                     AutomationProperties.AutomationId="OllamaRunningModelsList">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="local:OllamaModelDisplayItem">
+                                        <DataTemplate x:DataType="local:LocalInferenceModelDisplayItem">
                                             <StackPanel Margin="0,4" Spacing="2">
                                                 <TextBlock
                                                     FontWeight="SemiBold"
