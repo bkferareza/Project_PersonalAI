@@ -45,11 +45,36 @@ public sealed partial class MainWindow
             learning,
             learningActivity,
             now);
+        var situation = MachineSituationProjector.Project(new()
+        {
+            Findings = _latestFindingsSnapshot,
+            Resources = _latestResourceSnapshot,
+            Gpu = _latestGpuTelemetrySnapshot,
+            CpuHardware = _latestCpuHardwareSnapshot,
+            Storage = StoragePage.LatestStorageSnapshot,
+            StorageHealth = _latestStorageHealthSnapshot,
+            Network = _latestNetworkSnapshot,
+            Session = _latestSessionSnapshot,
+            Power = _latestPowerEstimate,
+            WindowsUpdate = _latestWindowsUpdateSnapshot,
+            RebootPending = _latestRebootPendingSnapshot,
+            Reliability = _latestReliabilitySnapshot,
+            Learning = learning,
+            History = history,
+            Today = acceptedToday,
+            TodayComparison = todayComparison,
+            Forecast = forecast,
+            Startup = StartupPage.LatestSnapshot,
+            ActionOutcomes = StartupPage.LatestActionOutcomes,
+            InferenceStatus = _latestInferenceStatus
+        }, now);
+        _latestSituationSnapshot = situation;
 
         LearningPage.Update(
             learning,
             learningActivity,
             learningLab,
+            situation,
             currentPower,
             todayComparison,
             learnedUsage,

@@ -782,6 +782,11 @@ public sealed class CompactPresencePresentationTests
         Assert.Contains(
             "AutomationProperties.AutomationId=\"LearningLiveSignalsList\"",
             xaml);
+        Assert.Contains(
+            "AutomationProperties.AutomationId=\"LearningAiKnowledgeEvidenceList\"",
+            xaml);
+        Assert.Contains("Header=\"Current normalized evidence payload\"",
+            xaml);
         Assert.DoesNotContain("observation period", xaml,
             StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("calibrating", xaml,

@@ -180,9 +180,27 @@
                                     <TextBlock Grid.Row="3" FontWeight="SemiBold" Text="Validation" />
                                     <TextBlock x:Name="LearningAiKnowledgeValidationText" x:FieldModifier="internal" Grid.Column="1" Grid.Row="3" Text="No generation yet" TextWrapping="Wrap" />
                                 </Grid>
+                                <Expander Header="Current normalized evidence payload">
+                                    <ListView
+                                        x:Name="LearningAiKnowledgeEvidenceList" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LearningAiKnowledgeEvidenceList"
+                                        MaxHeight="420"
+                                        ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                        SelectionMode="None">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate x:DataType="local:SituationEvidenceDisplayItem">
+                                                <StackPanel Margin="0,4" Spacing="2">
+                                                    <TextBlock FontWeight="SemiBold" Text="{x:Bind Header}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{x:Bind Summary}" TextWrapping="Wrap" />
+                                                    <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Values}" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                </Expander>
                                 <TextBlock
                                     Style="{StaticResource SecondaryTextStyle}"
-                                    Text="The normalized whole-machine evidence payload will remain bounded and will never include raw persistence files, IP, location, secrets, or the private runtime key."
+                                    Text="This bounded payload excludes raw persistence files, IP, location, secrets, and the private runtime key."
                                     TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>

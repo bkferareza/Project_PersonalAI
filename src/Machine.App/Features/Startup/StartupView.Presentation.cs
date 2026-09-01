@@ -28,6 +28,9 @@ public sealed partial class StartupView
     internal MachineStartupInventorySnapshot? LatestSnapshot =>
         _latestSnapshot;
 
+    internal IReadOnlyList<MachineActionOutcome> LatestActionOutcomes =>
+        _latestActionOutcomes;
+
     internal void Initialize(
         IMachineStartupInventoryProvider provider,
         WindowsStartupActionService actionService,

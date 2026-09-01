@@ -73,6 +73,7 @@ New code should live with its domain or feature rather than in project-wide `Mod
 - Session energy resets on restart; Today History does not.
 - Learning schema v4 preserves v3 behavioral evidence and adds context-specific software-estimated whole-PC wall-power behavior from v4 observations onward; never backfill it from History.
 - Learning is inspectable from the first accepted sample. Evidence maturity limits authority, not visibility; never add observation-period or calibration-countdown gating.
+- The whole-machine situation projection is deterministic and bounded. It selects normalized Now, Recently, Learned, Today, Forward, action-outcome, Learning-confidence, and separate self-health evidence without exposing raw persistence, network addresses, location, or recovery payloads.
 - Global Learning health, current-context maturity, power maturity, and recurring-pattern readiness are separate facts. Pattern readiness must report the actual sample/day/adjacency blocker without weakening thresholds.
 - Electricity tariffs, currency, cumulative energy, and cost are not learned behavioral metrics. Rate changes never modify learned power baselines, and power-learning updates never trigger inference.
 - Learned usage and power behavior supply deterministic next-observed-hour and evidence-covered end-of-day energy/cost forecasts. Missing future activity or power evidence remains missing and powered-off time is never extrapolated.

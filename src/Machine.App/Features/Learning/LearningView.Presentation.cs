@@ -23,6 +23,7 @@ public sealed partial class LearningView
         MachineLearningDashboardSnapshot snapshot,
         MachineLearningActivitySnapshot activity,
         MachineLearningLabSnapshot lab,
+        MachineSituationSnapshot situation,
         MachineLearnedPowerCostProjection? currentPower,
         MachineTodayLearnedEnergyComparison todayComparison,
         MachineLearnedUsageSnapshot learnedUsage,
@@ -34,6 +35,7 @@ public sealed partial class LearningView
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(activity);
         ArgumentNullException.ThrowIfNull(lab);
+        ArgumentNullException.ThrowIfNull(situation);
         ArgumentNullException.ThrowIfNull(todayComparison);
         ArgumentNullException.ThrowIfNull(learnedUsage);
         ArgumentNullException.ThrowIfNull(forecast);
@@ -253,20 +255,35 @@ public sealed partial class LearningView
             ? Visibility.Visible
             : Visibility.Collapsed;
         LearningAiKnowledgeSummaryText.Text =
-            "Current deterministic learning and forecast knowledge";
-        LearningAiKnowledgeEvidenceText.Text =
-            $"{lab.LearnedContexts.Count:N0} learned contexts visible · " +
-            $"{snapshot.ContextProfiles.Count:N0} compact profiles · " +
-            $"{snapshot.BroaderPatterns.Count:N0} recurring patterns · " +
-            (forecast.HasNextObservedHourForecast
-                ? "next-observed-hour forecast available"
-                : "forecast evidence unavailable");
+            $"Situation snapshot · {FormatAge(
+                DateTimeOffset.UtcNow <= situation.CapturedAt
+                    ? TimeSpan.Zero
+                    : DateTimeOffset.UtcNow - situation.CapturedAt)} old · " +
+            $"{situation.Evidence.Count:N0} selected / " +
+            $"{situation.CandidateEvidenceCount:N0} candidates";
+        LearningAiKnowledgeEvidenceText.Text = string.Join(
+            " · ",
+            situation.Evidence
+                .GroupBy(item => item.Category)
+                .OrderBy(group => group.Key)
+                .Select(group => $"{FormatSituationCategory(group.Key)} " +
+                    $"{group.Count():N0}"));
         LearningAiKnowledgePromptText.Text =
-            $"Usage Outlook · {MachineUsageOutlookPromptPolicy.CurrentVersion}";
+            $"Situation schema v{situation.SchemaVersion} · " +
+            $"Usage Outlook {MachineUsageOutlookPromptPolicy.CurrentVersion}";
         LearningAiKnowledgeValidationText.Text =
             string.IsNullOrWhiteSpace(overview.AiOutlookMetadataText.Text)
                 ? "No local generation validated in this session"
                 : overview.AiOutlookMetadataText.Text;
+        LearningAiKnowledgeEvidenceList.ItemsSource = situation.Evidence
+            .Select(item => new SituationEvidenceDisplayItem(
+                $"{item.Id} · {FormatSituationCategory(item.Category)} · " +
+                    $"{FormatSituationImportance(item.Importance)}",
+                item.Summary,
+                item.DisplayValues.Count == 0
+                    ? "No display values"
+                    : string.Join(" · ", item.DisplayValues)))
+            .ToArray();
         UpdateRuntimeStatus(inferenceStatus);
     }
 
@@ -441,6 +458,30 @@ public sealed partial class LearningView
             MachineLearningFreshness.Aging => "Aging",
             MachineLearningFreshness.Stale => "Stale",
             _ => "Unknown freshness"
+        };
+
+    private static string FormatSituationCategory(
+        MachineSituationCategory category) => category switch
+        {
+            MachineSituationCategory.Now => "Now",
+            MachineSituationCategory.Recently => "Recently",
+            MachineSituationCategory.LearnedNormal => "Learned normal",
+            MachineSituationCategory.Today => "Today",
+            MachineSituationCategory.Forward => "Forward",
+            MachineSituationCategory.ActionOutcome => "Actions",
+            MachineSituationCategory.LearningConfidence => "Learning",
+            MachineSituationCategory.SelfHealth => "Self-health",
+            _ => "Other"
+        };
+
+    private static string FormatSituationImportance(
+        MachineSituationImportance importance) => importance switch
+        {
+            MachineSituationImportance.Critical => "Critical",
+            MachineSituationImportance.Important => "Important",
+            MachineSituationImportance.Notable => "Notable",
+            MachineSituationImportance.Context => "Context",
+            _ => "Routine"
         };
 
     private void UpdateCurrentPowerProjection(

@@ -25,6 +25,11 @@ public sealed record LearningSignalDisplayItem(
     string CurrentValue,
     string LearnedValue);
 
+public sealed record SituationEvidenceDisplayItem(
+    string Header,
+    string Summary,
+    string Values);
+
 public sealed record LearningPatternDisplayItem(
     string Header,
     string Status,
