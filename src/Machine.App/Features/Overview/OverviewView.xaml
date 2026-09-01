@@ -188,7 +188,7 @@
                                     AutomationProperties.AutomationId="LearningConfidenceText"
                                     FontSize="18"
                                     FontWeight="SemiBold"
-                                    Text="Behavior memory · Calibrating"
+                                    Text="Behavior memory · Waiting for first evidence"
                                     TextWrapping="Wrap" />
                                 <TextBlock
                                     x:Name="LearningObservedDurationText" x:FieldModifier="internal"
@@ -225,7 +225,7 @@
                                     AutomationProperties.AutomationId="OverviewNextHourEnergyText"
                                     FontSize="22"
                                     FontWeight="SemiBold"
-                                    Text="Still learning"
+                                    Text="No learned context evidence yet"
                                     TextWrapping="Wrap" />
                                 <TextBlock
                                     x:Name="OverviewNextHourCostText" x:FieldModifier="internal"

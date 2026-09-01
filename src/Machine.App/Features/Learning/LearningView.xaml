@@ -13,19 +13,121 @@
                         <StackPanel Spacing="2">
                             <TextBlock
                                 Style="{StaticResource PageTitleStyle}"
-                                Text="What Matasuri has learned" />
+                                Text="Learning Lab" />
                             <TextBlock
                                 Style="{StaticResource SecondaryTextStyle}"
-                                Text="Conclusions from repeated verified evidence" />
+                                Text="Live, inspectable machine learning from the first accepted sample" />
                         </StackPanel>
 
                         <Border Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Learning activity" />
-                                <TextBlock x:Name="LearningActivityStatusText" x:FieldModifier="internal" FontWeight="SemiBold" Text="Starting" />
-                                <ListView x:Name="LearningActivityEventsList" x:FieldModifier="internal" MaxHeight="260" SelectionMode="None">
+                                    Text="Live Learning" />
+                                <TextBlock
+                                    x:Name="LearningLiveContextText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningLiveContextText"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Text="Waiting for verified telemetry"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="LearningLiveLastObservationText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningLiveLastObservationText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="No intake attempt yet"
+                                    TextWrapping="Wrap" />
+                                <StackPanel Spacing="2">
+                                    <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LATEST INTAKE" />
+                                    <TextBlock
+                                        x:Name="LearningLiveAcceptanceText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LearningLiveAcceptanceText"
+                                        FontWeight="SemiBold"
+                                        Text="Waiting" />
+                                    <TextBlock
+                                        x:Name="LearningLiveAcceptanceReasonText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LearningLiveAcceptanceReasonText"
+                                        Style="{StaticResource SecondaryTextStyle}"
+                                        Text="Waiting for the first verified intake attempt."
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Grid ColumnSpacing="14" RowSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LIFETIME ACCEPTED" />
+                                        <TextBlock x:Name="LearningLiveLifetimeText" x:FieldModifier="internal" Text="0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="THIS SESSION" />
+                                        <TextBlock x:Name="LearningLiveSessionText" x:FieldModifier="internal" Text="0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="CONTEXT SAMPLES / DAYS" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="LearningLiveContextEvidenceText" x:FieldModifier="internal" Text="0 / 0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="MATURITY / FRESHNESS" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="LearningLiveMaturityText" x:FieldModifier="internal" Text="No evidence" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="2" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="POWER EVIDENCE" />
+                                        <TextBlock x:Name="LearningLivePowerMaturityText" x:FieldModifier="internal" Text="No evidence" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="2" Spacing="2">
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LEARNED DIMENSIONS" />
+                                        <TextBlock Text="Activity · CPU · Memory · Network · eligible power" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock FontWeight="SemiBold" Text="Signals being learned now" />
+                                <TextBlock
+                                    x:Name="LearningLiveSignalsEmptyText" x:FieldModifier="internal"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Signal details appear with the first accepted sample." />
+                                <ListView
+                                    x:Name="LearningLiveSignalsList" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningLiveSignalsList"
+                                    MaxHeight="320"
+                                    SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:LearningSignalDisplayItem">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Signal}" />
+                                                <TextBlock Text="{x:Bind CurrentValue}" TextWrapping="Wrap" />
+                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind LearnedValue}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="Recent Learning Changes" />
+                                <TextBlock
+                                    x:Name="LearningActivityStatusText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningActivityStatusText"
+                                    FontWeight="SemiBold"
+                                    Text="Starting" />
+                                <TextBlock
+                                    x:Name="LearningActivityEmptyText" x:FieldModifier="internal"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="No bounded learning changes recorded yet." />
+                                <ListView
+                                    x:Name="LearningActivityEventsList" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningActivityEventsList"
+                                    MaxHeight="360"
+                                    SelectionMode="None">
                                     <ListView.ItemTemplate>
                                         <DataTemplate x:DataType="local:LearningActivityDisplayItem">
                                             <StackPanel Margin="0,4" Spacing="1">
@@ -35,6 +137,53 @@
                                         </DataTemplate>
                                     </ListView.ItemTemplate>
                                 </ListView>
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Bounded audit: detailed intake changes retain for 48 hours; lifecycle and persistence events retain for 14 days."
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleStyle}"
+                                    Text="AI Knowledge" />
+                                <TextBlock
+                                    x:Name="LearningAiKnowledgeSummaryText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningAiKnowledgeSummaryText"
+                                    FontWeight="SemiBold"
+                                    Text="No bounded AI knowledge payload assembled yet"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="LearningAiKnowledgeEvidenceText" x:FieldModifier="internal"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Learning and forecast evidence availability is inspected locally."
+                                    TextWrapping="Wrap" />
+                                <Grid ColumnSpacing="14" RowSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock FontWeight="SemiBold" Text="Runtime" />
+                                    <TextBlock x:Name="LearningAiKnowledgeRuntimeText" x:FieldModifier="internal" Grid.Column="1" Text="Checking" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="1" FontWeight="SemiBold" Text="Model" />
+                                    <TextBlock x:Name="LearningAiKnowledgeModelText" x:FieldModifier="internal" Grid.Column="1" Grid.Row="1" Text="Checking" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="2" FontWeight="SemiBold" Text="Prompt" />
+                                    <TextBlock x:Name="LearningAiKnowledgePromptText" x:FieldModifier="internal" Grid.Column="1" Grid.Row="2" Text="Checking" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="3" FontWeight="SemiBold" Text="Validation" />
+                                    <TextBlock x:Name="LearningAiKnowledgeValidationText" x:FieldModifier="internal" Grid.Column="1" Grid.Row="3" Text="No generation yet" TextWrapping="Wrap" />
+                                </Grid>
+                                <TextBlock
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="The normalized whole-machine evidence payload will remain bounded and will never include raw persistence files, IP, location, secrets, or the private runtime key."
+                                    TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 
@@ -76,7 +225,7 @@
                                         <TextBlock
                                             x:Name="LearningNextHourEnergyRangeText" x:FieldModifier="internal"
                                             Style="{StaticResource SecondaryTextStyle}"
-                                            Text="Current power behavior is still learning"
+                                            Text="Current power evidence is not yet sufficient"
                                             TextWrapping="Wrap" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Spacing="2">
@@ -140,19 +289,19 @@
                             <StackPanel Spacing="10">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Current learned context" />
+                                    Text="Memory" />
                                 <TextBlock
                                     x:Name="LearningPageMemoryStateText" x:FieldModifier="internal"
                                     AutomationProperties.AutomationId="LearningPageMemoryStateText"
                                     FontSize="18"
                                     FontWeight="SemiBold"
-                                    Text="Behavior memory · Calibrating"
+                                    Text="Behavior memory · Waiting for first evidence"
                                     TextWrapping="Wrap" />
                                 <TextBlock
                                     x:Name="LearningPageMemoryEvidenceText" x:FieldModifier="internal"
                                     AutomationProperties.AutomationId="LearningPageMemoryEvidenceText"
                                     Style="{StaticResource SecondaryTextStyle}"
-                                    Text="0 learned profiles · 0 established · 0 recognized patterns"
+                                    Text="0 baselines · 0 compact profiles · 0 recognized patterns"
                                     TextWrapping="Wrap" />
                                 <Grid ColumnSpacing="14" RowSpacing="10">
                                     <Grid.ColumnDefinitions>
@@ -183,21 +332,21 @@
                                             Text="0 lifetime" />
                                     </StackPanel>
                                     <StackPanel Grid.Row="1" Spacing="2">
-                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="CONTEXTS LEARNED" />
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LAYER 1 · BASELINES" />
                                         <TextBlock
                                             x:Name="LearningPageContextCountText" x:FieldModifier="internal"
                                             AutomationProperties.AutomationId="LearningPageContextCountText"
                                             Text="0 / 48" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
-                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="ESTABLISHED PROFILES" />
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LAYER 2 · PROFILES" />
                                         <TextBlock
                                             x:Name="LearningPageEstablishedProfilesText" x:FieldModifier="internal"
                                             AutomationProperties.AutomationId="LearningPageEstablishedProfilesText"
                                             Text="0" />
                                     </StackPanel>
                                     <StackPanel Grid.Row="2" Spacing="2">
-                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="BROADER PATTERNS" />
+                                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LAYER 3 · PATTERNS" />
                                         <TextBlock
                                             x:Name="LearningPageBroaderPatternCountText" x:FieldModifier="internal"
                                             AutomationProperties.AutomationId="LearningPageBroaderPatternCountText"
@@ -252,6 +401,12 @@
                                         Style="{StaticResource SecondaryTextStyle}"
                                         Text="Waiting for verified telemetry" />
                                 </StackPanel>
+                                <TextBlock
+                                    x:Name="LearningPageMemoryPersistenceText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LearningPageMemoryPersistenceText"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="Schema v4 · Persistence not yet available"
+                                    TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 
@@ -259,7 +414,7 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Current context maturity" />
+                                    Text="Live context evidence" />
                                 <Grid ColumnSpacing="14" RowSpacing="8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -283,13 +438,13 @@
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Grid.Row="1" Spacing="2">
                                         <TextBlock Style="{StaticResource MetricLabelStyle}" Text="CONTEXT MATURITY" />
-                                        <TextBlock x:Name="LearningPageConfidenceText" x:FieldModifier="internal" Text="Calibrating" />
+                                        <TextBlock x:Name="LearningPageConfidenceText" x:FieldModifier="internal" Text="No evidence" />
                                     </StackPanel>
                                 </Grid>
                                 <TextBlock
                                     x:Name="LearningPageConfidenceRulesText" x:FieldModifier="internal"
                                     Style="{StaticResource SecondaryTextStyle}"
-                                    Text="Confidence measures evidence: Provisional requires 12 samples; Established requires 168 samples across 7 observed days. Freshness measures recency separately." />
+                                    Text="Evidence is inspectable immediately. Maturity limits authority; freshness measures recency separately." />
                             </StackPanel>
                         </Border>
 
@@ -297,12 +452,12 @@
                             <StackPanel Spacing="7">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Pattern readiness" />
+                                    Text="Recurring Behavior" />
                                 <TextBlock
                                     x:Name="LearningPatternReadinessHeadlineText" x:FieldModifier="internal"
                                     AutomationProperties.AutomationId="LearningPatternReadinessHeadlineText"
                                     FontWeight="SemiBold"
-                                    Text="Still learning broader patterns"
+                                    Text="No recurring pattern established"
                                     TextWrapping="Wrap" />
                                 <TextBlock
                                     x:Name="LearningPatternProfileReadinessText" x:FieldModifier="internal"
@@ -355,7 +510,7 @@
                                             AutomationProperties.AutomationId="LearningCurrentPowerTypicalText"
                                             FontSize="22"
                                             FontWeight="SemiBold"
-                                            Text="Still learning"
+                                            Text="No authoritative power range yet"
                                             TextWrapping="Wrap" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Spacing="2">
@@ -408,7 +563,7 @@
                                     AutomationProperties.AutomationId="LearningTodayComparisonStatusText"
                                     FontSize="20"
                                     FontWeight="SemiBold"
-                                    Text="Still learning today's normal"
+                                    Text="Learned-normal comparison unavailable"
                                     TextWrapping="Wrap" />
                                 <TextBlock
                                     x:Name="LearningTodayComparisonDetailText" x:FieldModifier="internal"
@@ -439,7 +594,7 @@
                                             x:Name="LearningTodayExpectedEnergyText" x:FieldModifier="internal"
                                             AutomationProperties.AutomationId="LearningTodayExpectedEnergyText"
                                             FontWeight="SemiBold"
-                                            Text="Still learning"
+                                            Text="Unavailable without complete learned coverage"
                                             TextWrapping="Wrap" />
                                     </StackPanel>
                                     <StackPanel Grid.Row="1" Spacing="2">
@@ -453,7 +608,7 @@
                                         <TextBlock Style="{StaticResource MetricLabelStyle}" Text="LEARNED EXPECTED COST" TextWrapping="Wrap" />
                                         <TextBlock
                                             x:Name="LearningTodayExpectedCostText" x:FieldModifier="internal"
-                                            Text="Still learning"
+                                            Text="Unavailable without complete learned coverage"
                                             TextWrapping="Wrap" />
                                     </StackPanel>
                                     <StackPanel Grid.Row="2" Spacing="2">
@@ -483,11 +638,11 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Learned contexts" />
+                                    Text="Learned Contexts" />
                                 <TextBlock
                                     x:Name="LearningProfilesEmptyText" x:FieldModifier="internal"
                                     Style="{StaticResource SecondaryTextStyle}"
-                                    Text="Still learning compact profiles. A context needs 12 verified observations for an early profile." />
+                                    Text="No accepted context evidence yet." />
                                 <ListView
                                     x:Name="LearningProfilesList" x:FieldModifier="internal"
                                     AutomationProperties.AutomationId="LearningProfilesList"
@@ -513,11 +668,15 @@
                                                         <TextBlock Text="{x:Bind MemoryValue}" TextWrapping="Wrap" />
                                                     </StackPanel>
                                                 </Grid>
-                                                <StackPanel Margin="0,3,0,0" Spacing="1">
-                                                    <TextBlock FontWeight="SemiBold" Text="Network" />
-                                                    <TextBlock Text="{x:Bind NetworkValue}" TextWrapping="Wrap" />
-                                                </StackPanel>
-                                                <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Reinforcement}" TextWrapping="Wrap" />
+                                                 <StackPanel Margin="0,3,0,0" Spacing="1">
+                                                     <TextBlock FontWeight="SemiBold" Text="Network" />
+                                                     <TextBlock Text="{x:Bind NetworkValue}" TextWrapping="Wrap" />
+                                                 </StackPanel>
+                                                 <StackPanel Margin="0,3,0,0" Spacing="1">
+                                                     <TextBlock FontWeight="SemiBold" Text="Estimated wall power" />
+                                                     <TextBlock Text="{x:Bind PowerValue}" TextWrapping="Wrap" />
+                                                 </StackPanel>
+                                                 <TextBlock Style="{StaticResource SecondaryTextStyle}" Text="{x:Bind Reinforcement}" TextWrapping="Wrap" />
                                             </StackPanel>
                                         </DataTemplate>
                                     </ListView.ItemTemplate>
@@ -529,11 +688,11 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Established patterns" />
+                                    Text="Established recurring patterns" />
                                 <TextBlock
                                     x:Name="LearningPatternsEmptyText" x:FieldModifier="internal"
                                     Style="{StaticResource SecondaryTextStyle}"
-                                    Text="Still learning broader patterns. More adjacent Established context profiles are needed." />
+                                    Text="No recurring pattern is established; the exact current blocker appears above." />
                                 <ListView
                                     x:Name="LearningPatternsList" x:FieldModifier="internal"
                                     AutomationProperties.AutomationId="LearningPatternsList"

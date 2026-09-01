@@ -208,7 +208,10 @@ public sealed partial class BundledLlamaInferenceRuntime
                 GetResidencyRemaining(),
                 _diagnostics.Snapshot(),
                 _lastLoadDuration,
-                _lastGenerationDuration));
+                _lastGenerationDuration,
+                _configuration.ModelName,
+                _configuration.Quantization,
+                _configuration.ModelSizeBytes));
         }
     }
 

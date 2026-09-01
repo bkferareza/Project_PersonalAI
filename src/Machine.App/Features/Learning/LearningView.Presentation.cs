@@ -22,6 +22,7 @@ public sealed partial class LearningView
     internal void Update(
         MachineLearningDashboardSnapshot snapshot,
         MachineLearningActivitySnapshot activity,
+        MachineLearningLabSnapshot lab,
         MachineLearnedPowerCostProjection? currentPower,
         MachineTodayLearnedEnergyComparison todayComparison,
         MachineLearnedUsageSnapshot learnedUsage,
@@ -32,6 +33,7 @@ public sealed partial class LearningView
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(activity);
+        ArgumentNullException.ThrowIfNull(lab);
         ArgumentNullException.ThrowIfNull(todayComparison);
         ArgumentNullException.ThrowIfNull(learnedUsage);
         ArgumentNullException.ThrowIfNull(forecast);
@@ -41,8 +43,15 @@ public sealed partial class LearningView
         var baseline = snapshot.CurrentBaseline;
         var confidence = baseline?.Confidence ??
             MachineLearningConfidence.Calibrating;
-        var readiness = snapshot.Readiness.PatternReadiness;
-        var memoryState = FormatMemoryState(snapshot.Readiness.MemoryState);
+        var readiness = lab.PatternReadiness;
+        var memoryState = snapshot.Readiness.MemoryState ==
+                MachineLearningMemoryState.PersistenceAtRisk
+            ? "Persistence at risk"
+            : lab.Live.LifetimeObservationCount > 0
+                ? "Active"
+                : "Waiting for first evidence";
+
+        UpdateLiveLearning(lab);
 
         overview.LearningConfidenceText.Text =
             $"Behavior memory · {memoryState}";
@@ -65,11 +74,10 @@ public sealed partial class LearningView
         LearningPageMemoryStateText.Text =
             $"Behavior memory · {memoryState}";
         LearningPageMemoryEvidenceText.Text =
-            $"{readiness.TotalProfileCount:N0} learned " +
-            (readiness.TotalProfileCount == 1 ? "profile" : "profiles") +
-            $" · {readiness.EstablishedProfileCount:N0} established · " +
-            $"{readiness.PatternsProduced:N0} recognized " +
-            (readiness.PatternsProduced == 1 ? "pattern" : "patterns");
+            $"{lab.Memory.BaselineCount:N0} baselines · " +
+            $"{lab.Memory.ProfileCount:N0} compact profiles · " +
+            $"{readiness.EstablishedProfileCount:N0} established · " +
+            $"{lab.Memory.PatternCount:N0} recurring patterns";
 
         var sessionCount = snapshot.Metadata.LifetimeMachineSessionCount;
         LearningPageObservedText.Text =
@@ -79,10 +87,11 @@ public sealed partial class LearningView
         LearningPageLifetimeObservationsText.Text =
             $"{snapshot.Metadata.LifetimeAcceptedObservationCount:N0} lifetime";
         LearningPageContextCountText.Text =
-            $"{snapshot.ContextProfiles.Count:N0} / " +
+            $"{lab.Memory.BaselineCount:N0} / " +
             $"{MachineLearningService.MaximumContextProfileCount:N0}";
         LearningPageEstablishedProfilesText.Text =
-            $"{snapshot.ContextProfiles.Count(profile => profile.Confidence == MachineLearningConfidence.Established):N0}";
+            $"{lab.Memory.ProfileCount:N0} / " +
+            $"{lab.Memory.ProfileCapacity:N0}";
         LearningPageBroaderPatternCountText.Text =
             $"{snapshot.BroaderPatterns.Count:N0}";
         LearningPageSessionCountText.Text = $"{sessionCount:N0}";
@@ -93,8 +102,9 @@ public sealed partial class LearningView
             snapshot.Metadata.LastLearningAt,
             "Not yet observed");
         LearningPageRawObservationsText.Text =
-            $"{snapshot.RawObservationCount:N0} / " +
-            $"{MachineLearningService.MaximumObservationCount:N0}";
+            $"{lab.Memory.RawObservationCount:N0} / " +
+            $"{lab.Memory.RawObservationCapacity:N0} · " +
+            $"{FormatDuration(lab.Memory.RawObservationRetention)} window";
         LearningPageRecentEpisodesText.Text =
             $"{snapshot.RecentEpisodeCount:N0} / " +
             $"{MachineLearningService.MaximumEpisodeCount:N0}";
@@ -103,17 +113,30 @@ public sealed partial class LearningView
             : $"{current.Timestamp.ToLocalTime():h tt} · " +
                 $"{FormatActivity(current.ActivityState)} · " +
                 FormatContextMaturity(confidence);
+        LearningPageMemoryPersistenceText.Text =
+            $"Schema v{lab.Memory.SchemaVersion} · " +
+            $"{FormatLearningDataHealth(lab.Memory.DataHealth)} · " +
+            (lab.Memory.LastPersistedAt is { } lastPersisted
+                ? $"last save {FormatLearningDateTime(
+                    lastPersisted,
+                    "unknown")}"
+                : "not yet saved") +
+            (lab.Memory.HasPendingChanges
+                ? " · changes pending"
+                : " · fully persisted");
 
         LearningPageCurrentBucketText.Text = baseline is null
             ? "Waiting"
             : $"{FormatLearningHour(baseline.LocalHour)} · " +
-                $"{baseline.ActivityState}";
+                FormatActivity(baseline.ActivityState);
         LearningPageCurrentSamplesText.Text =
             $"{baseline?.SampleCount ?? 0:N0}";
         LearningPageObservedDaysText.Text =
             $"{baseline?.ObservedDayCount ?? 0:N0} / " +
             $"{MachineLearningService.EstablishedObservedDayCount:N0}";
-        LearningPageConfidenceText.Text = confidence.ToString();
+        LearningPageConfidenceText.Text = baseline is null
+            ? "No evidence"
+            : FormatContextMaturity(confidence);
         LearningPageConfidenceRulesText.Text =
             FormatCurrentContextMaturity(baseline);
 
@@ -139,15 +162,12 @@ public sealed partial class LearningView
         UpdateTodayLearnedEnergyComparison(todayComparison);
         UpdateUsageForecast(learnedUsage, forecast, overview);
 
-        var orderedProfiles = snapshot.ContextProfiles
-            .OrderBy(item => baseline is not null &&
-                item.LocalHour == baseline.LocalHour &&
-                item.ActivityState == baseline.ActivityState ? 0 : 1)
-            .ThenBy(item => item.Freshness)
-            .ThenByDescending(item => item.LastReinforcedAt)
-            .ThenBy(item => item.LocalHour)
-            .ThenBy(item => item.ActivityState)
-            .Select(CreateLearningProfileDisplayItem)
+        var orderedProfiles = lab.LearnedContexts
+            .Select(item => CreateLearningProfileDisplayItem(
+                item,
+                baseline is not null &&
+                    item.LocalHour == baseline.LocalHour &&
+                    item.ActivityState == baseline.ActivityState))
             .ToArray();
         LearningProfilesList.ItemsSource = orderedProfiles;
         LearningProfilesEmptyText.Visibility = orderedProfiles.Length == 0
@@ -177,7 +197,7 @@ public sealed partial class LearningView
             .Select(item => new LearnedItemDisplayItem(
                 $"{FormatLearningLayer(item.Layer)} · " +
                     (item.IsEarlyObservation
-                        ? $"Early · {item.Confidence}"
+                        ? "Early evidence"
                         : item.Confidence ==
                             MachineLearningConfidence.Established
                             ? "Established"
@@ -223,13 +243,205 @@ public sealed partial class LearningView
             $"v{snapshot.Metadata.PersistedSchemaVersion}";
         LearningActivityStatusText.Text = FormatLearningActivityStatus(
             activity.Status);
-        LearningActivityEventsList.ItemsSource = activity.RecentEvents
+        var recentChanges = lab.RecentChanges
             .Select(item => new LearningActivityDisplayItem(
-                $"{item.OccurredAt.ToLocalTime():MMM d HH:mm:ss} · {FormatActivityKind(item.Kind)}",
+                FormatActivityHeader(item),
                 FormatActivityDetail(item)))
             .ToArray();
+        LearningActivityEventsList.ItemsSource = recentChanges;
+        LearningActivityEmptyText.Visibility = recentChanges.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        LearningAiKnowledgeSummaryText.Text =
+            "Current deterministic learning and forecast knowledge";
+        LearningAiKnowledgeEvidenceText.Text =
+            $"{lab.LearnedContexts.Count:N0} learned contexts visible · " +
+            $"{snapshot.ContextProfiles.Count:N0} compact profiles · " +
+            $"{snapshot.BroaderPatterns.Count:N0} recurring patterns · " +
+            (forecast.HasNextObservedHourForecast
+                ? "next-observed-hour forecast available"
+                : "forecast evidence unavailable");
+        LearningAiKnowledgePromptText.Text =
+            $"Usage Outlook · {MachineUsageOutlookPromptPolicy.CurrentVersion}";
+        LearningAiKnowledgeValidationText.Text =
+            string.IsNullOrWhiteSpace(overview.AiOutlookMetadataText.Text)
+                ? "No local generation validated in this session"
+                : overview.AiOutlookMetadataText.Text;
         UpdateRuntimeStatus(inferenceStatus);
     }
+
+    private void UpdateLiveLearning(MachineLearningLabSnapshot lab)
+    {
+        var live = lab.Live;
+        var observation = live.CurrentObservation;
+        var context = live.CurrentContext;
+        LearningLiveContextText.Text = context is null
+            ? "Waiting for verified telemetry"
+            : $"{FormatLearningHour(context.LocalHour)} · " +
+                FormatActivity(context.ActivityState);
+        LearningLiveLastObservationText.Text = live.LastIntakeAt is { } at
+            ? $"Last intake · {at.ToLocalTime():MMM d HH:mm:ss} · " +
+                $"{FormatAge(live.LastIntakeAge)} ago"
+            : "No intake attempt yet";
+        LearningLiveAcceptanceText.Text = live.LastIntakeOutcome switch
+        {
+            MachineLearningIntakeOutcome.Accepted => "Accepted",
+            MachineLearningIntakeOutcome.Rejected => "Rejected",
+            MachineLearningIntakeOutcome.Throttled => "Throttled",
+            _ => "Waiting"
+        };
+        LearningLiveAcceptanceReasonText.Text = live.LastIntakeReason;
+        LearningLiveLifetimeText.Text =
+            $"{live.LifetimeObservationCount:N0}";
+        LearningLiveSessionText.Text =
+            $"{live.SessionObservationCount:N0}";
+        LearningLiveContextEvidenceText.Text = context is null
+            ? "0 samples · 0 days"
+            : $"{context.SampleCount:N0} " +
+                (context.SampleCount == 1 ? "sample" : "samples") +
+                $" · {context.ObservedDayCount:N0} " +
+                (context.ObservedDayCount == 1 ? "day" : "days");
+        LearningLiveMaturityText.Text = context is null
+            ? "No evidence"
+            : $"{FormatContextMaturity(context.Confidence)} · " +
+                FormatFreshness(context.Freshness);
+        LearningLivePowerMaturityText.Text = context is null
+            ? "No evidence"
+            : $"{FormatPowerMaturity(context.EstimatedWallPowerMaturity)} · " +
+                $"{context.EstimatedWallPowerSampleCount:N0} eligible " +
+                (context.EstimatedWallPowerSampleCount == 1
+                    ? "sample"
+                    : "samples") +
+                (context.EstimatedWallPowerFreshness is { } freshness
+                    ? $" · {FormatFreshness(freshness)}"
+                    : string.Empty);
+
+        var signals = observation is null || context is null
+            ? []
+            : new LearningSignalDisplayItem[]
+            {
+                new(
+                    "Activity",
+                    $"Current · {FormatActivity(observation.ActivityState)}",
+                    $"Context key · {FormatLearningHour(context.LocalHour)} · " +
+                        FormatActivity(context.ActivityState)),
+                new(
+                    "CPU usage",
+                    $"Current · {observation.CpuUsagePercent:F1}%",
+                    FormatLearnedMetric(
+                        context.CpuMean,
+                        context.CpuStandardDeviation,
+                        context.AdaptiveCpuMean,
+                        context.CpuTypicalRange,
+                        "%")),
+                new(
+                    "Memory usage",
+                    $"Current · {observation.MemoryUsagePercent:F1}%",
+                    FormatLearnedMetric(
+                        context.MemoryMean,
+                        context.MemoryStandardDeviation,
+                        context.AdaptiveMemoryMean,
+                        context.MemoryTypicalRange,
+                        "%")),
+                new(
+                    "Network behavior",
+                    $"Current · {FormatNetworkActivity(
+                        observation.NetworkActivityClass)}",
+                    FormatLearnedNetwork(context)),
+                new(
+                    "Estimated wall power",
+                    observation.EstimatedWallPowerWatts is { } watts
+                        ? $"Current eligible estimate · {watts:F1} W"
+                        : "Current · no eligible power estimate",
+                    FormatLearnedPower(context))
+            };
+        LearningLiveSignalsList.ItemsSource = signals;
+        LearningLiveSignalsEmptyText.Visibility = signals.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private static string FormatAge(TimeSpan? age)
+    {
+        if (age is null)
+        {
+            return "unknown";
+        }
+        if (age.Value.TotalHours >= 1d)
+        {
+            return $"{(int)age.Value.TotalHours}h {age.Value.Minutes}m";
+        }
+        if (age.Value.TotalMinutes >= 1d)
+        {
+            return $"{(int)age.Value.TotalMinutes}m {age.Value.Seconds}s";
+        }
+        return $"{Math.Max(0, (int)age.Value.TotalSeconds)}s";
+    }
+
+    private static string FormatLearnedMetric(
+        double historicalMean,
+        double historicalStandardDeviation,
+        double adaptiveMean,
+        MachineLearningRange? adaptiveRange,
+        string unit) =>
+        $"Historical mean {historicalMean:F1}{unit} · σ " +
+        $"{historicalStandardDeviation:F1}{unit}\n" +
+        $"Adaptive mean {adaptiveMean:F1}{unit} · " +
+        (adaptiveRange is null
+            ? "typical range not yet available"
+            : $"range {adaptiveRange.Low:F1}–{adaptiveRange.High:F1}{unit}");
+
+    private static string FormatLearnedNetwork(
+        MachineLearningBaseline context) =>
+        context.DominantNetworkActivityClass is { } dominant
+            ? $"Dominant {FormatNetworkActivity(dominant)} · " +
+                $"{context.DominantNetworkActivityCount:N0} / " +
+                $"{context.NetworkObservationCount:N0} classified samples\n" +
+                $"Quiet {context.NetworkQuietSampleCount:N0} · " +
+                $"Light {context.NetworkLightSampleCount:N0} · " +
+                $"Active {context.NetworkActiveSampleCount:N0} · " +
+                $"Unavailable {context.NetworkUnavailableSampleCount:N0}"
+            : "No classified network evidence yet";
+
+    private static string FormatLearnedPower(
+        MachineLearningBaseline context)
+    {
+        if (context.EstimatedWallPowerSampleCount == 0 ||
+            context.EstimatedWallPowerMeanWatts is not { } historicalMean)
+        {
+            return "No eligible power evidence stored for this context";
+        }
+
+        var historicalDeviation =
+            context.EstimatedWallPowerStandardDeviationWatts ?? 0d;
+        var adaptive = context.AdaptiveEstimatedWallPowerMeanWatts is
+                { } adaptiveMean
+            ? $"Adaptive mean {adaptiveMean:F1} W"
+            : "Adaptive mean unavailable";
+        var range = context.EstimatedWallPowerTypicalRange is { } typical
+            ? $" · range {typical.Low:F1}–{typical.High:F1} W"
+            : " · typical range not yet available";
+        return $"Historical mean {historicalMean:F1} W · " +
+            $"σ {historicalDeviation:F1} W\n{adaptive}{range}";
+    }
+
+    private static string FormatNetworkActivity(
+        MachineNetworkActivityClass activityClass) => activityClass switch
+        {
+            MachineNetworkActivityClass.Quiet => "Quiet",
+            MachineNetworkActivityClass.Light => "Light",
+            MachineNetworkActivityClass.Active => "Active",
+            _ => "Unavailable"
+        };
+
+    private static string FormatFreshness(
+        MachineLearningFreshness freshness) => freshness switch
+        {
+            MachineLearningFreshness.Fresh => "Fresh",
+            MachineLearningFreshness.Aging => "Aging",
+            MachineLearningFreshness.Stale => "Stale",
+            _ => "Unknown freshness"
+        };
 
     private void UpdateCurrentPowerProjection(
         MachineLearnedPowerCostProjection? projection)
@@ -238,7 +450,8 @@ public sealed partial class LearningView
         {
             LearningCurrentPowerContextText.Text =
                 "Waiting for a learned context";
-            LearningCurrentPowerTypicalText.Text = "Still learning";
+            LearningCurrentPowerTypicalText.Text =
+                "No current context evidence";
             LearningCurrentPowerRangeText.Text = "Unavailable";
             LearningCurrentPowerEvidenceText.Text =
                 "No eligible power evidence yet";
@@ -263,7 +476,7 @@ public sealed partial class LearningView
             projection.TypicalEstimatedWallPowerWatts is not { } watts ||
             projection.TypicalEstimatedWallPowerRange is not { } range)
         {
-            LearningCurrentPowerTypicalText.Text = "Still learning";
+            LearningCurrentPowerTypicalText.Text = "Early power evidence";
             LearningCurrentPowerRangeText.Text =
                 "Unavailable until enough power evidence";
             LearningCurrentPowerCostText.Text =
@@ -311,7 +524,7 @@ public sealed partial class LearningView
             MachineTodayLearnedEnergyComparisonState.BelowLearnedRange =>
                 "Below learned range",
             MachineTodayLearnedEnergyComparisonState.StillLearning =>
-                "Still learning today's normal",
+                "Learned-normal comparison unavailable",
             _ => "Today comparison unavailable"
         };
         LearningTodayComparisonDetailText.Text =
@@ -416,7 +629,7 @@ public sealed partial class LearningView
         {
             LearningNextHourEnergyText.Text = "Unavailable";
             LearningNextHourEnergyRangeText.Text =
-                "Current power behavior is still learning";
+                "Current power evidence is insufficient for a forecast";
             LearningNextHourCostText.Text = "Unavailable";
             LearningNextHourCostRangeText.Text =
                 "No monetary projection without learned energy";
@@ -459,7 +672,7 @@ public sealed partial class LearningView
         overview.OverviewNextHourEnergyText.Text =
             forecast.HasNextObservedHourForecast
                 ? $"~{forecast.NextObservedHourEnergyKilowattHours!.Value:F3} kWh"
-                : "Still learning";
+                : "No authoritative comparison";
         overview.OverviewNextHourCostText.Text =
             forecast.NextObservedHourEstimatedCost is { } nextCost &&
             forecast.RateReference is { } nextRate
@@ -496,7 +709,7 @@ public sealed partial class LearningView
                 "Established learned forecast",
             MachineLearningEvidenceMaturity.Provisional =>
                 "Early projection",
-            _ => "Still learning"
+            _ => "Insufficient repeated evidence"
         };
 
     private static string FormatForecastEvidence(
@@ -556,16 +769,7 @@ public sealed partial class LearningView
             MachineLearningEvidenceMaturity.Established => "Established",
             MachineLearningEvidenceMaturity.Provisional =>
                 "Early estimate · Provisional",
-            _ => "Still learning · Insufficient"
-        };
-
-    private static string FormatMemoryState(
-        MachineLearningMemoryState state) => state switch
-        {
-            MachineLearningMemoryState.Active => "Active",
-            MachineLearningMemoryState.PersistenceAtRisk =>
-                "Persistence at risk",
-            _ => "Calibrating"
+            _ => "Early evidence · insufficient for projection"
         };
 
     private static string FormatContextMaturity(
@@ -573,7 +777,7 @@ public sealed partial class LearningView
         {
             MachineLearningConfidence.Established => "Established",
             MachineLearningConfidence.Provisional => "Provisional",
-            _ => "Calibrating"
+            _ => "Early evidence"
         };
 
     private static string FormatCurrentContextMaturity(
@@ -581,8 +785,8 @@ public sealed partial class LearningView
     {
         if (baseline is null)
         {
-            return "Provisional needs 12 samples. Established needs 168 " +
-                "samples across 7 distinct observed days.";
+            return "Evidence appears here with the first accepted sample. " +
+                "Maturity controls authority, not visibility.";
         }
 
         if (baseline.Confidence == MachineLearningConfidence.Established)
@@ -592,56 +796,19 @@ public sealed partial class LearningView
                 "Freshness is tracked separately.";
         }
 
-        var samplesForEstablished = Math.Max(
-            0,
-            MachineLearningService.EstablishedSampleCount -
-                baseline.SampleCount);
-        var daysForEstablished = Math.Max(
-            0,
-            MachineLearningService.EstablishedObservedDayCount -
-                baseline.ObservedDayCount);
         if (baseline.Confidence == MachineLearningConfidence.Calibrating)
         {
-            var samplesForProvisional = Math.Max(
-                0,
-                MachineLearningService.ProvisionalSampleCount -
-                    baseline.SampleCount);
-            return $"{samplesForProvisional:N0} more " +
-                (samplesForProvisional == 1 ? "sample" : "samples") +
-                " for Provisional. " +
-                FormatEstablishedEvidenceRemaining(
-                    samplesForEstablished,
-                    daysForEstablished);
+            return $"Early evidence · {baseline.SampleCount:N0} accepted " +
+                (baseline.SampleCount == 1 ? "sample" : "samples") +
+                $" across {baseline.ObservedDayCount:N0} observed " +
+                (baseline.ObservedDayCount == 1 ? "day" : "days") +
+                ". Provisional and Established authority require repeated evidence.";
         }
 
-        return FormatEstablishedEvidenceRemaining(
-            samplesForEstablished,
-            daysForEstablished);
-    }
-
-    private static string FormatEstablishedEvidenceRemaining(
-        long samplesRemaining,
-        int daysRemaining)
-    {
-        if (samplesRemaining == 0 && daysRemaining == 0)
-        {
-            return "Established evidence thresholds are met; the next " +
-                "accepted observation will refresh maturity.";
-        }
-
-        var requirements = new List<string>();
-        if (samplesRemaining > 0)
-        {
-            requirements.Add($"{samplesRemaining:N0} more " +
-                (samplesRemaining == 1 ? "sample" : "samples"));
-        }
-        if (daysRemaining > 0)
-        {
-            requirements.Add($"{daysRemaining:N0} more distinct observed " +
-                (daysRemaining == 1 ? "day" : "days"));
-        }
-        return $"Established needs {string.Join(" and ", requirements)}. " +
-            "Both thresholds must be met; freshness is tracked separately.";
+        return $"Provisional evidence · {baseline.SampleCount:N0} accepted " +
+            $"samples across {baseline.ObservedDayCount:N0} observed days. " +
+            "Established authority requires both sustained samples and " +
+            "distinct-day coverage.";
     }
 
     private static string FormatPatternReadinessHeadline(
@@ -650,7 +817,7 @@ public sealed partial class LearningView
             ? $"{readiness.PatternsProduced:N0} broader " +
                 (readiness.PatternsProduced == 1 ? "pattern" : "patterns") +
                 " recognized"
-            : "Still learning broader patterns";
+            : "No recurring pattern established";
 
     private static string FormatPatternReadinessCompact(
         MachineLearningPatternReadiness readiness) =>
@@ -752,12 +919,85 @@ public sealed partial class LearningView
         string.Concat(kind.ToString().Select((character, index) =>
             index > 0 && char.IsUpper(character) ? " " + character : character.ToString()));
 
+    private static string FormatActivityHeader(
+        MachineLearningActivityEvent item)
+    {
+        var context = item.ContextChange;
+        return context is null
+            ? $"{item.OccurredAt.ToLocalTime():MMM d HH:mm:ss} · " +
+                FormatActivityKind(item.Kind)
+            : $"{item.OccurredAt.ToLocalTime():MMM d HH:mm:ss} · " +
+                $"{FormatLearningHour(context.LocalHour)} · " +
+                $"{FormatActivity(context.ActivityState)} · " +
+                FormatActivityKind(item.Kind);
+    }
+
     private static string FormatActivityDetail(MachineLearningActivityEvent item)
     {
         var details = new List<string>();
+        if (item.ContextChange is { } change)
+        {
+            details.Add($"Samples {change.PreviousSampleCount:N0} → " +
+                $"{change.SampleCount:N0}");
+            if (change.PreviousObservedDayCount != change.ObservedDayCount)
+            {
+                details.Add($"Days {change.PreviousObservedDayCount:N0} → " +
+                    $"{change.ObservedDayCount:N0}");
+            }
+            if (change.PreviousMaturity != change.Maturity)
+            {
+                details.Add($"Maturity " +
+                    $"{FormatOptionalMaturity(change.PreviousMaturity)} → " +
+                    FormatContextMaturity(change.Maturity));
+            }
+            var previousCpu = change.PreviousAdaptiveCpuMean;
+            if (previousCpu is null ||
+                Math.Abs(previousCpu.Value - change.AdaptiveCpuMean) >= 0.05d)
+            {
+                details.Add(previousCpu is null
+                    ? $"CPU adaptive mean {change.AdaptiveCpuMean:F1}%"
+                    : $"CPU adaptive mean {previousCpu.Value:F1}% → " +
+                        $"{change.AdaptiveCpuMean:F1}%");
+            }
+            var previousMemory = change.PreviousAdaptiveMemoryMean;
+            if (previousMemory is null ||
+                Math.Abs(previousMemory.Value -
+                    change.AdaptiveMemoryMean) >= 0.05d)
+            {
+                details.Add(previousMemory is null
+                    ? $"Memory adaptive mean " +
+                        $"{change.AdaptiveMemoryMean:F1}%"
+                    : $"Memory adaptive mean {previousMemory.Value:F1}% → " +
+                        $"{change.AdaptiveMemoryMean:F1}%");
+            }
+            if (change.PreviousPowerEvidenceCount !=
+                change.PowerEvidenceCount)
+            {
+                details.Add($"Power samples " +
+                    $"{change.PreviousPowerEvidenceCount:N0} → " +
+                    $"{change.PowerEvidenceCount:N0}");
+            }
+            var previousPower = change.PreviousPowerMeanWatts;
+            if (change.PowerMeanWatts is { } powerMean &&
+                (previousPower is null ||
+                    Math.Abs(previousPower.Value - powerMean) >= 0.05d))
+            {
+                details.Add(previousPower is null
+                    ? $"Power mean {powerMean:F1} W"
+                    : $"Power mean {previousPower.Value:F1} → " +
+                        $"{powerMean:F1} W");
+            }
+            if (change.PreviousPowerMaturity != change.PowerMaturity)
+            {
+                details.Add($"Power maturity " +
+                    $"{FormatOptionalPowerMaturity(
+                        change.PreviousPowerMaturity)} → " +
+                    FormatPowerMaturity(change.PowerMaturity));
+            }
+        }
         if (item.ObservationCount is not null)
         {
-            details.Add($"{item.ObservationCount:N0} observations");
+            details.Add($"{item.ObservationCount:N0} lifetime observations");
         }
         if (item.ProfileCount is not null)
         {
@@ -796,43 +1036,53 @@ public sealed partial class LearningView
         return details.Count == 0 ? "Lifecycle event" : string.Join(" · ", details);
     }
 
+    private static string FormatOptionalMaturity(
+        MachineLearningConfidence? maturity) => maturity is null
+            ? "none"
+            : FormatContextMaturity(maturity.Value);
+
+    private static string FormatOptionalPowerMaturity(
+        MachineLearningEvidenceMaturity? maturity) => maturity is null
+            ? "none"
+            : FormatPowerMaturity(maturity.Value);
+
     private static LearningProfileDisplayItem
         CreateLearningProfileDisplayItem(
-            MachineLearningContextProfile profile)
+            MachineLearningBaseline context,
+            bool isCurrent)
     {
-        var valueLabel = profile.Confidence ==
-                MachineLearningConfidence.Established
-            ? profile.Freshness == MachineLearningFreshness.Stale
-                ? "Historical learned range"
-                : "Typical"
-            : "Adaptive observed range";
-        var first = profile.FirstObservedAt.ToLocalTime();
-        var last = profile.LastObservedAt.ToLocalTime();
+        var first = context.FirstObservedAt.ToLocalTime();
+        var last = context.LastObservedAt.ToLocalTime();
         var observedSpan = first.Date == last.Date
             ? $"Observed {first:MMM d, yyyy}"
             : $"Observed {first:MMM d, yyyy} to {last:MMM d, yyyy}";
-        var networkValue = profile.DominantNetworkActivityClass is
-                { } dominantClass
-            ? $"Mostly {dominantClass}\n" +
-                $"{profile.DominantNetworkActivityCount:N0} / " +
-                $"{profile.NetworkObservationCount:N0} observations"
-            : "Still calibrating";
 
         return new LearningProfileDisplayItem(
-            $"{FormatLearningHour(profile.LocalHour)} - " +
-                $"{profile.ActivityState}",
-            $"{profile.Confidence} - {profile.Freshness}",
-            FormatLearningRange(valueLabel, profile.Cpu.TypicalRange,
-                profile.Cpu.AdaptiveMean),
-            FormatLearningRange(valueLabel, profile.Memory.TypicalRange,
-                profile.Memory.AdaptiveMean),
-            networkValue,
-            $"Evidence - {FormatSampleCount(profile.LifetimeSampleCount)} - " +
-                $"{profile.DistinctObservedDayCount:N0} observed " +
-                (profile.DistinctObservedDayCount == 1 ? "day" : "days") +
-                $"\n{observedSpan} - Reinforced " +
-                $"{FormatLearningDateTime(profile.LastReinforcedAt, "Unknown")}",
-            profile.Freshness == MachineLearningFreshness.Stale ? 0.64 : 1d);
+            (isCurrent ? "NOW · " : string.Empty) +
+                $"{FormatLearningHour(context.LocalHour)} · " +
+                FormatActivity(context.ActivityState),
+            $"{FormatContextMaturity(context.Confidence)} · " +
+                FormatFreshness(context.Freshness),
+            FormatLearnedMetric(
+                context.CpuMean,
+                context.CpuStandardDeviation,
+                context.AdaptiveCpuMean,
+                context.CpuTypicalRange,
+                "%"),
+            FormatLearnedMetric(
+                context.MemoryMean,
+                context.MemoryStandardDeviation,
+                context.AdaptiveMemoryMean,
+                context.MemoryTypicalRange,
+                "%"),
+            FormatLearnedNetwork(context),
+            FormatLearnedPower(context),
+            $"Evidence · {FormatSampleCount(context.SampleCount)} · " +
+                $"{context.ObservedDayCount:N0} observed " +
+                (context.ObservedDayCount == 1 ? "day" : "days") +
+                $"\n{observedSpan} · Updated " +
+                $"{FormatLearningDateTime(context.LastObservedAt, "Unknown")}",
+            context.Freshness == MachineLearningFreshness.Stale ? 0.64 : 1d);
     }
 
     private static LearningPatternDisplayItem
@@ -840,20 +1090,21 @@ public sealed partial class LearningView
             MachineLearningRecurringPattern pattern)
     {
         var network = pattern.DominantNetworkActivityClass is { } dominant
-            ? $"Network mostly {dominant}"
+            ? $"Network mostly {FormatNetworkActivity(dominant)}"
             : "Network evidence is incomplete across this window";
         return new LearningPatternDisplayItem(
-            $"{FormatLearningHour(pattern.StartHour)}-" +
-                $"{FormatLearningHour(pattern.EndHourExclusive)} - " +
-                $"{pattern.ActivityState}",
-            $"{pattern.Confidence} pattern - {pattern.Freshness}" +
-                (pattern.CrossesMidnight ? " - crosses midnight" : string.Empty),
+            $"{FormatLearningHour(pattern.StartHour)}–" +
+                $"{FormatLearningHour(pattern.EndHourExclusive)} · " +
+                FormatActivity(pattern.ActivityState),
+            $"{FormatContextMaturity(pattern.Confidence)} pattern · " +
+                FormatFreshness(pattern.Freshness) +
+                (pattern.CrossesMidnight ? " · crosses midnight" : string.Empty),
             FormatLearningRange("Typical", pattern.CpuTypicalRange, null),
             FormatLearningRange("Typical", pattern.MemoryTypicalRange, null),
             network,
             $"Built from {pattern.MemberContexts.Count:N0} established hourly " +
                 (pattern.MemberContexts.Count == 1 ? "profile" : "profiles") +
-                $" - {pattern.CombinedSampleCount:N0} observations - " +
+                $" · {pattern.CombinedSampleCount:N0} observations · " +
                 $"minimum {pattern.MinimumDistinctObservedDayCount:N0} observed days");
     }
 
@@ -874,7 +1125,7 @@ public sealed partial class LearningView
         double? adaptiveMean) => range is null
             ? adaptiveMean is null
                 ? "Range unavailable"
-                : $"Observed adaptive mean {adaptiveMean.Value:F1}%\nRange still calibrating"
+                : $"Observed adaptive mean {adaptiveMean.Value:F1}%\nRange not yet available"
             : $"{label} {range.Low:F1}-{range.High:F1}%";
 
     private static LearningEpisodeDisplayItem
@@ -955,10 +1206,12 @@ public sealed partial class LearningView
         {
             LearningAiRuntimeText.Text = "Status unavailable";
             LearningAiModelText.Text = "Loaded-model status unavailable";
+            LearningAiKnowledgeRuntimeText.Text = "Status unavailable";
+            LearningAiKnowledgeModelText.Text = "Status unavailable";
             return;
         }
 
-        LearningAiRuntimeText.Text = snapshot.IsRuntimeAvailable
+        var runtimeState = snapshot.IsRuntimeAvailable
             ? snapshot.ModelState switch
             {
                 LocalInferenceModelState.Asleep => "Asleep",
@@ -969,6 +1222,7 @@ public sealed partial class LearningView
                 _ => "Status unavailable"
             }
             : "Faulted";
+        LearningAiRuntimeText.Text = runtimeState;
         LearningAiModelText.Text = !snapshot.IsRuntimeAvailable
                 ? "Loaded-model status unavailable"
                 : snapshot.LoadedModels.Count == 0
@@ -976,6 +1230,30 @@ public sealed partial class LearningView
                     : snapshot.LoadedModels.Count == 1
                         ? $"{snapshot.LoadedModels[0].Name} loaded"
                         : $"{snapshot.LoadedModels.Count:N0} models loaded";
+        LearningAiKnowledgeRuntimeText.Text =
+            $"{snapshot.RuntimeName} " +
+            $"{snapshot.RuntimeVersion ?? "version unavailable"} · " +
+            $"{snapshot.Backend ?? "backend unavailable"} · {runtimeState}" +
+            (snapshot.ProcessId is { } processId
+                ? $" · owned PID {processId:N0}"
+                : string.Empty);
+        var configuredModel = snapshot.ConfiguredModelName ??
+            snapshot.LoadedModels.FirstOrDefault()?.Name ??
+            "Model identity unavailable";
+        var quantization = snapshot.ConfiguredQuantization ??
+            snapshot.LoadedModels.FirstOrDefault()?.Quantization ??
+            "quantization unavailable";
+        var contextLength = snapshot.ContextLength ??
+            snapshot.LoadedModels.FirstOrDefault()?.ContextLength;
+        LearningAiKnowledgeModelText.Text =
+            $"{configuredModel} · {quantization}" +
+            (contextLength is { } context
+                ? $" · {context:N0}-token context"
+                : string.Empty) +
+            (snapshot.ConfiguredModelSizeBytes is { } size
+                ? $" · {size / (1024d * 1024d * 1024d):F2} GiB"
+                : string.Empty) +
+            $" · {runtimeState}";
     }
 
     private static string FormatDuration(TimeSpan duration) =>

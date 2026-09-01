@@ -155,6 +155,11 @@ public sealed class BundledInferenceRuntimeTests
             LocalInferenceFailureKind.RuntimeUnavailable,
             status.Failure?.Kind);
         Assert.Null(status.ProcessId);
+        Assert.Equal(configuration.ModelName, status.ConfiguredModelName);
+        Assert.Equal(configuration.Quantization,
+            status.ConfiguredQuantization);
+        Assert.Equal(configuration.ModelSizeBytes,
+            status.ConfiguredModelSizeBytes);
         Assert.Empty(Directory.GetFiles(directory.Path));
     }
 

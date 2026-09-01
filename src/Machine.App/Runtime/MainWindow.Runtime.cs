@@ -324,7 +324,8 @@ public sealed partial class MainWindow
                 DateTimeOffset.UtcNow);
             if (learningChanged)
             {
-                _learningService.RecordMissingPrerequisite();
+                _learningService.RecordMissingPrerequisite(
+                    "Resource telemetry unavailable");
                 UpdateLearningDashboard();
             }
 
@@ -769,7 +770,8 @@ public sealed partial class MainWindow
             resources.UsedMemoryBytes < 0 ||
             resources.UsedMemoryBytes > resources.TotalMemoryBytes)
         {
-            _learningService.RecordMissingPrerequisite();
+            _learningService.RecordMissingPrerequisite(
+                "CPU or memory signal unavailable");
             return true;
         }
 
@@ -790,14 +792,16 @@ public sealed partial class MainWindow
             catch (Exception exception)
             {
                 Debug.WriteLine(exception);
-                _learningService.RecordMissingPrerequisite();
+                _learningService.RecordMissingPrerequisite(
+                    "Activity signal unavailable");
                 return true;
             }
         }
 
         if (activityState is null || !Enum.IsDefined(activityState.Value))
         {
-            _learningService.RecordMissingPrerequisite();
+            _learningService.RecordMissingPrerequisite(
+                "Activity signal unavailable");
             return true;
         }
 

@@ -769,9 +769,23 @@ public sealed class CompactPresencePresentationTests
         Assert.Contains("AutomationProperties.AutomationId=\"LearningPageLifetimeObservationsText\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"LearningProfilesList\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"LearningPatternsList\"", xaml);
-        Assert.Contains("Text=\"What Matasuri has learned\"", xaml);
-        Assert.Contains("Text=\"Learned contexts\"", xaml);
-        Assert.Contains("Text=\"Established patterns\"", xaml);
+        Assert.Contains("Text=\"Learning Lab\"", xaml);
+        Assert.Contains("Text=\"Live Learning\"", xaml);
+        Assert.Contains("Text=\"Learned Contexts\"", xaml);
+        Assert.Contains("Text=\"Recurring Behavior\"", xaml);
+        Assert.Contains("Text=\"Memory\"", xaml);
+        Assert.Contains("Text=\"Recent Learning Changes\"", xaml);
+        Assert.Contains("Text=\"AI Knowledge\"", xaml);
+        Assert.Contains(
+            "AutomationProperties.AutomationId=\"LearningLiveAcceptanceText\"",
+            xaml);
+        Assert.Contains(
+            "AutomationProperties.AutomationId=\"LearningLiveSignalsList\"",
+            xaml);
+        Assert.DoesNotContain("observation period", xaml,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("calibrating", xaml,
+            StringComparison.OrdinalIgnoreCase);
         Assert.Contains("AutomationProperties.AutomationId=\"OverviewNextHourEnergyText\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"AiOutlookText\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"RefreshUsageOutlookButton\"", xaml);

@@ -105,12 +105,16 @@ public sealed class MachineLearningService
         return true;
     }
 
-    public void RecordMissingPrerequisite()
+    public void RecordMissingPrerequisite(
+        string detail = "Missing prerequisite")
     {
         _missingPrerequisiteCount = SaturatingIncrement(
             _missingPrerequisiteCount);
         _activityLog.Record(MachineLearningActivityKind.ObservationSkipped,
-            DateTimeOffset.UtcNow, detail: "Missing prerequisite");
+            DateTimeOffset.UtcNow,
+            detail: string.IsNullOrWhiteSpace(detail)
+                ? "Missing prerequisite"
+                : detail);
     }
 
     public bool Observe(MachineLearningObservation observation)
@@ -175,7 +179,33 @@ public sealed class MachineLearningService
             _baselines.Add(key, baseline);
         }
 
+        var previousBaseline = baseline.Count > 0
+            ? baseline.ToSnapshot(key, observation.Timestamp)
+            : null;
         var powerEvidenceAccepted = baseline.Add(observation);
+        var updatedBaseline = baseline.ToSnapshot(
+            key,
+            observation.Timestamp);
+        var contextChange = new MachineLearningContextChange(
+            key.LocalHour,
+            key.ActivityState,
+            previousBaseline?.SampleCount ?? 0,
+            updatedBaseline.SampleCount,
+            previousBaseline?.ObservedDayCount ?? 0,
+            updatedBaseline.ObservedDayCount,
+            previousBaseline?.Confidence,
+            updatedBaseline.Confidence,
+            previousBaseline?.AdaptiveCpuMean,
+            updatedBaseline.AdaptiveCpuMean,
+            previousBaseline?.AdaptiveMemoryMean,
+            updatedBaseline.AdaptiveMemoryMean,
+            previousBaseline?.EstimatedWallPowerSampleCount ?? 0,
+            updatedBaseline.EstimatedWallPowerSampleCount,
+            previousBaseline?.EstimatedWallPowerMeanWatts,
+            updatedBaseline.EstimatedWallPowerMeanWatts,
+            previousBaseline?.EstimatedWallPowerMaturity,
+            updatedBaseline.EstimatedWallPowerMaturity,
+            updatedBaseline.Freshness);
         var episodeCount = _episodes.Count;
         UpdateEpisodes(observation, localTimestamp);
         if (UpdateProfile(key, baseline, observation.Timestamp))
@@ -201,7 +231,8 @@ public sealed class MachineLearningService
             observation.Timestamp, _observationCount, _profiles.Count,
             _episodes.Count,
             powerEvidenceAccepted: powerEvidenceAccepted,
-            powerEvidenceCount: baseline.EstimatedWallPowerSampleCount);
+            powerEvidenceCount: baseline.EstimatedWallPowerSampleCount,
+            contextChange: contextChange);
         return true;
     }
 

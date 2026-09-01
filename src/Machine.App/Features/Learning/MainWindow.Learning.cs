@@ -38,10 +38,18 @@ public sealed partial class MainWindow
             currentPower,
             todayComparison);
         _latestUsageForecast = forecast;
+        var learningActivity = _learningService.ActivityLog.GetSnapshot(
+            learning,
+            now);
+        var learningLab = MachineLearningLabProjector.Project(
+            learning,
+            learningActivity,
+            now);
 
         LearningPage.Update(
             learning,
-            _learningService.ActivityLog.GetSnapshot(learning, now),
+            learningActivity,
+            learningLab,
             currentPower,
             todayComparison,
             learnedUsage,

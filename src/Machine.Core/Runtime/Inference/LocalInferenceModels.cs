@@ -86,7 +86,10 @@ public sealed record LocalInferenceStatus(
     TimeSpan? ResidencyRemaining = null,
     IReadOnlyList<string>? Diagnostics = null,
     TimeSpan? LastLoadDuration = null,
-    TimeSpan? LastGenerationDuration = null);
+    TimeSpan? LastGenerationDuration = null,
+    string? ConfiguredModelName = null,
+    string? ConfiguredQuantization = null,
+    long? ConfiguredModelSizeBytes = null);
 
 public sealed record LocalInferenceStartResult(
     bool IsAvailable,

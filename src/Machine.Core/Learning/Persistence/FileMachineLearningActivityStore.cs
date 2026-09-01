@@ -54,5 +54,39 @@ public sealed class FileMachineLearningActivityStore : IMachineLearningActivityS
         item.ByteCount is null or >= 0 &&
         item.DurationMilliseconds is null or >= 0 &&
         item.PowerEvidenceCount is null or >= 0 &&
+        (item.ContextChange is null || IsValid(item.ContextChange)) &&
         (item.Detail is null || item.Detail.Length <= MaximumDetailLength);
+
+    private static bool IsValid(MachineLearningContextChange item) =>
+        item.LocalHour is >= 0 and <= 23 &&
+        Enum.IsDefined(item.ActivityState) &&
+        item.PreviousSampleCount >= 0 &&
+        item.SampleCount > item.PreviousSampleCount &&
+        item.PreviousObservedDayCount >= 0 &&
+        item.ObservedDayCount >= item.PreviousObservedDayCount &&
+        item.ObservedDayCount <= item.SampleCount &&
+        (item.PreviousMaturity is null ||
+            Enum.IsDefined(item.PreviousMaturity.Value)) &&
+        Enum.IsDefined(item.Maturity) &&
+        IsFiniteOrNull(item.PreviousAdaptiveCpuMean, 0d, 100d) &&
+        double.IsFinite(item.AdaptiveCpuMean) &&
+        item.AdaptiveCpuMean is >= 0d and <= 100d &&
+        IsFiniteOrNull(item.PreviousAdaptiveMemoryMean, 0d, 100d) &&
+        double.IsFinite(item.AdaptiveMemoryMean) &&
+        item.AdaptiveMemoryMean is >= 0d and <= 100d &&
+        item.PreviousPowerEvidenceCount >= 0 &&
+        item.PowerEvidenceCount >= item.PreviousPowerEvidenceCount &&
+        IsFiniteOrNull(item.PreviousPowerMeanWatts, 0d, double.MaxValue) &&
+        IsFiniteOrNull(item.PowerMeanWatts, 0d, double.MaxValue) &&
+        (item.PreviousPowerMaturity is null ||
+            Enum.IsDefined(item.PreviousPowerMaturity.Value)) &&
+        Enum.IsDefined(item.PowerMaturity) &&
+        Enum.IsDefined(item.Freshness);
+
+    private static bool IsFiniteOrNull(double? value, double minimum,
+        double maximum) =>
+        value is null ||
+        double.IsFinite(value.Value) &&
+        value.Value >= minimum &&
+        value.Value <= maximum;
 }

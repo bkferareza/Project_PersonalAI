@@ -16,8 +16,14 @@ public sealed record LearningProfileDisplayItem(
     string CpuValue,
     string MemoryValue,
     string NetworkValue,
+    string PowerValue,
     string Reinforcement,
     double Opacity);
+
+public sealed record LearningSignalDisplayItem(
+    string Signal,
+    string CurrentValue,
+    string LearnedValue);
 
 public sealed record LearningPatternDisplayItem(
     string Header,

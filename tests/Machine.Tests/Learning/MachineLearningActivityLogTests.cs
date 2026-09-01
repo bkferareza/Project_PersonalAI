@@ -34,6 +34,53 @@ public sealed class MachineLearningActivityLogTests
     }
 
     [Fact]
+    public async Task FileStoreRoundTripsBoundedContextChangeSummary()
+    {
+        var directory = Path.Combine(Path.GetTempPath(),
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var change = new MachineLearningContextChange(
+                LocalHour: 18,
+                MachineUserActivityState.Active,
+                PreviousSampleCount: 11,
+                SampleCount: 12,
+                PreviousObservedDayCount: 1,
+                ObservedDayCount: 1,
+                MachineLearningConfidence.Calibrating,
+                MachineLearningConfidence.Provisional,
+                PreviousAdaptiveCpuMean: 10d,
+                AdaptiveCpuMean: 11d,
+                PreviousAdaptiveMemoryMean: 40d,
+                AdaptiveMemoryMean: 40.5d,
+                PreviousPowerEvidenceCount: 11,
+                PowerEvidenceCount: 12,
+                PreviousPowerMeanWatts: 120d,
+                PowerMeanWatts: 121d,
+                MachineLearningEvidenceMaturity.Insufficient,
+                MachineLearningEvidenceMaturity.Provisional,
+                MachineLearningFreshness.Fresh);
+            var store = new FileMachineLearningActivityStore(directory);
+            await store.SaveAsync(new([
+                new(now, MachineLearningActivityKind.ObservationAccepted,
+                    ContextChange: change)
+            ]));
+
+            var restored = await store.LoadAsync();
+
+            Assert.Equal(change, Assert.Single(restored!.Events).ContextChange);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task FileStorePreservesOversizedActivityAndBlocksWrites()
     {
         var directory = Path.Combine(Path.GetTempPath(),

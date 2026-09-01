@@ -34,6 +34,27 @@ public enum MachineLearningActivityStatus
     Unavailable
 }
 
+public sealed record MachineLearningContextChange(
+    int LocalHour,
+    MachineUserActivityState ActivityState,
+    long PreviousSampleCount,
+    long SampleCount,
+    int PreviousObservedDayCount,
+    int ObservedDayCount,
+    MachineLearningConfidence? PreviousMaturity,
+    MachineLearningConfidence Maturity,
+    double? PreviousAdaptiveCpuMean,
+    double AdaptiveCpuMean,
+    double? PreviousAdaptiveMemoryMean,
+    double AdaptiveMemoryMean,
+    long PreviousPowerEvidenceCount,
+    long PowerEvidenceCount,
+    double? PreviousPowerMeanWatts,
+    double? PowerMeanWatts,
+    MachineLearningEvidenceMaturity? PreviousPowerMaturity,
+    MachineLearningEvidenceMaturity PowerMaturity,
+    MachineLearningFreshness Freshness);
+
 public sealed record MachineLearningActivityEvent(
     DateTimeOffset OccurredAt,
     MachineLearningActivityKind Kind,
@@ -46,7 +67,8 @@ public sealed record MachineLearningActivityEvent(
     long? ByteCount = null,
     long? DurationMilliseconds = null,
     bool? PowerEvidenceAccepted = null,
-    long? PowerEvidenceCount = null);
+    long? PowerEvidenceCount = null,
+    MachineLearningContextChange? ContextChange = null);
 
 public sealed record MachineLearningActivityPersistedState(
     IReadOnlyList<MachineLearningActivityEvent> Events);
@@ -102,7 +124,8 @@ public sealed class MachineLearningActivityLog
         long? byteCount = null,
         long? durationMilliseconds = null,
         bool? powerEvidenceAccepted = null,
-        long? powerEvidenceCount = null)
+        long? powerEvidenceCount = null,
+        MachineLearningContextChange? contextChange = null)
     {
         lock (_sync)
         {
@@ -111,6 +134,8 @@ public sealed class MachineLearningActivityLog
                 MachineLearningActivityKind.MarkedDirty;
             var previous = _events.LastOrDefault();
             if (shouldCoalesce && previous?.Kind == kind &&
+                string.Equals(previous.Detail, detail,
+                    StringComparison.Ordinal) &&
                 occurredAt - previous.OccurredAt < TimeSpan.FromMinutes(1))
             {
                 _events[^1] = previous with { Count = previous.Count + 1 };
@@ -122,7 +147,8 @@ public sealed class MachineLearningActivityLog
                     schemaVersion, Detail: detail, ByteCount: byteCount,
                     DurationMilliseconds: durationMilliseconds,
                     PowerEvidenceAccepted: powerEvidenceAccepted,
-                    PowerEvidenceCount: powerEvidenceCount));
+                    PowerEvidenceCount: powerEvidenceCount,
+                    ContextChange: contextChange));
             }
 
             Prune(occurredAt);
