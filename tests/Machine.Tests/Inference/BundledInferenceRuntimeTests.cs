@@ -160,6 +160,8 @@ public sealed class BundledInferenceRuntimeTests
             status.ConfiguredQuantization);
         Assert.Equal(configuration.ModelSizeBytes,
             status.ConfiguredModelSizeBytes);
+        Assert.Equal(configuration.RuntimeCommit, status.RuntimeSha);
+        Assert.Equal(configuration.GpuLayerCount, status.GpuLayerCount);
         Assert.Empty(Directory.GetFiles(directory.Path));
     }
 

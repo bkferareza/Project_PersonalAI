@@ -30,7 +30,8 @@ public sealed partial class LearningView
         MachineUsageForecast forecast,
         MachineHealthHistorySnapshot healthHistory,
         LocalInferenceStatus? inferenceStatus,
-        OverviewView overview)
+        OverviewView overview,
+        MachineBrief? brief)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(activity);
@@ -269,12 +270,16 @@ public sealed partial class LearningView
                 .Select(group => $"{FormatSituationCategory(group.Key)} " +
                     $"{group.Count():N0}"));
         LearningAiKnowledgePromptText.Text =
-            $"Situation schema v{situation.SchemaVersion} · " +
-            $"Usage Outlook {MachineUsageOutlookPromptPolicy.CurrentVersion}";
-        LearningAiKnowledgeValidationText.Text =
-            string.IsNullOrWhiteSpace(overview.AiOutlookMetadataText.Text)
-                ? "No local generation validated in this session"
-                : overview.AiOutlookMetadataText.Text;
+            $"Brief {MachineBriefPromptPolicy.CurrentVersion} · response " +
+            $"schema v{MachineBriefPromptPolicy.ResponseSchemaVersion} · " +
+            $"situation schema v{situation.SchemaVersion}";
+        LearningAiKnowledgeContextText.Text =
+            $"{situation.Evidence.Count:N0} selected evidence items · " +
+            (brief is null || string.IsNullOrWhiteSpace(
+                    brief.SituationFingerprint)
+                ? "fingerprint pending first generation"
+                : $"fingerprint {brief.SituationFingerprint}");
+        UpdateBriefInspection(brief);
         LearningAiKnowledgeEvidenceList.ItemsSource = situation.Evidence
             .Select(item => new SituationEvidenceDisplayItem(
                 $"{item.Id} · {FormatSituationCategory(item.Category)} · " +
@@ -1271,13 +1276,42 @@ public sealed partial class LearningView
                     : snapshot.LoadedModels.Count == 1
                         ? $"{snapshot.LoadedModels[0].Name} loaded"
                         : $"{snapshot.LoadedModels.Count:N0} models loaded";
-        LearningAiKnowledgeRuntimeText.Text =
+        var runtimeDetails = new List<string>
+        {
             $"{snapshot.RuntimeName} " +
-            $"{snapshot.RuntimeVersion ?? "version unavailable"} · " +
-            $"{snapshot.Backend ?? "backend unavailable"} · {runtimeState}" +
-            (snapshot.ProcessId is { } processId
-                ? $" · owned PID {processId:N0}"
-                : string.Empty);
+            $"{snapshot.RuntimeVersion ?? "version unavailable"}",
+            snapshot.Backend ?? "backend unavailable",
+            runtimeState,
+            snapshot.IsProcessOwned ? "Job-owned child" : "no child loaded"
+        };
+        if (!string.IsNullOrWhiteSpace(snapshot.RuntimeSha))
+        {
+            runtimeDetails.Add(
+                $"runtime SHA {AbbreviateHash(snapshot.RuntimeSha)}");
+        }
+        if (snapshot.GpuLayerCount is { } gpuLayers)
+        {
+            runtimeDetails.Add($"{gpuLayers:N0} configured GPU layers");
+        }
+        if (snapshot.ProcessId is { } processId)
+        {
+            runtimeDetails.Add($"PID {processId:N0}");
+        }
+        if (snapshot.LastLoadDuration is { } loadDuration)
+        {
+            runtimeDetails.Add($"last load {loadDuration.TotalSeconds:F1}s");
+        }
+        if (snapshot.LastGenerationDuration is { } generationDuration)
+        {
+            runtimeDetails.Add(
+                $"last generation {generationDuration.TotalSeconds:F1}s");
+        }
+        if (snapshot.ResidencyRemaining is { } residency)
+        {
+            runtimeDetails.Add($"residency {FormatDuration(residency)} remaining");
+        }
+        LearningAiKnowledgeRuntimeText.Text = string.Join(" · ",
+            runtimeDetails);
         var configuredModel = snapshot.ConfiguredModelName ??
             snapshot.LoadedModels.FirstOrDefault()?.Name ??
             "Model identity unavailable";
@@ -1286,16 +1320,109 @@ public sealed partial class LearningView
             "quantization unavailable";
         var contextLength = snapshot.ContextLength ??
             snapshot.LoadedModels.FirstOrDefault()?.ContextLength;
-        LearningAiKnowledgeModelText.Text =
-            $"{configuredModel} · {quantization}" +
-            (contextLength is { } context
-                ? $" · {context:N0}-token context"
-                : string.Empty) +
-            (snapshot.ConfiguredModelSizeBytes is { } size
-                ? $" · {size / (1024d * 1024d * 1024d):F2} GiB"
-                : string.Empty) +
-            $" · {runtimeState}";
+        var modelDetails = new List<string>
+        {
+            configuredModel,
+            quantization
+        };
+        if (contextLength is { } context)
+        {
+            modelDetails.Add($"{context:N0}-token context");
+        }
+        if (snapshot.ConfiguredModelSizeBytes is { } size)
+        {
+            modelDetails.Add($"{size / (1024d * 1024d * 1024d):F2} GiB");
+        }
+        if (!string.IsNullOrWhiteSpace(snapshot.ModelSha256))
+        {
+            modelDetails.Add($"SHA-256 {AbbreviateHash(snapshot.ModelSha256)}");
+        }
+        var residentBytes = snapshot.LoadedModels.Sum(model =>
+            Math.Max(0L, model.ResidentBytes));
+        if (residentBytes > 0)
+        {
+            modelDetails.Add(
+                $"{residentBytes / (1024d * 1024d * 1024d):F2} GiB GPU model buffer");
+        }
+        else if (snapshot.LoadedModels.Count == 0)
+        {
+            modelDetails.Add("GPU model buffer not resident");
+        }
+        else
+        {
+            modelDetails.Add("GPU model buffer measurement pending");
+        }
+        modelDetails.Add(runtimeState);
+        LearningAiKnowledgeModelText.Text = string.Join(" · ", modelDetails);
     }
+
+    internal void UpdateBriefInspection(MachineBrief? brief)
+    {
+        if (brief is null)
+        {
+            LearningAiKnowledgeValidationText.Text =
+                "No local Brief generation validated in this session";
+            LearningAiKnowledgeGenerationText.Text = "No generation yet";
+            return;
+        }
+
+        LearningAiKnowledgeValidationText.Text =
+            brief.Diagnostics.ValidationState switch
+            {
+                MachineBriefValidationState.Valid =>
+                    "Last generation · Valid",
+                MachineBriefValidationState.Repaired =>
+                    "Last generation · Valid after one bounded repair",
+                _ => "Last generation · " +
+                    brief.Diagnostics.ValidationReason
+            };
+        if (!string.IsNullOrWhiteSpace(brief.SituationFingerprint))
+        {
+            var context = LearningAiKnowledgeContextText.Text;
+            var fingerprintMarker = context.IndexOf(
+                " · fingerprint", StringComparison.Ordinal);
+            if (fingerprintMarker >= 0)
+            {
+                context = context[..fingerprintMarker];
+            }
+            LearningAiKnowledgeContextText.Text =
+                $"{context} · fingerprint {brief.SituationFingerprint}";
+        }
+        var generation = new List<string>
+        {
+            brief.Source == MachineExplanationSource.LocalModel
+                ? "Local Qwen"
+                : "Deterministic fallback",
+            $"{brief.Diagnostics.RequestCount:N0} " +
+                (brief.Diagnostics.RequestCount == 1 ? "request" : "requests"),
+            $"~{brief.Diagnostics.EstimatedInputTokenCount:N0} estimated input tokens"
+        };
+        if (brief.Diagnostics.PromptTokenCount is { } promptTokens)
+        {
+            generation.Add($"{promptTokens:N0} runtime prompt tokens");
+        }
+        if (brief.Diagnostics.OutputTokenCount is { } outputTokens)
+        {
+            generation.Add($"{outputTokens:N0} output tokens");
+        }
+        if (brief.Diagnostics.LoadDuration is { } load)
+        {
+            generation.Add($"load {load.TotalSeconds:F1}s");
+        }
+        if (brief.Diagnostics.GenerationDuration is { } elapsed)
+        {
+            generation.Add($"generation {elapsed.TotalSeconds:F1}s");
+        }
+        if (brief.Diagnostics.RepairAttempted)
+        {
+            generation.Add("one bounded repair attempted");
+        }
+        LearningAiKnowledgeGenerationText.Text = string.Join(" · ",
+            generation);
+    }
+
+    private static string AbbreviateHash(string value) =>
+        value.Length <= 12 ? value : value[..12];
 
     private static string FormatDuration(TimeSpan duration) =>
         duration.TotalHours >= 1d

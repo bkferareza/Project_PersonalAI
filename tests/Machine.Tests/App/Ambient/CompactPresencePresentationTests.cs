@@ -785,6 +785,12 @@ public sealed class CompactPresencePresentationTests
         Assert.Contains(
             "AutomationProperties.AutomationId=\"LearningAiKnowledgeEvidenceList\"",
             xaml);
+        Assert.Contains(
+            "AutomationProperties.AutomationId=\"LearningAiKnowledgeContextText\"",
+            xaml);
+        Assert.Contains(
+            "AutomationProperties.AutomationId=\"LearningAiKnowledgeGenerationText\"",
+            xaml);
         Assert.Contains("Header=\"Current normalized evidence payload\"",
             xaml);
         Assert.DoesNotContain("observation period", xaml,
@@ -792,9 +798,13 @@ public sealed class CompactPresencePresentationTests
         Assert.DoesNotContain("calibrating", xaml,
             StringComparison.OrdinalIgnoreCase);
         Assert.Contains("AutomationProperties.AutomationId=\"OverviewNextHourEnergyText\"", xaml);
-        Assert.Contains("AutomationProperties.AutomationId=\"AiOutlookText\"", xaml);
-        Assert.Contains("AutomationProperties.AutomationId=\"RefreshUsageOutlookButton\"", xaml);
-        Assert.Contains("Text=\"AI outlook\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"MachineBriefCard\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"MachineBriefOverallText\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"MachineBriefPointsList\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"MachineBriefOutlookText\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"RefreshMachineBriefButton\"", xaml);
+        Assert.Contains("Text=\"Matasuri Brief\"", xaml);
+        Assert.DoesNotContain("Text=\"AI outlook\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"NetworkNavigationItem\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"NetworkPage\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"HealthNavigationItem\"", xaml);

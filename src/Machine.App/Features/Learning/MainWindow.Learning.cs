@@ -81,12 +81,13 @@ public sealed partial class MainWindow
             forecast,
             _healthHistoryService.GetSnapshot(),
             _latestInferenceStatus,
-            OverviewPage);
+            OverviewPage,
+            _latestMachineBrief);
 
         if (_detailsExpanded &&
             OverviewPage.Visibility == Microsoft.UI.Xaml.Visibility.Visible)
         {
-            _ = EnsureUsageOutlookAsync(forceRefresh: false);
+            _ = EnsureMachineBriefAsync(forceRefresh: false);
         }
     }
 

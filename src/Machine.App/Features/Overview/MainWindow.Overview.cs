@@ -189,11 +189,11 @@ public sealed partial class MainWindow
             FormatLocalInferenceState(snapshot.ModelState);
         RuntimePage.LocalAiRuntimeText.Text =
             FormatLocalInferenceRuntime(snapshot);
-        UpdateUsageOutlookButtonState();
+        UpdateMachineBriefButtonState();
         if (_detailsExpanded &&
             OverviewPage.Visibility == Visibility.Visible)
         {
-            _ = EnsureUsageOutlookAsync(forceRefresh: false);
+            _ = EnsureMachineBriefAsync(forceRefresh: false);
         }
 
         var displayItems = snapshot.LoadedModels
@@ -224,13 +224,13 @@ public sealed partial class MainWindow
         ClearInferenceModels(
             "Loaded-model status is unavailable.");
         LearningPage.UpdateRuntimeStatus(_latestInferenceStatus);
-        if (_latestUsageOutlook is null)
+        if (_latestMachineBrief is null)
         {
-            OverviewPage.AiOutlookStatusText.Text =
-                "AI outlook unavailable · local runtime offline.";
+            OverviewPage.MachineBriefStatusText.Text =
+                "Matasuri Brief unavailable · local runtime offline.";
         }
         UpdateExplainMachineStateButtonState();
-        UpdateUsageOutlookButtonState();
+        UpdateMachineBriefButtonState();
     }
 
     private void ClearInferenceModels(string status)
@@ -302,72 +302,76 @@ public sealed partial class MainWindow
         await GenerateInsightAsync(decision);
     }
 
-    private async void OnRefreshUsageOutlookClicked(
+    private async void OnRefreshMachineBriefClicked(
         object sender,
         RoutedEventArgs e) =>
-        await EnsureUsageOutlookAsync(forceRefresh: true);
+        await EnsureMachineBriefAsync(forceRefresh: true);
 
-    private async Task EnsureUsageOutlookAsync(bool forceRefresh)
+    private async Task EnsureMachineBriefAsync(bool forceRefresh)
     {
-        var request = CreateUsageOutlookRequest();
+        var request = CreateMachineBriefRequest();
         var isOverviewVisible = _detailsExpanded &&
             OverviewPage.Visibility == Visibility.Visible;
         if (request is null ||
             !_isInferenceRuntimeAvailable ||
             _windowCancellationTokenSource.IsCancellationRequested)
         {
-            UpdateUsageOutlookButtonState();
+            UpdateMachineBriefButtonState();
             return;
         }
 
-        var decision = _usageOutlookCachePolicy.Request(
+        var decision = _machineBriefCachePolicy.Request(
             request,
             DateTimeOffset.UtcNow,
             isOverviewVisible,
             forceRefresh);
-        if (decision.Kind == MachineUsageOutlookDecisionKind.UseCached &&
-            decision.CachedOutlook is { } cached)
+        if (decision.Kind == MachineBriefDecisionKind.UseCached &&
+            decision.CachedBrief is { } cached)
         {
-            PresentUsageOutlook(cached, elapsed: null, fromCache: true);
-            UpdateUsageOutlookButtonState();
+            PresentMachineBrief(cached, elapsed: null, fromCache: true);
+            UpdateMachineBriefButtonState();
             return;
         }
         if (!decision.ShouldGenerate)
         {
-            UpdateUsageOutlookButtonState();
+            UpdateMachineBriefButtonState();
             return;
         }
 
-        _isUsageOutlookRequestRunning = true;
+        _isMachineBriefRequestRunning = true;
         ApplyShellAtmosphere();
         ApplyPresenceVisualMode();
-        UpdateUsageOutlookButtonState();
-        OverviewPage.RefreshUsageOutlookButton.Content = "Refreshing...";
-        OverviewPage.AiOutlookProgressRing.Visibility = Visibility.Visible;
-        OverviewPage.AiOutlookProgressRing.IsActive = true;
-        OverviewPage.AiOutlookStatusText.Text =
-            "Generating from precomputed local forecast evidence...";
+        UpdateMachineBriefButtonState();
+        OverviewPage.RefreshMachineBriefButton.Content = "Refreshing...";
+        OverviewPage.MachineBriefProgressRing.Visibility = Visibility.Visible;
+        OverviewPage.MachineBriefProgressRing.IsActive = true;
+        OverviewPage.MachineBriefStatusText.Text =
+            "Synthesizing the bounded local machine situation...";
         var stopwatch = Stopwatch.StartNew();
-        MachineUsageOutlook? generated = null;
+        MachineBrief? generated = null;
 
         try
         {
-            generated = await _usageOutlookGenerator.GenerateAsync(
+            generated = await _machineBriefGenerator.GenerateAsync(
                 request,
                 _windowCancellationTokenSource.Token);
+            generated = generated with
+            {
+                SituationFingerprint = decision.Fingerprint
+            };
             stopwatch.Stop();
             _windowCancellationTokenSource.Token
                 .ThrowIfCancellationRequested();
 
-            var currentRequest = CreateUsageOutlookRequest();
+            var currentRequest = CreateMachineBriefRequest();
             if (currentRequest is not null &&
                 string.Equals(
                     decision.Fingerprint,
-                    _usageOutlookCachePolicy.CreateRequestFingerprint(
+                    _machineBriefCachePolicy.CreateRequestFingerprint(
                         currentRequest),
                     StringComparison.Ordinal))
             {
-                PresentUsageOutlook(
+                PresentMachineBrief(
                     generated,
                     stopwatch.Elapsed,
                     fromCache: false);
@@ -382,89 +386,89 @@ public sealed partial class MainWindow
         {
             stopwatch.Stop();
             Debug.WriteLine(exception);
-            OverviewPage.AiOutlookStatusText.Text =
-                "AI outlook unavailable · deterministic forecast remains active.";
+            OverviewPage.MachineBriefStatusText.Text =
+                "Matasuri Brief unavailable · deterministic machine views remain active.";
         }
         finally
         {
             stopwatch.Stop();
-            _usageOutlookCachePolicy.Complete(
+            _machineBriefCachePolicy.Complete(
                 decision,
                 generated,
                 DateTimeOffset.UtcNow);
-            _isUsageOutlookRequestRunning = false;
+            _isMachineBriefRequestRunning = false;
             ApplyShellAtmosphere();
             ApplyPresenceVisualMode();
             if (!_windowCancellationTokenSource.IsCancellationRequested)
             {
-                OverviewPage.RefreshUsageOutlookButton.Content =
-                    "Refresh outlook";
-                OverviewPage.AiOutlookProgressRing.IsActive = false;
-                OverviewPage.AiOutlookProgressRing.Visibility =
+                OverviewPage.RefreshMachineBriefButton.Content =
+                    "Refresh";
+                OverviewPage.MachineBriefProgressRing.IsActive = false;
+                OverviewPage.MachineBriefProgressRing.Visibility =
                     Visibility.Collapsed;
-                UpdateUsageOutlookButtonState();
+                UpdateMachineBriefButtonState();
             }
         }
     }
 
-    private MachineUsageOutlookRequest? CreateUsageOutlookRequest()
+    private MachineBriefRequest? CreateMachineBriefRequest()
     {
-        var forecast = _latestUsageForecast;
-        if (forecast is null || !forecast.HasNextObservedHourForecast)
+        var situation = _latestSituationSnapshot;
+        var runtime = _latestInferenceStatus;
+        if (situation is null || situation.Evidence.Count == 0 ||
+            runtime is null)
         {
             return null;
         }
 
-        var learning = _learningService.GetDashboardSnapshot(
-            DateTimeOffset.UtcNow);
-        var baseline = learning.CurrentBaseline;
-        var relevantPatterns = learning.BroaderPatterns
-            .Where(pattern =>
-                pattern.Confidence == MachineLearningConfidence.Established &&
-                pattern.Freshness != MachineLearningFreshness.Stale)
-            .OrderBy(pattern => forecast.CurrentContext is { } context &&
-                pattern.ActivityState == context.ActivityState
-                    ? 0
-                    : 1)
-            .ThenBy(pattern => pattern.StartHour)
-            .Take(2)
-            .ToArray();
-        return new(
-            forecast,
-            learning.Readiness.MemoryState,
-            baseline?.SampleCount ?? 0,
-            baseline?.ObservedDayCount ?? 0,
-            learning.Readiness.PatternReadiness.TotalProfileCount,
-            learning.Readiness.PatternReadiness.EstablishedProfileCount,
-            relevantPatterns);
+        var modelName = runtime.ConfiguredModelName ??
+            runtime.LoadedModels.FirstOrDefault()?.Name ??
+            "Qwen3.5-4B";
+        var modelIdentity = string.Join(':',
+            modelName,
+            runtime.ConfiguredQuantization ?? "quantization-unavailable",
+            runtime.ModelSha256 ?? "sha-unavailable");
+        var runtimeIdentity = string.Join(':',
+            runtime.RuntimeVersion ?? "version-unavailable",
+            runtime.RuntimeSha ?? "sha-unavailable");
+        return new(situation, modelIdentity, runtimeIdentity);
     }
 
-    private void PresentUsageOutlook(
-        MachineUsageOutlook outlook,
+    private void PresentMachineBrief(
+        MachineBrief brief,
         TimeSpan? elapsed,
         bool fromCache)
     {
-        _latestUsageOutlook = outlook;
-        OverviewPage.AiOutlookText.Text = outlook.Text;
+        _latestMachineBrief = brief;
+        OverviewPage.MachineBriefOverallText.Text = brief.Overall;
+        OverviewPage.MachineBriefPointsList.ItemsSource = brief.Points
+            .Select(point => new MachineBriefPointDisplayItem(point.Text))
+            .ToArray();
+        OverviewPage.MachineBriefOutlookText.Text = brief.Outlook ??
+            string.Empty;
+        OverviewPage.MachineBriefOutlookText.Visibility = brief.Outlook is null
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         var latency = elapsed is { } duration
             ? $" · {duration.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture)}s"
             : string.Empty;
-        OverviewPage.AiOutlookMetadataText.Text = outlook.Source ==
+        OverviewPage.MachineBriefMetadataText.Text = brief.Source ==
                 MachineExplanationSource.DeterministicFallback
-            ? "Precomputed local safeguard"
+            ? "Deterministic local safeguard"
             : fromCache
-                ? $"Cached locally · {outlook.Model}"
-                : $"Generated locally · {outlook.Model}{latency}";
-        OverviewPage.AiOutlookStatusText.Text = string.Empty;
+                ? $"Cached locally · {brief.Model}"
+                : $"Generated locally · {brief.Model}{latency}";
+        OverviewPage.MachineBriefStatusText.Text = string.Empty;
+        LearningPage.UpdateBriefInspection(brief);
     }
 
-    private void UpdateUsageOutlookButtonState()
+    private void UpdateMachineBriefButtonState()
     {
-        OverviewPage.RefreshUsageOutlookButton.IsEnabled =
-            _latestUsageForecast?.HasNextObservedHourForecast == true &&
+        OverviewPage.RefreshMachineBriefButton.IsEnabled =
+            _latestSituationSnapshot?.Evidence.Count > 0 &&
             _isInferenceRuntimeAvailable &&
-            !_usageOutlookCachePolicy.IsRequestInFlight &&
-            !_isUsageOutlookRequestRunning &&
+            !_machineBriefCachePolicy.IsRequestInFlight &&
+            !_isMachineBriefRequestRunning &&
             !_windowCancellationTokenSource.IsCancellationRequested;
     }
 

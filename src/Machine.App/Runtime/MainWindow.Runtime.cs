@@ -471,10 +471,10 @@ public sealed partial class MainWindow
 #if DEBUG
         return _presentationValidationOptions.IsGenerating ||
             _isExplanationRequestRunning ||
-            _isUsageOutlookRequestRunning;
+            _isMachineBriefRequestRunning;
 #else
         return _isExplanationRequestRunning ||
-            _isUsageOutlookRequestRunning;
+            _isMachineBriefRequestRunning;
 #endif
     }
 

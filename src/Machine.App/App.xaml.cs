@@ -95,7 +95,7 @@ public partial class App : Application
             localInferenceRuntime,
             inferenceConfiguration.ModelAlias);
         IMachineStateExplainer machineStateExplainer = localInterpreter;
-        IMachineUsageOutlookGenerator usageOutlookGenerator =
+        IMachineBriefGenerator machineBriefGenerator =
             localInterpreter;
         string? presentationValidationArguments = null;
 #if DEBUG
@@ -117,7 +117,7 @@ public partial class App : Application
             processProvider,
             localInferenceRuntime,
             machineStateExplainer,
-            usageOutlookGenerator,
+            machineBriefGenerator,
             storageProvider,
             folderInspectionProvider,
             softwareInventoryProvider,

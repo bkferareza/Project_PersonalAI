@@ -47,7 +47,7 @@ public sealed partial class MainWindow : Window
     private readonly IMachineProcessProvider _processProvider;
     private readonly ILocalInferenceRuntime _inferenceRuntime;
     private readonly IMachineStateExplainer _machineStateExplainer;
-    private readonly IMachineUsageOutlookGenerator _usageOutlookGenerator;
+    private readonly IMachineBriefGenerator _machineBriefGenerator;
     private readonly IMachineUserActivityProvider _userActivityProvider;
     private readonly IMachineNetworkProvider _networkProvider;
     private readonly IMachineSessionProvider _sessionProvider;
@@ -69,8 +69,7 @@ public sealed partial class MainWindow : Window
     private readonly MachineInsightTriggerPolicy
         _insightTriggerPolicy = new();
     private readonly MachineInsightArbiter _insightArbiter = new();
-    private readonly MachineUsageOutlookCachePolicy
-        _usageOutlookCachePolicy = new();
+    private readonly MachineBriefCachePolicy _machineBriefCachePolicy = new();
     private readonly MachineEnergyAccumulator _energyAccumulator = new(
         Stopwatch.Frequency);
     private readonly CompactPresenceInteraction
@@ -104,7 +103,7 @@ public sealed partial class MainWindow : Window
     private MachineTodayEnergyCostProjection? _latestTodayEnergyCost;
     private MachineHistoryEnergyCostSummary? _latestThirtyDayEnergyCost;
     private MachineUsageForecast? _latestUsageForecast;
-    private MachineUsageOutlook? _latestUsageOutlook;
+    private MachineBrief? _latestMachineBrief;
     private MachineSituationSnapshot? _latestSituationSnapshot;
     private MachineInsightCandidate? _currentInsight;
     private double _pendingHistoryEnergyWattHours;
@@ -118,7 +117,7 @@ public sealed partial class MainWindow : Window
     private bool _windowPresentationConfigured;
     private bool _isInferenceRuntimeAvailable;
     private bool _isExplanationRequestRunning;
-    private bool _isUsageOutlookRequestRunning;
+    private bool _isMachineBriefRequestRunning;
     private bool _isHealthRequestRunning;
     private MachineOverallState _latestOverallState =
         MachineOverallState.Unknown;
@@ -148,7 +147,7 @@ public sealed partial class MainWindow : Window
         IMachineProcessProvider processProvider,
         ILocalInferenceRuntime inferenceRuntime,
         IMachineStateExplainer machineStateExplainer,
-        IMachineUsageOutlookGenerator usageOutlookGenerator,
+        IMachineBriefGenerator machineBriefGenerator,
         IMachineStorageProvider storageProvider,
         IMachineFolderInspectionProvider folderInspectionProvider,
         IMachineSoftwareInventoryProvider softwareInventoryProvider,
@@ -183,7 +182,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(processProvider);
         ArgumentNullException.ThrowIfNull(inferenceRuntime);
         ArgumentNullException.ThrowIfNull(machineStateExplainer);
-        ArgumentNullException.ThrowIfNull(usageOutlookGenerator);
+        ArgumentNullException.ThrowIfNull(machineBriefGenerator);
         ArgumentNullException.ThrowIfNull(storageProvider);
         ArgumentNullException.ThrowIfNull(folderInspectionProvider);
         ArgumentNullException.ThrowIfNull(softwareInventoryProvider);
@@ -217,7 +216,7 @@ public sealed partial class MainWindow : Window
         _processProvider = processProvider;
         _inferenceRuntime = inferenceRuntime;
         _machineStateExplainer = machineStateExplainer;
-        _usageOutlookGenerator = usageOutlookGenerator;
+        _machineBriefGenerator = machineBriefGenerator;
         _userActivityProvider = userActivityProvider;
         _networkProvider = networkProvider;
         _sessionProvider = sessionProvider;
@@ -297,8 +296,8 @@ public sealed partial class MainWindow : Window
     {
         OverviewPage.ExplainMachineStateButton.Click +=
             OnExplainMachineStateClicked;
-        OverviewPage.RefreshUsageOutlookButton.Click +=
-            OnRefreshUsageOutlookClicked;
+        OverviewPage.RefreshMachineBriefButton.Click +=
+            OnRefreshMachineBriefClicked;
 
         HealthPage.RefreshHealthButton.Click += OnRefreshHealthClicked;
 

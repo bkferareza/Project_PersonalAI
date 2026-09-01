@@ -77,8 +77,9 @@ New code should live with its domain or feature rather than in project-wide `Mod
 - Global Learning health, current-context maturity, power maturity, and recurring-pattern readiness are separate facts. Pattern readiness must report the actual sample/day/adjacency blocker without weakening thresholds.
 - Electricity tariffs, currency, cumulative energy, and cost are not learned behavioral metrics. Rate changes never modify learned power baselines, and power-learning updates never trigger inference.
 - Learned usage and power behavior supply deterministic next-observed-hour and evidence-covered end-of-day energy/cost forecasts. Missing future activity or power evidence remains missing and powered-off time is never extrapolated.
-- Qwen receives only bounded precomputed forecast evidence. It may provide a concise interpretation but never authoritatively calculates forecast values, fills missing evidence, or changes posture, Learning, Insight priority, or actions.
-- AI Outlook generation is authorized only when Overview is visible or by explicit refresh, uses a material-evidence runtime cache, and is never triggered by ambient telemetry alone.
+- Qwen receives only the bounded selected Machine Situation evidence. It synthesizes supplied facts but never authoritatively calculates values, fills missing evidence, or changes posture, Learning, forecasts, Insight priority, or actions.
+- Every factual Matasuri Brief statement carries supplied evidence identity internally. Unknown evidence IDs, unsupported numeric or named-entity claims, unauthorized causality, and mutation advice are rejected before presentation; one bounded repair precedes deterministic fallback.
+- Matasuri Brief generation is authorized only when Overview is visible or by explicit refresh, uses a material-Situation runtime cache, and is never triggered by ambient telemetry alone.
 - Insight eligibility, significance, deduplication, cooldown, and priority arbitration are deterministic; Qwen never decides whether an insight should surface.
 - Insight arbitration is reserved for noteworthy evidence; routine persistent status does not compete for the Local Insight slot.
 - Controlled actions require an exact reviewed plan and immediate explicit user approval. Qwen never creates, alters, approves, or executes mutation parameters.

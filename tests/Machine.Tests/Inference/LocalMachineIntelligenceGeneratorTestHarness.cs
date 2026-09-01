@@ -9,7 +9,7 @@ namespace Machine.Tests;
 // Adapts deterministic HTTP capture fixtures to the runtime-neutral generator
 // request. No production type depends on this test transport.
 internal sealed class LocalMachineIntelligenceGeneratorTestHarness
-    : IMachineStateExplainer, IMachineUsageOutlookGenerator
+    : IMachineStateExplainer, IMachineBriefGenerator
 {
     private readonly LocalMachineIntelligenceGenerator _generator;
 
@@ -28,8 +28,8 @@ internal sealed class LocalMachineIntelligenceGeneratorTestHarness
         CancellationToken cancellationToken = default) =>
         _generator.ExplainAsync(request, cancellationToken);
 
-    public Task<MachineUsageOutlook> GenerateAsync(
-        MachineUsageOutlookRequest request,
+    public Task<MachineBrief> GenerateAsync(
+        MachineBriefRequest request,
         CancellationToken cancellationToken = default) =>
         _generator.GenerateAsync(request, cancellationToken);
 

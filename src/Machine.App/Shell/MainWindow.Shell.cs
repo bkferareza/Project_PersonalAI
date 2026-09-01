@@ -654,7 +654,7 @@ public sealed partial class MainWindow
         else if (tag == "overview")
         {
             MarkCurrentInsightViewed();
-            _ = EnsureUsageOutlookAsync(forceRefresh: false);
+            _ = EnsureMachineBriefAsync(forceRefresh: false);
         }
     }
 

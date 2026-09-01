@@ -13,3 +13,5 @@ public sealed partial class OverviewView : UserControl
 public sealed record MachineFindingDisplayItem(
     string Header,
     string Detail);
+
+public sealed record MachineBriefPointDisplayItem(string Text);

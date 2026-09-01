@@ -6,6 +6,8 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Machine.Core;
 
 namespace Machine.Inference;
@@ -34,6 +36,7 @@ public sealed partial class BundledLlamaInferenceRuntime
     private DateTimeOffset? _residencyExpiresAt;
     private TimeSpan? _lastLoadDuration;
     private TimeSpan? _lastGenerationDuration;
+    private long _modelGpuResidentBytes;
     private bool _artifactsValidated;
     private bool _intentionalStop;
     private bool _shutdownStarted;
@@ -84,6 +87,10 @@ public sealed partial class BundledLlamaInferenceRuntime
                 var port = ReserveLoopbackPort();
                 var apiKey = CreateApiKey();
                 var startInfo = CreateStartInfo(port, apiKey);
+                lock (_stateSync)
+                {
+                    _modelGpuResidentBytes = 0;
+                }
                 var loadStopwatch = Stopwatch.StartNew();
                 var process = Process.Start(startInfo) ??
                     throw new InvalidOperationException(
@@ -169,7 +176,7 @@ public sealed partial class BundledLlamaInferenceRuntime
                         "4B",
                         _configuration.Quantization,
                         _configuration.ModelSizeBytes,
-                        ResidentBytes: 0,
+                        ResidentBytes: _modelGpuResidentBytes,
                         ContextLength: _configuration.ContextLength,
                         ExpiresAt: null)
                 ]
@@ -211,7 +218,9 @@ public sealed partial class BundledLlamaInferenceRuntime
                 _lastGenerationDuration,
                 _configuration.ModelName,
                 _configuration.Quantization,
-                _configuration.ModelSizeBytes));
+                _configuration.ModelSizeBytes,
+                _configuration.RuntimeCommit,
+                _configuration.GpuLayerCount));
         }
     }
 
@@ -602,8 +611,42 @@ public sealed partial class BundledLlamaInferenceRuntime
 
     private void OnErrorDataReceived(
         object sender,
-        DataReceivedEventArgs args) =>
+        DataReceivedEventArgs args)
+    {
         _diagnostics.Add("stderr", args.Data);
+        if (args.Data is not { } line)
+        {
+            return;
+        }
+
+        var match = GpuModelBufferRegex().Match(line);
+        if (!match.Success ||
+            !double.TryParse(match.Groups["mib"].Value,
+                NumberStyles.Number,
+                CultureInfo.InvariantCulture,
+                out var mebibytes) ||
+            !double.IsFinite(mebibytes) ||
+            mebibytes <= 0d ||
+            mebibytes > 65_536d)
+        {
+            return;
+        }
+
+        var bytes = (long)Math.Round(
+            mebibytes * 1024d * 1024d,
+            MidpointRounding.AwayFromZero);
+        lock (_stateSync)
+        {
+            _modelGpuResidentBytes = Math.Min(
+                64L * 1024L * 1024L * 1024L,
+                _modelGpuResidentBytes + bytes);
+        }
+    }
+
+    [GeneratedRegex(
+        @"\bCUDA\d+\s+model buffer size\s*=\s*(?<mib>\d+(?:\.\d+)?)\s+MiB\b",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex GpuModelBufferRegex();
 
     private void SetState(
         LocalInferenceModelState state,

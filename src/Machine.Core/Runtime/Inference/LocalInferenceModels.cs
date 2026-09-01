@@ -89,7 +89,9 @@ public sealed record LocalInferenceStatus(
     TimeSpan? LastGenerationDuration = null,
     string? ConfiguredModelName = null,
     string? ConfiguredQuantization = null,
-    long? ConfiguredModelSizeBytes = null);
+    long? ConfiguredModelSizeBytes = null,
+    string? RuntimeSha = null,
+    int? GpuLayerCount = null);
 
 public sealed record LocalInferenceStartResult(
     bool IsAvailable,

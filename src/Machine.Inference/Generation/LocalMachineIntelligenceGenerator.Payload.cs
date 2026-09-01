@@ -381,7 +381,8 @@ public sealed partial class LocalMachineIntelligenceGenerator
         string Detail);
 
     [JsonSerializable(typeof(MachineSnapshotPayload))]
-    [JsonSerializable(typeof(UsageOutlookPayload))]
+    [JsonSerializable(typeof(MachineBriefSituationPayload))]
+    [JsonSerializable(typeof(MachineBriefResponsePayload))]
     private sealed partial class ExplainerJsonSerializerContext
         : JsonSerializerContext
     {

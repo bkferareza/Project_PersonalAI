@@ -287,6 +287,89 @@
                             </StackPanel>
                         </Border>
                         <Border
+                            x:Name="MachineBriefCard" x:FieldModifier="internal"
+                            AutomationProperties.AutomationId="MachineBriefCard"
+                            Style="{StaticResource DashboardCardStyle}">
+                            <StackPanel Spacing="9">
+                                <Grid>
+                                    <TextBlock
+                                        Style="{StaticResource SectionTitleStyle}"
+                                        Text="Matasuri Brief" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        HorizontalAlignment="Right"
+                                        Text="Private · grounded local AI" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="MachineBriefOverallText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="MachineBriefOverallText"
+                                    FontSize="19"
+                                    FontWeight="SemiBold"
+                                    LineHeight="27"
+                                    Text="Open Overview to synthesize the current machine situation."
+                                    TextWrapping="Wrap" />
+                                <ItemsControl
+                                    x:Name="MachineBriefPointsList" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="MachineBriefPointsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:MachineBriefPointDisplayItem">
+                                            <Grid ColumnSpacing="8" Margin="0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Text="•" />
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Text}" TextWrapping="Wrap" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock
+                                    x:Name="MachineBriefOutlookText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="MachineBriefOutlookText"
+                                    FontStyle="Italic"
+                                    TextWrapping="Wrap"
+                                    Visibility="Collapsed" />
+                                <TextBlock
+                                    x:Name="MachineBriefStatusText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="MachineBriefStatusText"
+                                    Style="{StaticResource SecondaryTextStyle}" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        x:Name="MachineBriefMetadataText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="MachineBriefMetadataText"
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="View-authorized · local only"
+                                        TextWrapping="Wrap"
+                                        VerticalAlignment="Center" />
+                                    <ProgressRing
+                                        x:Name="MachineBriefProgressRing" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="MachineBriefProgressRing"
+                                        Grid.Column="1"
+                                        Height="18"
+                                        IsActive="False"
+                                        Visibility="Collapsed"
+                                        VerticalAlignment="Center"
+                                        Width="18" />
+                                    <Button
+                                        x:Name="RefreshMachineBriefButton" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="RefreshMachineBriefButton"
+                                        Content="Refresh"
+                                        FontSize="12"
+                                        Grid.Column="2"
+                                        HorizontalAlignment="Right"
+                                        IsEnabled="False" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        <Border
                             x:Name="CurrentFindingsCard" x:FieldModifier="internal"
                             AutomationProperties.AutomationId="CurrentFindingsCard"
                             Style="{StaticResource DashboardCardStyle}">
@@ -360,52 +443,6 @@
                                         Style="{StaticResource SecondaryTextStyle}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
-                                <TextBlock
-                                    Style="{StaticResource SectionTitleStyle}"
-                                    Text="AI outlook" />
-                                <TextBlock
-                                    x:Name="AiOutlookText" x:FieldModifier="internal"
-                                    AutomationProperties.AutomationId="AiOutlookText"
-                                    FontSize="16"
-                                    LineHeight="23"
-                                    Text="Waiting for learned forecast evidence."
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    x:Name="AiOutlookStatusText" x:FieldModifier="internal"
-                                    AutomationProperties.AutomationId="AiOutlookStatusText"
-                                    Style="{StaticResource SecondaryTextStyle}" />
-                                <Grid ColumnSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        x:Name="AiOutlookMetadataText" x:FieldModifier="internal"
-                                        AutomationProperties.AutomationId="AiOutlookMetadataText"
-                                        FontSize="12"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="View-authorized · local only"
-                                        TextWrapping="Wrap"
-                                        VerticalAlignment="Center" />
-                                    <ProgressRing
-                                        x:Name="AiOutlookProgressRing" x:FieldModifier="internal"
-                                        AutomationProperties.AutomationId="AiOutlookProgressRing"
-                                        Grid.Column="1"
-                                        Height="18"
-                                        IsActive="False"
-                                        Visibility="Collapsed"
-                                        VerticalAlignment="Center"
-                                        Width="18" />
-                                    <Button
-                                        x:Name="RefreshUsageOutlookButton" x:FieldModifier="internal"
-                                        AutomationProperties.AutomationId="RefreshUsageOutlookButton"
-                                        Content="Refresh outlook"
-                                        FontSize="12"
-                                        Grid.Column="2"
-                                        HorizontalAlignment="Right"
-                                        IsEnabled="False" />
-                                </Grid>
                                 <TextBlock
                                     Margin="0,5,0,0"
                                     Style="{StaticResource SectionTitleStyle}"

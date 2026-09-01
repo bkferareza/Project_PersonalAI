@@ -170,6 +170,8 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <TextBlock FontWeight="SemiBold" Text="Runtime" />
                                     <TextBlock x:Name="LearningAiKnowledgeRuntimeText" x:FieldModifier="internal" Grid.Column="1" Text="Checking" TextWrapping="Wrap" />
@@ -179,6 +181,22 @@
                                     <TextBlock x:Name="LearningAiKnowledgePromptText" x:FieldModifier="internal" Grid.Column="1" Grid.Row="2" Text="Checking" TextWrapping="Wrap" />
                                     <TextBlock Grid.Row="3" FontWeight="SemiBold" Text="Validation" />
                                     <TextBlock x:Name="LearningAiKnowledgeValidationText" x:FieldModifier="internal" Grid.Column="1" Grid.Row="3" Text="No generation yet" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="4" FontWeight="SemiBold" Text="Context" />
+                                    <TextBlock
+                                        x:Name="LearningAiKnowledgeContextText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LearningAiKnowledgeContextText"
+                                        Grid.Column="1"
+                                        Grid.Row="4"
+                                        Text="No request assembled yet"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="5" FontWeight="SemiBold" Text="Last request" />
+                                    <TextBlock
+                                        x:Name="LearningAiKnowledgeGenerationText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LearningAiKnowledgeGenerationText"
+                                        Grid.Column="1"
+                                        Grid.Row="5"
+                                        Text="No generation yet"
+                                        TextWrapping="Wrap" />
                                 </Grid>
                                 <Expander Header="Current normalized evidence payload">
                                     <ListView
