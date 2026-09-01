@@ -260,11 +260,16 @@ public static partial class MachineBriefValidator
                 (Name: name, EvidenceId: item.Id)))
             .Where(entity => !string.IsNullOrWhiteSpace(entity.Name))
             .ToArray();
-        foreach (var entity in allEntities.Where(entity => text.Contains(
-            entity.Name, StringComparison.OrdinalIgnoreCase)))
+        var citedEntityNames = cited
+            .SelectMany(item => item.EntityNames)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var entity in allEntities
+            .GroupBy(entity => entity.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Where(entity => text.Contains(
+                entity.Name, StringComparison.OrdinalIgnoreCase)))
         {
-            if (!evidenceIds.Contains(entity.EvidenceId,
-                StringComparer.Ordinal))
+            if (!citedEntityNames.Contains(entity.Name))
             {
                 return Reject(MachineBriefValidationFailure.EntityGrounding,
                     $"Named entity '{entity.Name}' must cite " +

@@ -99,6 +99,27 @@ public sealed class MachineBriefValidatorTests
     }
 
     [Fact]
+    public void EntityMayCiteOneOfSeveralEvidenceItemsThatCarryItsName()
+    {
+        var evidence = MachineBriefTestData.Evidence().Append(new(
+            "recent.incident.latest",
+            MachineSituationCategory.Recently,
+            MachineSituationTimeScope.Recent,
+            MachineSituationImportance.Notable,
+            MachineSituationFreshness.Recent,
+            MachineSituationEvidenceMaturity.Verified,
+            "GbtCloudMatrix.exe was the latest reliability incident.",
+            ["Latest incident"],
+            ["GbtCloudMatrix.exe"])).ToArray();
+
+        var result = MachineBriefValidator.Validate(
+            MachineBriefTestData.ValidDraft(),
+            MachineBriefTestData.Situation(evidence));
+
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
     public void UnsupportedCausalPhraseIsRejected()
     {
         var draft = MachineBriefTestData.ValidDraft() with
