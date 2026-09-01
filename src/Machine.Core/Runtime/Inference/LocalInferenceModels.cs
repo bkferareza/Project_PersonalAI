@@ -37,7 +37,8 @@ public sealed record LocalInferenceRequest(
     int MaximumOutputTokens,
     double Temperature,
     bool DisableReasoning = true,
-    TimeSpan? Timeout = null);
+    TimeSpan? Timeout = null,
+    string? OutputJsonSchema = null);
 
 public sealed record LocalInferenceFailure(
     LocalInferenceFailureKind Kind,

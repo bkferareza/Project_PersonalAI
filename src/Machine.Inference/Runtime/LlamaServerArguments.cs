@@ -37,6 +37,7 @@ public static class LlamaServerArguments
             "--no-mmproj",
             "--threads-http", "2",
             "--timeout", "120",
+            "--verbosity", "4",
             "--cache-prompt");
     }
 

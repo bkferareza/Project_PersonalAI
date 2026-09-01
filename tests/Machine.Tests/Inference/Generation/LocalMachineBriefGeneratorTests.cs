@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Machine.Core;
 using Machine.Inference;
 
@@ -40,6 +41,21 @@ public sealed class LocalMachineBriefGeneratorTests
         Assert.Single(runtime.Requests);
         Assert.Equal(8192, runtime.Requests[0].ContextLength);
         Assert.Equal(320, runtime.Requests[0].MaximumOutputTokens);
+        var schemaText = Assert.IsType<string>(
+            runtime.Requests[0].OutputJsonSchema);
+        using var schema = JsonDocument.Parse(schemaText);
+        var root = schema.RootElement;
+        Assert.False(root.GetProperty("additionalProperties").GetBoolean());
+        Assert.Equal(3, root.GetProperty("properties")
+            .GetProperty("points")
+            .GetProperty("maxItems")
+            .GetInt32());
+        Assert.Equal(
+            ["overall", "overall_evidence_ids", "points", "outlook",
+                "outlook_evidence_ids"],
+            root.GetProperty("required")
+                .EnumerateArray()
+                .Select(item => item.GetString()));
         Assert.Equal("recent.reliability",
             brief.Points[0].EvidenceIds.Single());
         Assert.Equal("forward.next_observed_hour",
@@ -94,6 +110,8 @@ public sealed class LocalMachineBriefGeneratorTests
         Assert.True(brief.Diagnostics.RepairAttempted);
         Assert.Equal(2, brief.Diagnostics.RequestCount);
         Assert.Equal(2, runtime.Requests.Count);
+        Assert.Equal(runtime.Requests[0].OutputJsonSchema,
+            runtime.Requests[1].OutputJsonSchema);
         var repair = runtime.Requests[1].Messages.Single(message =>
             message.Role == LocalInferenceMessageRole.User).Content;
         Assert.Contains("numeric claim", repair,

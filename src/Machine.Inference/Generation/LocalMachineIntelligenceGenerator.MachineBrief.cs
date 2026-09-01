@@ -12,6 +12,64 @@ public sealed partial class LocalMachineIntelligenceGenerator
         "Create the Matasuri Brief from this bounded deterministic situation:";
     private const string BriefRepairMessagePrefix =
         "The previous response was rejected. Correct only the stated contract failure and return JSON only. Do not add facts:";
+    private const string BriefOutputJsonSchema = """
+        {
+          "type": "object",
+          "properties": {
+            "overall": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 280
+            },
+            "overall_evidence_ids": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "maxItems": 5
+            },
+            "points": {
+              "type": "array",
+              "maxItems": 3,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 280
+                  },
+                  "evidence_ids": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "minItems": 1,
+                    "maxItems": 5
+                  }
+                },
+                "required": ["text", "evidence_ids"],
+                "additionalProperties": false
+              }
+            },
+            "outlook": {
+              "type": ["string", "null"],
+              "minLength": 1,
+              "maxLength": 280
+            },
+            "outlook_evidence_ids": {
+              "type": "array",
+              "items": { "type": "string" },
+              "maxItems": 5
+            }
+          },
+          "required": [
+            "overall",
+            "overall_evidence_ids",
+            "points",
+            "outlook",
+            "outlook_evidence_ids"
+          ],
+          "additionalProperties": false
+        }
+        """;
     private static readonly ExplainerJsonSerializerContext
         BriefSerializerContext = new(
             new JsonSerializerOptions
@@ -143,7 +201,8 @@ public sealed partial class LocalMachineIntelligenceGenerator
             MaximumOutputTokens: 320,
             Temperature: 0.1d,
             DisableReasoning: true,
-            Timeout: TimeSpan.FromMinutes(2));
+            Timeout: TimeSpan.FromMinutes(2),
+            OutputJsonSchema: BriefOutputJsonSchema);
 
     private async Task<LocalInferenceResult> TryGenerateBriefAsync(
         LocalInferenceRequest request,

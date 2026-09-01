@@ -846,6 +846,8 @@ public sealed partial class BundledLlamaInferenceRuntime
                 "The bounded local inference message set is invalid.",
                 nameof(request));
         }
+
+        ValidateOutputJsonSchema(request.OutputJsonSchema);
     }
 
     private ChatRequest CreateChatRequest(LocalInferenceRequest request) =>
@@ -864,8 +866,53 @@ public sealed partial class BundledLlamaInferenceRuntime
             Stream: false,
             request.Temperature,
             request.MaximumOutputTokens,
+            ParseOutputJsonSchema(request.OutputJsonSchema),
             new ChatTemplateArguments(
                 EnableThinking: !request.DisableReasoning));
+
+    private static void ValidateOutputJsonSchema(string? schema)
+    {
+        if (schema is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(schema) || schema.Length > 32_768)
+        {
+            throw new ArgumentException(
+                "The bounded output JSON schema is invalid.",
+                nameof(schema));
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(schema);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new ArgumentException(
+                    "The output JSON schema must be an object.",
+                    nameof(schema));
+            }
+        }
+        catch (JsonException exception)
+        {
+            throw new ArgumentException(
+                "The bounded output JSON schema is invalid.",
+                nameof(schema),
+                exception);
+        }
+    }
+
+    private static JsonElement? ParseOutputJsonSchema(string? schema)
+    {
+        if (schema is null)
+        {
+            return null;
+        }
+
+        using var document = JsonDocument.Parse(schema);
+        return document.RootElement.Clone();
+    }
 
     private static LocalInferenceResult InvalidResponse() =>
         new(
@@ -907,6 +954,9 @@ public sealed partial class BundledLlamaInferenceRuntime
         [property: JsonPropertyName("stream")] bool Stream,
         [property: JsonPropertyName("temperature")] double Temperature,
         [property: JsonPropertyName("max_tokens")] int MaximumTokens,
+        [property: JsonPropertyName("json_schema")]
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        JsonElement? JsonSchema,
         [property: JsonPropertyName("chat_template_kwargs")]
         ChatTemplateArguments ChatTemplateArguments);
 

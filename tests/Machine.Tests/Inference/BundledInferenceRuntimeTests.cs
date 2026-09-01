@@ -29,6 +29,7 @@ public sealed class BundledInferenceRuntimeTests
         AssertArgument(arguments, "--parallel", "1");
         AssertArgument(arguments, "--ctx-size", "8192");
         AssertArgument(arguments, "--n-gpu-layers", "99");
+        AssertArgument(arguments, "--verbosity", "4");
         Assert.Contains("--no-ui", arguments);
         Assert.Contains("--no-slots", arguments);
         Assert.Contains("--no-mmproj", arguments);
@@ -183,6 +184,33 @@ public sealed class BundledInferenceRuntimeTests
                 4096,
                 64,
                 0.1d)));
+
+        Assert.Empty(Directory.GetFiles(directory.Path));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("[]")]
+    [InlineData("{not-json}")]
+    public async Task RuntimeRejectsInvalidOutputSchemaBeforeProcessStart(
+        string schema)
+    {
+        using var directory = new TemporaryDirectory();
+        await using var runtime = new BundledLlamaInferenceRuntime(
+            CreateConfiguration(
+                directory.Path,
+                Path.Combine(directory.Path, "missing-model.gguf")));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            runtime.GenerateAsync(new(
+                "qwen3.5:4b",
+                [new LocalInferenceMessage(
+                    LocalInferenceMessageRole.User,
+                    "Hello")],
+                4096,
+                64,
+                0.1d,
+                OutputJsonSchema: schema)));
 
         Assert.Empty(Directory.GetFiles(directory.Path));
     }

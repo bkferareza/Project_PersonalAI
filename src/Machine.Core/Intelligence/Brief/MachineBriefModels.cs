@@ -2,7 +2,7 @@ namespace Machine.Core;
 
 public static class MachineBriefPromptPolicy
 {
-    public const string CurrentVersion = "matasuri-brief-v1";
+    public const string CurrentVersion = "matasuri-brief-v2";
 
     public const int ResponseSchemaVersion = 1;
 

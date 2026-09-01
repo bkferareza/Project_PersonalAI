@@ -661,8 +661,23 @@ public static partial class MachineSituationProjector
         MachineSituationInput input)
     {
         var forecast = input.Forecast;
-        if (forecast?.HasNextObservedHourForecast != true)
+        if (forecast is null)
         {
+            return;
+        }
+        if (!forecast.HasNextObservedHourForecast)
+        {
+            var reason = FormatEnum(forecast.AvailabilityReason);
+            items.Add(Create(
+                "forward.unavailable",
+                MachineSituationCategory.Forward,
+                MachineSituationTimeScope.NextObservedHour,
+                MachineSituationImportance.Context,
+                MachineSituationFreshness.Current,
+                MachineSituationEvidenceMaturity.Unavailable,
+                $"Deterministic forecast is unavailable because {reason}.",
+                ["Unavailable", reason],
+                allowsCausalLanguage: true));
             return;
         }
         var nextValues = NonNull(
@@ -892,7 +907,8 @@ public static partial class MachineSituationProjector
         MachineSituationEvidenceMaturity maturity,
         string summary,
         IReadOnlyList<string> displayValues,
-        IReadOnlyList<string>? entityNames = null) => new(
+        IReadOnlyList<string>? entityNames = null,
+        bool allowsCausalLanguage = false) => new(
         id,
         category,
         timeScope,
@@ -909,7 +925,8 @@ public static partial class MachineSituationProjector
             .Select(value => value.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(8)
-            .ToArray());
+            .ToArray(),
+        allowsCausalLanguage);
 
     private static MachineSituationImportance MapImportance(
         MachineFindingSeverity severity) => severity switch

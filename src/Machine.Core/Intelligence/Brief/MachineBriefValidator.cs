@@ -65,10 +65,11 @@ public static partial class MachineBriefValidator
     {
         "A", "AI", "Active", "Application", "Asleep", "Attention",
         "Available", "Brief", "CPU", "Critical", "Current", "Deterministic",
-        "Early", "End", "Established", "Everything", "Forward", "GPU",
-        "Health", "History", "I", "Idle", "Important", "Learning", "Local",
+        "Early", "End", "Established", "Everything", "Forward", "Future", "GPU",
+        "Forecast", "Forecasting", "Global", "Health", "History", "I",
+        "Idle", "Important", "Learning", "Local",
         "Machine", "Matasuri", "Memory", "No", "Normal", "Not", "Nothing",
-        "Observed", "PC", "Power", "Provisional", "Qwen", "RAM", "Ready",
+        "Observed", "Pattern", "PC", "Power", "Provisional", "Qwen", "RAM", "Ready",
         "Recently", "Reliability", "Routine", "Self", "Stable", "Storage",
         "System", "The", "There", "This", "Today", "Unavailable", "Unknown",
         "VRAM", "Warning", "Windows", "Within", "Your"

@@ -195,8 +195,14 @@ public sealed class MachineSituationProjectorTests
             Forecast = CreateForecast(today, rate, available: false)
         }, Now);
 
-        Assert.DoesNotContain(snapshot.Evidence,
-            item => item.Category == MachineSituationCategory.Forward);
+        var unavailable = Assert.Single(snapshot.Evidence,
+            item => item.Id == "forward.unavailable");
+        Assert.Equal(MachineSituationCategory.Forward,
+            unavailable.Category);
+        Assert.True(unavailable.AllowsCausalLanguage);
+        Assert.Contains("Missing Future Power Evidence",
+            unavailable.Summary,
+            StringComparison.Ordinal);
         Assert.Equal(
             MachineUsageForecastAvailabilityReason.MissingFuturePowerEvidence,
             snapshot.LearningAwareness.ForecastAvailability);
