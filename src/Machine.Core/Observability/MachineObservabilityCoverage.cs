@@ -35,7 +35,7 @@ public static class MachineObservabilityCoverage
         Complete("tasks", "Scheduled tasks"),
         Complete("devices-drivers", "Devices and drivers"),
         Complete("sleep-resume", "Suspend and resume boundaries"),
-        Complete("ollama-runtime", "Local Ollama runtime")
+        Complete("local-inference-runtime", "Matasuri local AI runtime")
     ];
 
     public static IReadOnlyList<MachineObservabilityCapability> V2 { get; } =

@@ -24,7 +24,7 @@ public sealed class MachineObservabilityCoverageTests
             "tasks",
             "devices-drivers",
             "sleep-resume",
-            "ollama-runtime"
+            "local-inference-runtime"
         };
 
         Assert.Equal("READ_ONLY_OBSERVABILITY_V1_COMPLETE",

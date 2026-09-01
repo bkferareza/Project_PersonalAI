@@ -20,11 +20,11 @@ public sealed class MachineInsightTriggerPolicyTests
         var first = policy.ObserveTelemetry(
             attention,
             Start.AddSeconds(10),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         var second = policy.ObserveTelemetry(
             attention,
             Start.AddSeconds(12),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.False(first.ShouldGenerate);
         Assert.True(second.ShouldGenerate);
@@ -47,15 +47,15 @@ public sealed class MachineInsightTriggerPolicyTests
         var spike = policy.ObserveTelemetry(
             attention,
             Start.AddSeconds(10),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         var recoverySample = policy.ObserveTelemetry(
             stable,
             Start.AddSeconds(12),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         var stableAgain = policy.ObserveTelemetry(
             stable,
             Start.AddSeconds(14),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.False(spike.ShouldGenerate);
         Assert.False(recoverySample.ShouldGenerate);
@@ -77,12 +77,12 @@ public sealed class MachineInsightTriggerPolicyTests
         Assert.False(policy.ObserveTelemetry(
             stable,
             Start.AddSeconds(10),
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
 
         var recovery = policy.ObserveTelemetry(
             stable,
             Start.AddSeconds(12),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.True(recovery.ShouldGenerate);
         Assert.Equal(
@@ -93,12 +93,12 @@ public sealed class MachineInsightTriggerPolicyTests
             recovery,
             insightAccepted: true,
             Start.AddSeconds(13),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.False(policy.ObserveTelemetry(
             stable,
             Start.AddMinutes(3),
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
     }
 
     [Fact]
@@ -114,12 +114,12 @@ public sealed class MachineInsightTriggerPolicyTests
         Assert.False(policy.ObserveTelemetry(
             partial,
             Start.AddSeconds(10),
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
 
         var decision = policy.ObserveTelemetry(
             partial,
             Start.AddSeconds(12),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.True(decision.ShouldGenerate);
         Assert.Equal(
@@ -138,7 +138,7 @@ public sealed class MachineInsightTriggerPolicyTests
             var decision = policy.ObserveTelemetry(
                 stable,
                 Start.AddSeconds(10 + index * 2),
-                isOllamaOnline: true);
+                isLocalInferenceAvailable: true);
 
             Assert.False(decision.ShouldGenerate);
         }
@@ -176,11 +176,11 @@ public sealed class MachineInsightTriggerPolicyTests
         Assert.False(policy.ObserveTelemetry(
             reordered,
             Start.AddSeconds(10),
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
         Assert.False(policy.ObserveTelemetry(
             reordered,
             Start.AddSeconds(12),
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
     }
 
     [Fact]
@@ -201,29 +201,29 @@ public sealed class MachineInsightTriggerPolicyTests
         policy.ObserveTelemetry(
             attention,
             Start.AddSeconds(10),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         var firstRequest = policy.ObserveTelemetry(
             attention,
             Start.AddSeconds(12),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         policy.CompleteRequest(
             firstRequest,
             insightAccepted: true,
             Start.AddSeconds(13),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         policy.ObserveTelemetry(
             warning,
             Start.AddSeconds(20),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         var duringCooldown = policy.ObserveTelemetry(
             warning,
             Start.AddSeconds(22),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         var afterCooldown = policy.ObserveTelemetry(
             warning,
             Start.AddSeconds(132),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.False(duringCooldown.ShouldGenerate);
         Assert.True(afterCooldown.ShouldGenerate);
@@ -255,38 +255,38 @@ public sealed class MachineInsightTriggerPolicyTests
         policy.ObserveTelemetry(
             attention,
             Start.AddSeconds(10),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         var active = policy.ObserveTelemetry(
             attention,
             Start.AddSeconds(12),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         policy.ObserveTelemetry(
             warning,
             Start.AddSeconds(14),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         Assert.False(policy.ObserveTelemetry(
             warning,
             Start.AddSeconds(16),
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
         policy.ObserveTelemetry(
             critical,
             Start.AddSeconds(18),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         Assert.False(policy.ObserveTelemetry(
             critical,
             Start.AddSeconds(20),
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
 
         var immediateFollowUp = policy.CompleteRequest(
             active,
             insightAccepted: false,
             Start.AddSeconds(21),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         var coalesced = policy.ObserveTelemetry(
             critical,
             Start.AddSeconds(132),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.False(immediateFollowUp.ShouldGenerate);
         Assert.True(coalesced.ShouldGenerate);
@@ -304,11 +304,11 @@ public sealed class MachineInsightTriggerPolicyTests
         var first = policy.RequestForDashboard(
             stable,
             Start.AddSeconds(10),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         var duplicateWhileActive = policy.RequestForDashboard(
             stable,
             Start.AddSeconds(11),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.True(first.ShouldGenerate);
         Assert.Equal(
@@ -320,13 +320,13 @@ public sealed class MachineInsightTriggerPolicyTests
             first,
             insightAccepted: true,
             Start.AddSeconds(12),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.True(policy.HasInsightForCurrentContext);
         Assert.False(policy.RequestForDashboard(
             stable,
             Start.AddMinutes(3),
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
     }
 
     [Fact]
@@ -342,15 +342,15 @@ public sealed class MachineInsightTriggerPolicyTests
         policy.ObserveTelemetry(
             warning,
             Start.AddSeconds(10),
-            isOllamaOnline: false);
+            isLocalInferenceAvailable: false);
         var offline = policy.ObserveTelemetry(
             warning,
             Start.AddSeconds(12),
-            isOllamaOnline: false);
+            isLocalInferenceAvailable: false);
         var merelyOnline = policy.ObserveTelemetry(
             warning,
             Start.AddSeconds(14),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.False(offline.ShouldGenerate);
         Assert.False(merelyOnline.ShouldGenerate);
@@ -359,7 +359,7 @@ public sealed class MachineInsightTriggerPolicyTests
         Assert.True(policy.RequestForDashboard(
             warning,
             Start.AddSeconds(16),
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
     }
 
     [Fact]
@@ -376,17 +376,17 @@ public sealed class MachineInsightTriggerPolicyTests
         Assert.False(policy.ObserveTelemetry(
             stable,
             Start,
-            isOllamaOnline: true,
+            isLocalInferenceAvailable: true,
             allowAutomaticGeneration: false).ShouldGenerate);
         Assert.False(policy.ObserveTelemetry(
             stable,
             Start.AddSeconds(2),
-            isOllamaOnline: true,
+            isLocalInferenceAvailable: true,
             allowAutomaticGeneration: false).ShouldGenerate);
         Assert.False(policy.ObserveTelemetry(
             hydrated,
             Start.AddSeconds(4),
-            isOllamaOnline: true,
+            isLocalInferenceAvailable: true,
             allowAutomaticGeneration: false).ShouldGenerate);
 
         policy.EstablishBaseline(hydrated);
@@ -394,7 +394,7 @@ public sealed class MachineInsightTriggerPolicyTests
         Assert.False(policy.ObserveTelemetry(
             hydrated,
             Start.AddSeconds(6),
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
         Assert.False(policy.IsRequestInFlight);
     }
 
@@ -406,10 +406,10 @@ public sealed class MachineInsightTriggerPolicyTests
 
         var first = policy.RequestManual(
             stable,
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
         var concurrent = policy.RequestManual(
             stable,
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.True(first.ShouldGenerate);
         Assert.Equal(MachineInsightTriggerReason.Manual, first.Reason);
@@ -419,11 +419,11 @@ public sealed class MachineInsightTriggerPolicyTests
             first,
             insightAccepted: true,
             Start.AddSeconds(10),
-            isOllamaOnline: true);
+            isLocalInferenceAvailable: true);
 
         Assert.True(policy.RequestManual(
             stable,
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
     }
 
     private static MachineInsightTriggerPolicy
@@ -439,11 +439,11 @@ public sealed class MachineInsightTriggerPolicyTests
         Assert.False(policy.ObserveTelemetry(
             snapshot,
             Start,
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
         Assert.False(policy.ObserveTelemetry(
             snapshot,
             Start.AddSeconds(2),
-            isOllamaOnline: true).ShouldGenerate);
+            isLocalInferenceAvailable: true).ShouldGenerate);
 
         return policy;
     }

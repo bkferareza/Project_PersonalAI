@@ -378,9 +378,9 @@ public sealed class MachineHealthFindingsTests
         ]);
 
         var first = policy.ObserveTelemetry(
-            healthAttention, Now, isOllamaOnline: true);
+            healthAttention, Now, isLocalInferenceAvailable: true);
         var second = policy.ObserveTelemetry(
-            healthAttention, Now.AddSeconds(2), isOllamaOnline: true);
+            healthAttention, Now.AddSeconds(2), isLocalInferenceAvailable: true);
 
         Assert.False(first.ShouldGenerate);
         Assert.False(second.ShouldGenerate);

@@ -543,7 +543,7 @@ public sealed class OllamaMachineStateExplainerTests
             systemMessage,
             StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
-            "Do not mention being an AI, language model, or Ollama.",
+            "Do not mention being an AI or language model.",
             systemMessage,
             StringComparison.Ordinal);
     }

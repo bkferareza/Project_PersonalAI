@@ -1,6 +1,5 @@
 using Machine.Core;
 using Machine.Inference;
-using Machine.Ollama;
 using Machine.Windows;
 using Microsoft.UI.Xaml;
 
@@ -9,10 +8,7 @@ namespace Machine.App;
 public partial class App : Application
 {
     private MainWindow? _window;
-    private HttpClient? _ollamaHttpClient;
-    private HttpClient? _ollamaInferenceHttpClient;
     private HttpClient? _electricityRateHttpClient;
-    private ILocalInferenceRuntime? _localInferenceRuntime;
     private IMachineGpuTelemetryProvider? _gpuTelemetryProvider;
     private readonly CancellationTokenSource _appCancellationTokenSource = new();
     private MachineShutdownCoordinator? _shutdownCoordinator;
@@ -83,26 +79,10 @@ public partial class App : Application
             new FileMachineHealthHistoryStore();
         var historyService = new MachineHistoryService();
         IMachineHistoryStore historyStore = new FileMachineHistoryStore();
-        var ollamaHttpClient = new HttpClient
-        {
-            BaseAddress = new Uri(
-                "http://127.0.0.1:11434/",
-                UriKind.Absolute),
-            Timeout = TimeSpan.FromSeconds(2),
-        };
-        _ollamaHttpClient = ollamaHttpClient;
-        var inferenceHttpClient = new HttpClient
-        {
-            BaseAddress = new Uri(
-                "http://127.0.0.1:11434/",
-                UriKind.Absolute),
-            Timeout = TimeSpan.FromMinutes(2),
-        };
-        _ollamaInferenceHttpClient = inferenceHttpClient;
-        var localInferenceRuntime = new OllamaLocalInferenceRuntime(
-            ollamaHttpClient,
-            inferenceHttpClient);
-        _localInferenceRuntime = localInferenceRuntime;
+        var inferenceConfiguration =
+            BundledInferenceConfiguration.LoadDefault();
+        var localInferenceRuntime = new BundledLlamaInferenceRuntime(
+            inferenceConfiguration);
         var electricityRateHttpClient = new HttpClient(
             new HttpClientHandler { AllowAutoRedirect = false })
         {
@@ -113,7 +93,7 @@ public partial class App : Application
             electricityRateHttpClient, new FileElectricityRateCache());
         var localInterpreter = new LocalMachineIntelligenceGenerator(
             localInferenceRuntime,
-            "qwen3.5:4b");
+            inferenceConfiguration.ModelAlias);
         IMachineStateExplainer machineStateExplainer = localInterpreter;
         IMachineUsageOutlookGenerator usageOutlookGenerator =
             localInterpreter;
@@ -182,7 +162,6 @@ public partial class App : Application
         window.StartPresence(
             activationDisposition ==
                 MatasuriActivationDisposition.EstablishAmbientPresence);
-        _ = BootstrapLocalInferenceAsync();
         _ = EnsureStartupTaskEnabledAsync();
         MatasuriActivationRouter.ProcessPendingRedirectedActivation(this);
 #if DEBUG
@@ -261,26 +240,6 @@ public partial class App : Application
         }
     }
 
-    private async Task BootstrapLocalInferenceAsync()
-    {
-        try
-        {
-            if (_localInferenceRuntime is not null)
-            {
-                await _localInferenceRuntime.EnsureAvailableAsync(
-                    _appCancellationTokenSource.Token);
-            }
-        }
-        catch (OperationCanceledException)
-            when (_appCancellationTokenSource.IsCancellationRequested)
-        {
-        }
-        catch
-        {
-            // The regular runtime status flow reports an unavailable runtime.
-        }
-    }
-
     private static async Task EnsureStartupTaskEnabledAsync()
     {
         try
@@ -325,13 +284,8 @@ public partial class App : Application
 
     private void DisposeHttpResources()
     {
-        _ollamaHttpClient?.Dispose();
-        _ollamaHttpClient = null;
-        _ollamaInferenceHttpClient?.Dispose();
-        _ollamaInferenceHttpClient = null;
         _electricityRateHttpClient?.Dispose();
         _electricityRateHttpClient = null;
-        _localInferenceRuntime = null;
         _gpuTelemetryProvider?.Dispose();
         _gpuTelemetryProvider = null;
     }

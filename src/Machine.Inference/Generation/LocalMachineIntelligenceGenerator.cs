@@ -47,7 +47,7 @@ public sealed partial class LocalMachineIntelligenceGenerator
         A broader-pattern claim requires matching_broader_pattern with Established confidence. Never invent a semantic label for a time range.
         A Stale profile is historical evidence only. Do not describe it as the present usual or current typical behavior unless the wording explicitly says it is historical or stale.
         Learned comparisons must never be called an anomaly or a problem.
-        Do not mention being an AI, language model, or Ollama.
+        Do not mention being an AI or language model.
 
         Respond in English only, using concise, natural, precise English.
         Use one short paragraph with no more than 55 words.

@@ -16,7 +16,7 @@
                                 Text="Runtime" />
                             <TextBlock
                                 Style="{StaticResource SecondaryTextStyle}"
-                                Text="Local processes and Ollama status" />
+                                Text="Local processes and app-owned AI status" />
                         </StackPanel>
                         <Border Style="{StaticResource DashboardCardStyle}">
                             <StackPanel Spacing="8">
@@ -50,7 +50,7 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleStyle}"
-                                    Text="Ollama" />
+                                    Text="Local AI" />
                                 <Grid ColumnSpacing="12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
@@ -58,10 +58,10 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock
                                         FontWeight="SemiBold"
-                                        Text="Service" />
+                                        Text="State" />
                                     <TextBlock
-                                        x:Name="OllamaServiceStatusText" x:FieldModifier="internal"
-                                        AutomationProperties.AutomationId="OllamaServiceStatusText"
+                                        x:Name="LocalAiStateText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LocalAiStateText"
                                         Grid.Column="1"
                                         Text="Loading..."
                                         TextWrapping="Wrap" />
@@ -73,10 +73,10 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock
                                         FontWeight="SemiBold"
-                                        Text="Version" />
+                                        Text="Runtime" />
                                     <TextBlock
-                                        x:Name="OllamaVersionText" x:FieldModifier="internal"
-                                        AutomationProperties.AutomationId="OllamaVersionText"
+                                        x:Name="LocalAiRuntimeText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LocalAiRuntimeText"
                                         Grid.Column="1"
                                         Text="Loading..."
                                         TextWrapping="Wrap" />
@@ -85,8 +85,8 @@
                                     FontWeight="SemiBold"
                                     Text="Loaded models" />
                                 <ItemsControl
-                                    x:Name="OllamaRunningModelsList" x:FieldModifier="internal"
-                                    AutomationProperties.AutomationId="OllamaRunningModelsList">
+                                    x:Name="LocalAiRunningModelsList" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LocalAiRunningModelsList">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="local:LocalInferenceModelDisplayItem">
                                             <StackPanel Margin="0,4" Spacing="2">
@@ -105,8 +105,8 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 <TextBlock
-                                    x:Name="OllamaLoadedModelsStatusText" x:FieldModifier="internal"
-                                    AutomationProperties.AutomationId="OllamaLoadedModelsStatusText"
+                                    x:Name="LocalAiLoadedModelsStatusText" x:FieldModifier="internal"
+                                    AutomationProperties.AutomationId="LocalAiLoadedModelsStatusText"
                                     Style="{StaticResource SecondaryTextStyle}"
                                     Text="Loading..." />
                             </StackPanel>

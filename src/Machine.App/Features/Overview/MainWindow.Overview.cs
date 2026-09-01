@@ -185,11 +185,10 @@ public sealed partial class MainWindow
         }
 
         _isInferenceRuntimeAvailable = true;
-        RuntimePage.OllamaServiceStatusText.Text = "Online";
-        RuntimePage.OllamaVersionText.Text = string.IsNullOrWhiteSpace(
-            snapshot.RuntimeVersion)
-            ? UnavailableValue
-            : snapshot.RuntimeVersion;
+        RuntimePage.LocalAiStateText.Text =
+            FormatLocalInferenceState(snapshot.ModelState);
+        RuntimePage.LocalAiRuntimeText.Text =
+            FormatLocalInferenceRuntime(snapshot);
         UpdateUsageOutlookButtonState();
         if (_detailsExpanded &&
             OverviewPage.Visibility == Visibility.Visible)
@@ -201,25 +200,27 @@ public sealed partial class MainWindow
             .Select(CreateInferenceModelDisplayItem)
             .ToArray();
 
-        RuntimePage.OllamaRunningModelsList.ItemsSource = displayItems;
+        RuntimePage.LocalAiRunningModelsList.ItemsSource = displayItems;
 
         if (displayItems.Length == 0)
         {
-            RuntimePage.OllamaLoadedModelsStatusText.Text =
-                "No models currently loaded.";
+            RuntimePage.LocalAiLoadedModelsStatusText.Text =
+                snapshot.ModelState == LocalInferenceModelState.Asleep
+                    ? "Qwen is asleep until local interpretation is requested."
+                    : "No model is currently loaded.";
             UpdateExplainMachineStateButtonState();
             return;
         }
 
-        RuntimePage.OllamaLoadedModelsStatusText.Text = string.Empty;
+        RuntimePage.LocalAiLoadedModelsStatusText.Text = string.Empty;
         UpdateExplainMachineStateButtonState();
     }
 
     private void ShowInferenceUnavailable()
     {
         _isInferenceRuntimeAvailable = false;
-        RuntimePage.OllamaServiceStatusText.Text = "Offline";
-        RuntimePage.OllamaVersionText.Text = UnavailableValue;
+        RuntimePage.LocalAiStateText.Text = "Faulted";
+        RuntimePage.LocalAiRuntimeText.Text = UnavailableValue;
         ClearInferenceModels(
             "Loaded-model status is unavailable.");
         LearningPage.UpdateRuntimeStatus(_latestInferenceStatus);
@@ -234,9 +235,9 @@ public sealed partial class MainWindow
 
     private void ClearInferenceModels(string status)
     {
-        RuntimePage.OllamaRunningModelsList.ItemsSource =
+        RuntimePage.LocalAiRunningModelsList.ItemsSource =
             Array.Empty<LocalInferenceModelDisplayItem>();
-        RuntimePage.OllamaLoadedModelsStatusText.Text = status;
+        RuntimePage.LocalAiLoadedModelsStatusText.Text = status;
     }
 
     private static LocalInferenceModelDisplayItem
@@ -255,8 +256,33 @@ public sealed partial class MainWindow
         return new LocalInferenceModelDisplayItem(
             model.Name,
             $"{parameterSize} · {quantizationLevel}",
-            $"{FormatBytes(model.ResidentBytes)} resident · " +
+            $"{FormatBytes(model.SizeBytes)} model · " +
             $"{model.ContextLength.ToString("N0", CultureInfo.InvariantCulture)} context");
+    }
+
+    private static string FormatLocalInferenceState(
+        LocalInferenceModelState state) => state switch
+        {
+            LocalInferenceModelState.Asleep => "Asleep",
+            LocalInferenceModelState.Loading => "Loading Qwen",
+            LocalInferenceModelState.Ready => "Ready",
+            LocalInferenceModelState.Generating => "Generating",
+            LocalInferenceModelState.Faulted => "Faulted",
+            _ => UnavailableValue
+        };
+
+    private static string FormatLocalInferenceRuntime(
+        LocalInferenceStatus snapshot)
+    {
+        var version = string.IsNullOrWhiteSpace(snapshot.RuntimeVersion)
+            ? UnavailableValue
+            : snapshot.RuntimeVersion;
+        var backend = string.IsNullOrWhiteSpace(snapshot.Backend)
+            ? null
+            : snapshot.Backend;
+        return string.IsNullOrWhiteSpace(backend)
+            ? $"{snapshot.RuntimeName} {version}"
+            : $"{snapshot.RuntimeName} {version} · {backend}";
     }
 
     private async void OnExplainMachineStateClicked(
@@ -473,7 +499,7 @@ public sealed partial class MainWindow
                 decision,
                 insightAccepted: false,
                 DateTimeOffset.UtcNow,
-                isOllamaOnline: false);
+                isLocalInferenceAvailable: false);
             UpdateExplainMachineStateButtonState();
             return;
         }

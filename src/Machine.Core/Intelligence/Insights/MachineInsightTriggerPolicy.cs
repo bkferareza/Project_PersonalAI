@@ -55,7 +55,7 @@ public sealed class MachineInsightTriggerPolicy
     public MachineInsightTriggerDecision ObserveTelemetry(
         MachineFindingsSnapshot snapshot,
         DateTimeOffset observedAt,
-        bool isOllamaOnline,
+        bool isLocalInferenceAvailable,
         bool allowAutomaticGeneration = true)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -101,7 +101,7 @@ public sealed class MachineInsightTriggerPolicy
 
             return TryBeginPendingAutomaticRequest(
                 observedAt,
-                isOllamaOnline);
+                isLocalInferenceAvailable);
         }
 
         var previousState = _currentState;
@@ -120,7 +120,7 @@ public sealed class MachineInsightTriggerPolicy
         return TryBeginAutomaticRequest(
             reason,
             observedAt,
-            isOllamaOnline);
+            isLocalInferenceAvailable);
     }
 
     public void EstablishBaseline(MachineFindingsSnapshot snapshot)
@@ -151,7 +151,7 @@ public sealed class MachineInsightTriggerPolicy
     public MachineInsightTriggerDecision RequestForDashboard(
         MachineFindingsSnapshot snapshot,
         DateTimeOffset requestedAt,
-        bool isOllamaOnline)
+        bool isLocalInferenceAvailable)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -179,16 +179,16 @@ public sealed class MachineInsightTriggerPolicy
         return TryBeginAutomaticRequest(
             MachineInsightTriggerReason.DashboardOpened,
             requestedAt,
-            isOllamaOnline);
+            isLocalInferenceAvailable);
     }
 
     public MachineInsightTriggerDecision RequestManual(
         MachineFindingsSnapshot snapshot,
-        bool isOllamaOnline)
+        bool isLocalInferenceAvailable)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        if (!isOllamaOnline || IsRequestInFlight)
+        if (!isLocalInferenceAvailable || IsRequestInFlight)
         {
             return NoGeneration;
         }
@@ -212,7 +212,7 @@ public sealed class MachineInsightTriggerPolicy
         MachineInsightTriggerDecision request,
         bool insightAccepted,
         DateTimeOffset completedAt,
-        bool isOllamaOnline)
+        bool isLocalInferenceAvailable)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -232,7 +232,7 @@ public sealed class MachineInsightTriggerPolicy
 
         return TryBeginPendingAutomaticRequest(
             completedAt,
-            isOllamaOnline);
+            isLocalInferenceAvailable);
     }
 
     public bool IsCurrentContext(
@@ -268,9 +268,9 @@ public sealed class MachineInsightTriggerPolicy
     private MachineInsightTriggerDecision TryBeginAutomaticRequest(
         MachineInsightTriggerReason reason,
         DateTimeOffset requestedAt,
-        bool isOllamaOnline)
+        bool isLocalInferenceAvailable)
     {
-        if (!isOllamaOnline)
+        if (!isLocalInferenceAvailable)
         {
             _pendingAutomaticRequest = null;
             return NoGeneration;
@@ -299,7 +299,7 @@ public sealed class MachineInsightTriggerPolicy
     private MachineInsightTriggerDecision
         TryBeginPendingAutomaticRequest(
             DateTimeOffset requestedAt,
-            bool isOllamaOnline)
+            bool isLocalInferenceAvailable)
     {
         var pending = _pendingAutomaticRequest;
 
@@ -308,7 +308,7 @@ public sealed class MachineInsightTriggerPolicy
             return NoGeneration;
         }
 
-        if (!isOllamaOnline)
+        if (!isLocalInferenceAvailable)
         {
             _pendingAutomaticRequest = null;
             return NoGeneration;

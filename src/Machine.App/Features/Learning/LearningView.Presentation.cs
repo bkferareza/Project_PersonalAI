@@ -959,12 +959,20 @@ public sealed partial class LearningView
         }
 
         LearningAiRuntimeText.Text = snapshot.IsRuntimeAvailable
-            ? "Online"
-            : "Offline";
+            ? snapshot.ModelState switch
+            {
+                LocalInferenceModelState.Asleep => "Asleep",
+                LocalInferenceModelState.Loading => "Loading Qwen",
+                LocalInferenceModelState.Ready => "Ready",
+                LocalInferenceModelState.Generating => "Generating",
+                LocalInferenceModelState.Faulted => "Faulted",
+                _ => "Status unavailable"
+            }
+            : "Faulted";
         LearningAiModelText.Text = !snapshot.IsRuntimeAvailable
                 ? "Loaded-model status unavailable"
                 : snapshot.LoadedModels.Count == 0
-                    ? "No model loaded"
+                    ? "Qwen unloaded"
                     : snapshot.LoadedModels.Count == 1
                         ? $"{snapshot.LoadedModels[0].Name} loaded"
                         : $"{snapshot.LoadedModels.Count:N0} models loaded";
