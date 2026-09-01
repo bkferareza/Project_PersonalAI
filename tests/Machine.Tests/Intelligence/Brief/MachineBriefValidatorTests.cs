@@ -70,6 +70,32 @@ public sealed class MachineBriefValidatorTests
         Assert.False(result.IsValid);
         Assert.Equal(MachineBriefValidationFailure.EntityGrounding,
             result.Failure);
+        Assert.Contains("Photoshop", result.SafeReason,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EntityLinkedToDifferentEvidenceIdentifiesRequiredCitation()
+    {
+        var draft = MachineBriefTestData.ValidDraft() with
+        {
+            Points =
+            [
+                new("GbtCloudMatrix.exe remains worth watching.",
+                    ["now.posture"])
+            ]
+        };
+
+        var result = MachineBriefValidator.Validate(
+            draft, MachineBriefTestData.Situation());
+
+        Assert.False(result.IsValid);
+        Assert.Equal(MachineBriefValidationFailure.EntityGrounding,
+            result.Failure);
+        Assert.Contains("GbtCloudMatrix.exe", result.SafeReason,
+            StringComparison.Ordinal);
+        Assert.Contains("recent.reliability", result.SafeReason,
+            StringComparison.Ordinal);
     }
 
     [Fact]

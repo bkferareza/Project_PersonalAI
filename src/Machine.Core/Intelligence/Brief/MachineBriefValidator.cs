@@ -267,7 +267,9 @@ public static partial class MachineBriefValidator
                 StringComparer.Ordinal))
             {
                 return Reject(MachineBriefValidationFailure.EntityGrounding,
-                    "A named entity was not linked to its supplied evidence.");
+                    $"Named entity '{entity.Name}' must cite " +
+                    $"'{entity.EvidenceId}' in the same statement or be " +
+                    "omitted.");
             }
         }
 
@@ -283,7 +285,8 @@ public static partial class MachineBriefValidator
                 !allowedEntityTokens.Contains(token.Value))
             {
                 return Reject(MachineBriefValidationFailure.EntityGrounding,
-                    "A named entity was absent from supplied evidence.");
+                    $"Named entity '{token.Value}' is absent from supplied " +
+                    "evidence and must be omitted.");
             }
         }
 
