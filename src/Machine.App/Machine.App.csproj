@@ -27,6 +27,24 @@
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\AppIcon.ico" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <Content Include="..\..\eng\inference\runtime-manifest.json"
+             Link="Inference\Manifests\runtime-manifest.json"
+             TargetPath="Inference\Manifests\runtime-manifest.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\eng\inference\model-manifest.json"
+             Link="Inference\Manifests\model-manifest.json"
+             TargetPath="Inference\Manifests\model-manifest.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="('$(Platform)' == 'x64' Or '$(RuntimeIdentifier)' == 'win-x64') And Exists('..\..\artifacts\local-inference\runtime\b10724\cuda12-x64')">
+    <Content Include="..\..\artifacts\local-inference\runtime\b10724\cuda12-x64\**\*"
+             Link="Inference\Runtime\%(RecursiveDir)%(Filename)%(Extension)"
+             TargetPath="Inference\Runtime\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "modelFamily": "Qwen3.5",
+  "modelName": "Qwen3.5-4B",
+  "architecture": "qwen35",
+  "quantization": "Q4_K_M",
+  "runtimeAlias": "qwen3.5-4b-q4_k_m",
+  "fileName": "qwen3.5-4b-q4_k_m.gguf",
+  "sizeBytes": 2783446752,
+  "sha256": "6a2f5c9005f816a22cce318088045c06575018180d99e59b0d6319c522a9f35d",
+  "ggufVersion": 3,
+  "upstreamSource": "https://huggingface.co/Qwen/Qwen3.5-4B",
+  "upstreamRevision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+  "sourceArtifacts": [
+    {
+      "fileName": "model.safetensors-00001-of-00002.safetensors",
+      "sizeBytes": 5329398688,
+      "sha256": "26a93f066e1916adb13453dae5a0c707c0fbc71299ed98779571a907b8e74c61"
+    },
+    {
+      "fileName": "model.safetensors-00002-of-00002.safetensors",
+      "sizeBytes": 3990429408,
+      "sha256": "cb544bd9bfae93dc59b0f22b292f5933573854a7f9b97835c67060d7d910e188"
+    },
+    {
+      "fileName": "tokenizer.json",
+      "sizeBytes": 12807982,
+      "sha256": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42"
+    }
+  ],
+  "conversion": {
+    "llamaCppCommit": "2d8d612e4c68d3801e556a1b4a028f55ec33ecbb",
+    "converter": "convert_hf_to_gguf.py --outtype bf16",
+    "intermediateFileName": "qwen3.5-4b-bf16.gguf",
+    "intermediateSizeBytes": 8665620192,
+    "intermediateSha256": "3615515d08005112b26e87699fbc009ee6940b160506c99e3c43a4b30206575d",
+    "quantizer": "llama-quantize Q4_K_M",
+    "quantizerSizeBytes": 9216,
+    "quantizerSha256": "884e108a4ae0705b3f9a4b61c6b2d59be54666ac15bb7f6bceabbd446e66064c"
+  },
+  "license": "Apache-2.0",
+  "licenseSource": "https://huggingface.co/Qwen/Qwen3.5-4B/blob/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a/LICENSE",
+  "compatibleLlamaCppRelease": "b10724",
+  "compatibleLlamaCppCommit": "2d8d612e4c68d3801e556a1b4a028f55ec33ecbb",
+  "chatTemplate": "Embedded Qwen3.5 Jinja chat template; requests set enable_thinking=false and provide system/user messages only.",
+  "appOwnedRelativePath": "Matasuri/Inference/Models/qwen3.5-4b-q4_k_m.gguf"
+}

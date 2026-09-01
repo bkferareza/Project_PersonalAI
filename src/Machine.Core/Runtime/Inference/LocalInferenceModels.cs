@@ -77,7 +77,16 @@ public sealed record LocalInferenceStatus(
     int? ProcessId,
     bool IsProcessOwned,
     DateTimeOffset CapturedAt,
-    LocalInferenceFailure? Failure = null);
+    LocalInferenceFailure? Failure = null,
+    DateTimeOffset? StartedAt = null,
+    int? Port = null,
+    string? Backend = null,
+    int? ContextLength = null,
+    string? ModelSha256 = null,
+    TimeSpan? ResidencyRemaining = null,
+    IReadOnlyList<string>? Diagnostics = null,
+    TimeSpan? LastLoadDuration = null,
+    TimeSpan? LastGenerationDuration = null);
 
 public sealed record LocalInferenceStartResult(
     bool IsAvailable,
