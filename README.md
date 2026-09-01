@@ -1,16 +1,16 @@
 # Matasuri
 
-Matasuri is a local-first Windows machine intelligence layer. It observes verified local state, remembers what happened through bounded history, learns only from repeated deterministic evidence, and uses an optional local model to explain that evidence. Normal operation requires no cloud inference, paid API, internet access, remote Ollama, or automatic model download.
+Matasuri is a local-first Windows machine intelligence layer. It observes verified local state, remembers what happened through bounded history, learns only from repeated deterministic evidence, and uses an optional local model to explain that evidence. Normal operation requires no cloud inference, paid API, internet access, separately installed model server, or automatic model download.
 
 `Machine.*` remains the internal project, assembly, namespace, solution, and process naming for now.
 
 ## Technology
 
-C#, .NET 10, WinUI 3, Windows App SDK, and xUnit. The dependency direction remains `Machine.App -> Core, Windows, Ollama`, `Machine.Windows -> Core`, and `Machine.Ollama -> Core`.
+C#, .NET 10, WinUI 3, Windows App SDK, and xUnit. The dependency direction is `Machine.App -> Core, Windows, Inference`, `Machine.Windows -> Core`, and `Machine.Inference -> Core`.
 
 ## Architecture
 
-The solution is organized by domain inside its existing assembly boundaries. `Machine.Core` owns platform-neutral observability and controlled-action contracts plus History, Learning, Intelligence, and Runtime policy. `Machine.Windows` owns deterministic Windows acquisition, the narrow allowlisted Startup mutations, and native interop. `Machine.Ollama` separates local runtime ownership from grounded explanation and payload construction. `Machine.App` composes the shell and lifecycle while feature views own their page presentation. Tests mirror these domains. New code belongs with its domain or feature instead of a project-wide technical-type bucket.
+The solution is organized by domain inside its existing assembly boundaries. `Machine.Core` owns platform-neutral observability and controlled-action contracts plus History, Learning, Intelligence, and Runtime policy. `Machine.Windows` owns deterministic Windows acquisition, the narrow allowlisted Startup mutations, and native interop. `Machine.Inference` owns the private local runtime boundary plus grounded explanation and payload construction. `Machine.App` composes the shell and lifecycle while feature views own their page presentation. Tests mirror these domains. New code belongs with its domain or feature instead of a project-wide technical-type bucket.
 
 ## Current experience
 
@@ -54,9 +54,9 @@ The proactive learned-energy candidate is more conservative than the Learning pr
 
 `learning-activity.json` is a separate bounded local diagnostic trail. It records safe lifecycle, restore, observation, and persistence summaries (not raw telemetry, process, URL, or command data), retains detailed observation events for 48 hours and important lifecycle events for 14 days, and cannot repair or block behavioral learning.
 
-Ollama integration remains transitional and local. Matasuri reuses an existing healthy local service or starts an already-installed `ollama serve`; it never downloads Ollama or a model and never terminates an externally owned server. `qwen3.5:4b` now has two explicit product jobs: `Explain` interprets the selected deterministic Local Insight, while AI Outlook turns a bounded precomputed usage forecast into one to three short grounded sentences. Outlook generation is authorized only by a visible Overview with stale/missing material evidence or by `Refresh outlook`; ambient telemetry, Running Bill updates, learning updates, and prose changes never trigger inference or New Insight.
+Matasuri owns a pinned official llama.cpp CUDA runtime and a checksum-verified Qwen3.5-4B model artifact. It never downloads either artifact during normal operation. The private server runs only as Matasuri's Job-Object-owned child, binds an authenticated random loopback port with no server UI, and starts only for an authorized local interpretation request. `Explain` interprets the selected deterministic Local Insight, while AI Outlook turns a bounded precomputed usage forecast into one to three short grounded sentences. Outlook generation is authorized only by a visible Overview with stale/missing material evidence or by `Refresh outlook`; ambient telemetry, Running Bill updates, learning updates, and prose changes never trigger inference or New Insight.
 
-The Outlook payload contains selected normalized context/maturity, sample/day counts, learned watts/ranges, precomputed next-hour and Today values, optional evidence-covered end-of-day values, at most two fresh Established patterns, and the applicable rate reference. It excludes raw Learning/History stores, hourly buckets, process inventory, location, and arbitrary files. C# owns every number and missing-value decision; Qwen cannot calculate authoritative values or affect posture, Learning, deterministic Insight eligibility, priority, or controlled actions. A 60-minute material-fingerprint runtime cache avoids regeneration for tiny telemetry movement, and the shared local model request uses a 10-minute idle residency to reduce nearby load thrash before Ollama unloads it normally.
+The Outlook payload contains selected normalized context/maturity, sample/day counts, learned watts/ranges, precomputed next-hour and Today values, optional evidence-covered end-of-day values, at most two fresh Established patterns, and the applicable rate reference. It excludes raw Learning/History stores, hourly buckets, process inventory, location, and arbitrary files. C# owns every number and missing-value decision; Qwen cannot calculate authoritative values or affect posture, Learning, deterministic Insight eligibility, priority, or controlled actions. A 60-minute material-fingerprint runtime cache avoids regeneration for tiny telemetry movement, and the shared local model request uses a 10-minute idle residency to reduce nearby load thrash before the private child unloads and releases model memory.
 
 ## Observability coverage
 
@@ -74,7 +74,7 @@ All capabilities below remain read-only except the explicitly reviewed and rever
 | Scheduled tasks | Complete |
 | Devices and drivers | Complete |
 | Suspend/resume boundaries | Complete |
-| Local Ollama runtime | Complete |
+| App-owned local inference runtime | Complete |
 | Historical layer | Complete |
 
 `READ_ONLY_OBSERVABILITY_V1_COMPLETE`

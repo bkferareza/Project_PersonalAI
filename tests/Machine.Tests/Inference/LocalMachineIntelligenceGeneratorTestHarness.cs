@@ -6,15 +6,14 @@ using Machine.Inference;
 
 namespace Machine.Tests;
 
-// Keeps the existing deep prompt/grounding suite focused on the neutral
-// generator while its capture handlers are migrated away from HTTP-shaped
-// fixtures. No production type depends on this transitional test harness.
-internal sealed class OllamaMachineStateExplainer
+// Adapts deterministic HTTP capture fixtures to the runtime-neutral generator
+// request. No production type depends on this test transport.
+internal sealed class LocalMachineIntelligenceGeneratorTestHarness
     : IMachineStateExplainer, IMachineUsageOutlookGenerator
 {
     private readonly LocalMachineIntelligenceGenerator _generator;
 
-    public OllamaMachineStateExplainer(
+    public LocalMachineIntelligenceGeneratorTestHarness(
         HttpClient captureClient,
         string modelName)
     {
@@ -60,18 +59,19 @@ internal sealed class OllamaMachineStateExplainer
             cancellationToken.ThrowIfCancellationRequested();
             var captureRequest = new CaptureRequest(
                 request.Model,
-                false,
-                !request.DisableReasoning,
-                "10m",
+                request.DisableReasoning,
+                request.Timeout is { } timeout
+                    ? (long)timeout.TotalMilliseconds
+                    : null,
                 request.Messages.Select(message => new CaptureMessage(
                     message.Role.ToString().ToLowerInvariant(),
                     message.Content)).ToArray(),
                 new CaptureOptions(
-                    request.Temperature,
                     request.ContextLength,
-                    request.MaximumOutputTokens));
+                    request.MaximumOutputTokens,
+                    request.Temperature));
             using var response = await client.PostAsJsonAsync(
-                "api/chat",
+                "capture",
                 captureRequest,
                 cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
@@ -126,9 +126,9 @@ internal sealed class OllamaMachineStateExplainer
 
     private sealed record CaptureRequest(
         [property: JsonPropertyName("model")] string Model,
-        [property: JsonPropertyName("stream")] bool Stream,
-        [property: JsonPropertyName("think")] bool Think,
-        [property: JsonPropertyName("keep_alive")] string KeepAlive,
+        [property: JsonPropertyName("disable_reasoning")]
+        bool DisableReasoning,
+        [property: JsonPropertyName("timeout_ms")] long? TimeoutMilliseconds,
         [property: JsonPropertyName("messages")]
         CaptureMessage[] Messages,
         [property: JsonPropertyName("options")] CaptureOptions Options);
@@ -138,9 +138,10 @@ internal sealed class OllamaMachineStateExplainer
         [property: JsonPropertyName("content")] string Content);
 
     private sealed record CaptureOptions(
-        [property: JsonPropertyName("temperature")] double Temperature,
-        [property: JsonPropertyName("num_ctx")] int ContextLength,
-        [property: JsonPropertyName("num_predict")] int MaximumOutputTokens);
+        [property: JsonPropertyName("context_length")] int ContextLength,
+        [property: JsonPropertyName("maximum_output_tokens")]
+        int MaximumOutputTokens,
+        [property: JsonPropertyName("temperature")] double Temperature);
 
     private sealed record CaptureResponse(
         [property: JsonPropertyName("model")] string? Model,

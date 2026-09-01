@@ -2,7 +2,6 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Machine.Core;
-using Machine.Ollama;
 
 namespace Machine.Tests;
 
@@ -190,14 +189,16 @@ public sealed class MachineHealthGroundingTests
     }
 
     [Fact]
-    public async Task OllamaPayloadContainsOnlyBoundedSafeHealthContext()
+    public async Task LocalInferencePayloadContainsOnlyBoundedSafeHealthContext()
     {
         using var handler = new CapturingHandler();
         using var client = new HttpClient(handler)
         {
-            BaseAddress = new Uri("http://127.0.0.1:11434/")
+            BaseAddress = new Uri("http://127.0.0.1:24004/")
         };
-        var explainer = new OllamaMachineStateExplainer(client, "qwen3.5:4b");
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
+            client,
+            "qwen3.5:4b");
         var incident = new MachineReliabilityIncident(
             Now.AddHours(-1),
             MachineReliabilityIncidentCategory.ApplicationCrash,

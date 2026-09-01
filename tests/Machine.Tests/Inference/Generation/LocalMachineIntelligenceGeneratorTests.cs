@@ -2,11 +2,10 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Machine.Core;
-using Machine.Ollama;
 
 namespace Machine.Tests;
 
-public sealed class OllamaMachineStateExplainerTests
+public sealed class LocalMachineIntelligenceGeneratorTests
 {
     private const string ModelName = "qwen3.5:4b";
     private const string StableInsight =
@@ -14,7 +13,7 @@ public sealed class OllamaMachineStateExplainerTests
     private const string StableFallback =
         "No deterministic issue is visible in the current snapshot.";
     private static readonly Uri LoopbackBaseAddress =
-        new("http://127.0.0.1:11434/");
+        new("http://127.0.0.1:24001/");
 
     [Fact]
     public async Task ExplainAsyncSendsHardenedRequestAndReturnsLocalModel()
@@ -24,7 +23,7 @@ public sealed class OllamaMachineStateExplainerTests
                 $"  {StableInsight}  ",
                 "qwen3.5:4b-runtime"));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
 
@@ -33,31 +32,28 @@ public sealed class OllamaMachineStateExplainerTests
 
         Assert.Equal(1, handler.CallCount);
         Assert.Equal(HttpMethod.Post, handler.Method);
-        Assert.Equal("/api/chat", handler.RequestUri?.AbsolutePath);
+        Assert.Equal("/capture", handler.RequestUri?.AbsolutePath);
         Assert.Equal(
             ModelName,
             handler.RequestJson.GetProperty("model").GetString());
-        Assert.False(handler.RequestJson
-            .GetProperty("stream")
-            .GetBoolean());
-        Assert.False(handler.RequestJson
-            .GetProperty("think")
+        Assert.True(handler.RequestJson
+            .GetProperty("disable_reasoning")
             .GetBoolean());
         Assert.Equal(
-            "10m",
+            (long)TimeSpan.FromMinutes(2).TotalMilliseconds,
             handler.RequestJson
-                .GetProperty("keep_alive")
-                .GetString());
+                .GetProperty("timeout_ms")
+                .GetInt64());
         var options = handler.RequestJson.GetProperty("options");
         Assert.Equal(
             0.1d,
             options.GetProperty("temperature").GetDouble());
         Assert.Equal(
             4096,
-            options.GetProperty("num_ctx").GetInt32());
+            options.GetProperty("context_length").GetInt32());
         Assert.Equal(
             96,
-            options.GetProperty("num_predict").GetInt32());
+            options.GetProperty("maximum_output_tokens").GetInt32());
         Assert.Equal(
             StableInsight,
             explanation.Text);
@@ -75,7 +71,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(insight, ModelName));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
         var request = CreateExplanationRequest() with
@@ -152,7 +148,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(insight, ModelName));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
         var request = CreateExplanationRequest() with
@@ -264,7 +260,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(StableInsight, ModelName));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
         var current = new MachineHistoryInsightPeriod(
@@ -325,7 +321,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(StableInsight, ModelName));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
         var request = CreateExplanationRequest() with
@@ -367,7 +363,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(insight, ModelName));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
         var request = CreateExplanationRequest() with
@@ -421,7 +417,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(StableInsight, ModelName));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
 
@@ -445,7 +441,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(StableInsight, ModelName));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
 
@@ -567,7 +563,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(modelOutput, ModelName));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
         var request = CreateExplanationRequest() with
@@ -593,7 +589,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse("   ", ModelName));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
         var request = CreateExplanationRequest() with
@@ -629,7 +625,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(
             ToolCallResponse);
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
 
@@ -655,7 +651,7 @@ public sealed class OllamaMachineStateExplainerTests
                     "application/json")
             });
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
 
@@ -675,7 +671,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
 
@@ -690,7 +686,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             throw new TaskCanceledException("Simulated timeout."));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
 
@@ -706,7 +702,7 @@ public sealed class OllamaMachineStateExplainerTests
             throw new InvalidOperationException(
                 "No request should be sent for caller cancellation."));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
         using var cancellationTokenSource =
@@ -726,7 +722,7 @@ public sealed class OllamaMachineStateExplainerTests
         using var handler = new CapturingHttpMessageHandler(() =>
             ChatResponse(StableInsight, ModelName));
         using var httpClient = CreateHttpClient(handler);
-        var explainer = new OllamaMachineStateExplainer(
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
             httpClient,
             ModelName);
         var request = CreateExplanationRequest() with

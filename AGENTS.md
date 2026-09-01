@@ -11,8 +11,8 @@
 - `Matasuri` is the product-facing name.
 - `Machine.*` remains the current internal architecture naming.
 - Build a Windows-first, local-first intelligence layer.
-- Normal operation must not require cloud inference, paid APIs, internet access, remote Ollama, or automatic model downloads.
-- Production inference must eventually be owned and bundled by the application; the current local Ollama integration is transitional.
+- Normal operation must not require cloud inference, paid APIs, internet access, an external model server, or automatic model downloads.
+- Production inference is owned by the application through pinned, verified llama.cpp and Qwen artifacts; no separately installed inference runtime is required.
 - Deterministic Windows capabilities provide verified facts and actions.
 - Application code owns policy, validation, and safety.
 - A language model may interpret or explain verified data, but must never invent machine state or directly execute arbitrary commands.
@@ -27,7 +27,7 @@
 ```text
 src/Machine.Core     → platform-neutral contracts and models
 src/Machine.Windows  → deterministic Windows capabilities
-src/Machine.Ollama   → local Ollama HTTP integration
+src/Machine.Inference → app-owned local inference and grounded generation
 src/Machine.App      → WinUI composition and presentation
 tests/Machine.Tests  → xUnit tests
 ```
@@ -35,9 +35,9 @@ tests/Machine.Tests  → xUnit tests
 Dependency direction:
 
 ```text
-Machine.App → Core, Windows, Ollama
+Machine.App → Core, Windows, Inference
 Machine.Windows → Core
-Machine.Ollama → Core
+Machine.Inference → Core
 ```
 
 Do not reverse these dependencies.
@@ -46,7 +46,7 @@ Do not reverse these dependencies.
 
 - `Machine.Core` groups platform-neutral contracts and deterministic policy by `Actions`, `Observability`, `History`, `Learning`, `Intelligence`, and `Runtime` domains.
 - `Machine.Windows` keeps read-only Windows acquisition under `Observability`, allowlisted deterministic mutations under `Actions`, native boundaries under `Interop`, and process-owned facilities under `Runtime`.
-- `Machine.Ollama` separates local runtime ownership, explanation/context construction, and wire payloads.
+- `Machine.Inference` separates private runtime ownership, explanation/context construction, and local wire payloads.
 - `Machine.App` keeps window composition in `MainWindow`, ambient presence under `Ambient`, shell behavior under `Shell`, lifecycle coordination under `Lifecycle`, and each complete page under `Features`.
 - `Machine.Tests` mirrors the same production domains.
 
@@ -60,7 +60,7 @@ New code should live with its domain or feature rather than in project-wide `Mod
 - Apply SOLID pragmatically; avoid abstraction cathedrals.
 - Do not add packages, projects, frameworks, services, factories, or generic abstractions unless genuinely required.
 - Do not perform unrelated refactors.
-- Keep UI formatting in `Machine.App`, Windows APIs in `Machine.Windows`, Ollama wire details in `Machine.Ollama`, and Core platform-neutral.
+- Keep UI formatting in `Machine.App`, Windows APIs in `Machine.Windows`, local inference/runtime wire details in `Machine.Inference`, and Core platform-neutral.
 - Preserve cancellation, disposal, responsiveness, and previous successful UI data where applicable.
 - Use read-only access unless the task explicitly authorizes a controlled mutation.
 - Never execute arbitrary commands supplied by a model.

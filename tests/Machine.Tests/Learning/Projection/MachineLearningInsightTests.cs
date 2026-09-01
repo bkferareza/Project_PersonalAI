@@ -2,7 +2,6 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Machine.Core;
-using Machine.Ollama;
 
 namespace Machine.Tests;
 
@@ -14,9 +13,11 @@ public sealed class MachineLearningInsightTests
         using var handler = new CapturingHandler();
         using var client = new HttpClient(handler)
         {
-            BaseAddress = new Uri("http://127.0.0.1:11434/")
+            BaseAddress = new Uri("http://127.0.0.1:24003/")
         };
-        var explainer = new OllamaMachineStateExplainer(client, "qwen3.5:4b");
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
+            client,
+            "qwen3.5:4b");
 
         await explainer.ExplainAsync(CreateRequest() with
         {
@@ -55,9 +56,11 @@ public sealed class MachineLearningInsightTests
         using var handler = new CapturingHandler();
         using var client = new HttpClient(handler)
         {
-            BaseAddress = new Uri("http://127.0.0.1:11434/")
+            BaseAddress = new Uri("http://127.0.0.1:24003/")
         };
-        var explainer = new OllamaMachineStateExplainer(client, "qwen3.5:4b");
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
+            client,
+            "qwen3.5:4b");
         var context = CreateContext(includePattern: false);
         var provisional = context.MatchingProfile! with
         {
@@ -181,9 +184,11 @@ public sealed class MachineLearningInsightTests
         using var handler = new CapturingHandler(insight);
         using var client = new HttpClient(handler)
         {
-            BaseAddress = new Uri("http://127.0.0.1:11434/")
+            BaseAddress = new Uri("http://127.0.0.1:24003/")
         };
-        var explainer = new OllamaMachineStateExplainer(client, "qwen3.5:4b");
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
+            client,
+            "qwen3.5:4b");
 
         var result = await explainer.ExplainAsync(CreateRequest() with
         {
@@ -200,9 +205,11 @@ public sealed class MachineLearningInsightTests
         using var handler = new CapturingHandler();
         using var client = new HttpClient(handler)
         {
-            BaseAddress = new Uri("http://127.0.0.1:11434/")
+            BaseAddress = new Uri("http://127.0.0.1:24003/")
         };
-        var explainer = new OllamaMachineStateExplainer(client, "qwen3.5:4b");
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
+            client,
+            "qwen3.5:4b");
         var request = CreateRequest() with
         {
             LearnedContext = CreateContext(),

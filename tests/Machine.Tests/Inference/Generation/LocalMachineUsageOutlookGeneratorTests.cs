@@ -2,11 +2,10 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Machine.Core;
-using Machine.Ollama;
 
 namespace Machine.Tests;
 
-public sealed class OllamaMachineUsageOutlookGeneratorTests
+public sealed class LocalMachineUsageOutlookGeneratorTests
 {
     private const string ModelName = "qwen3.5:4b";
     private const string ValidOutlook =
@@ -14,29 +13,36 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
     private static readonly DateTimeOffset Now =
         new(2026, 8, 28, 14, 0, 0, TimeSpan.Zero);
     private static readonly Uri Loopback =
-        new("http://127.0.0.1:11434/");
+        new("http://127.0.0.1:24002/");
 
     [Fact]
-    public async Task OutlookUsesSharedChatPipelineAndTenMinuteResidency()
+    public async Task OutlookUsesRuntimeNeutralGenerationRequest()
     {
         using var handler = new CaptureHandler(() =>
             ChatResponse(ValidOutlook, "qwen3.5:4b-runtime"));
         using var client = Client(handler);
-        var generator = new OllamaMachineStateExplainer(client, ModelName);
+        var generator = new LocalMachineIntelligenceGeneratorTestHarness(
+            client,
+            ModelName);
 
         var outlook = await generator.GenerateAsync(Request());
 
         Assert.Equal(1, handler.CallCount);
-        Assert.Equal("/api/chat", handler.RequestUri?.AbsolutePath);
+        Assert.Equal("/capture", handler.RequestUri?.AbsolutePath);
         Assert.Equal(ModelName,
             handler.Json.GetProperty("model").GetString());
-        Assert.Equal("10m",
-            handler.Json.GetProperty("keep_alive").GetString());
-        Assert.False(handler.Json.GetProperty("stream").GetBoolean());
-        Assert.False(handler.Json.GetProperty("think").GetBoolean());
+        Assert.True(handler.Json
+            .GetProperty("disable_reasoning").GetBoolean());
+        Assert.Equal(
+            (long)TimeSpan.FromMinutes(2).TotalMilliseconds,
+            handler.Json.GetProperty("timeout_ms").GetInt64());
         var options = handler.Json.GetProperty("options");
-        Assert.Equal(2048, options.GetProperty("num_ctx").GetInt32());
-        Assert.Equal(128, options.GetProperty("num_predict").GetInt32());
+        Assert.Equal(
+            2048,
+            options.GetProperty("context_length").GetInt32());
+        Assert.Equal(
+            128,
+            options.GetProperty("maximum_output_tokens").GetInt32());
         Assert.Equal(ValidOutlook, outlook.Text);
         Assert.Equal("qwen3.5:4b-runtime", outlook.Model);
         Assert.Equal(MachineExplanationSource.LocalModel, outlook.Source);
@@ -48,7 +54,9 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
         using var handler = new CaptureHandler(() =>
             ChatResponse(ValidOutlook, ModelName));
         using var client = Client(handler);
-        var generator = new OllamaMachineStateExplainer(client, ModelName);
+        var generator = new LocalMachineIntelligenceGeneratorTestHarness(
+            client,
+            ModelName);
 
         await generator.GenerateAsync(Request());
 
@@ -99,7 +107,9 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
         using var handler = new CaptureHandler(() =>
             ChatResponse(ValidOutlook, ModelName));
         using var client = Client(handler);
-        var generator = new OllamaMachineStateExplainer(client, ModelName);
+        var generator = new LocalMachineIntelligenceGeneratorTestHarness(
+            client,
+            ModelName);
 
         await generator.GenerateAsync(Request());
 
@@ -146,7 +156,9 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
                 "There is not enough learned evidence for an end-of-day projection yet.",
                 ModelName));
         using var client = Client(handler);
-        var generator = new OllamaMachineStateExplainer(client, ModelName);
+        var generator = new LocalMachineIntelligenceGeneratorTestHarness(
+            client,
+            ModelName);
         var original = Request();
         var request = original with
         {
@@ -193,7 +205,9 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
                 "There is not enough learned coverage for a reliable end-of-day projection yet.",
                 ModelName));
         using var client = Client(handler);
-        var generator = new OllamaMachineStateExplainer(client, ModelName);
+        var generator = new LocalMachineIntelligenceGeneratorTestHarness(
+            client,
+            ModelName);
         var original = Request();
         var request = original with
         {
@@ -230,7 +244,9 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
                 "The projected energy is 999.999 kWh.",
                 ModelName));
         using var client = Client(handler);
-        var generator = new OllamaMachineStateExplainer(client, ModelName);
+        var generator = new LocalMachineIntelligenceGeneratorTestHarness(
+            client,
+            ModelName);
         var request = Request();
         var before = request.Forecast;
 
@@ -247,7 +263,7 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
     {
         using var toolHandler = new CaptureHandler(ToolResponse);
         using var toolClient = Client(toolHandler);
-        var toolGenerator = new OllamaMachineStateExplainer(
+        var toolGenerator = new LocalMachineIntelligenceGeneratorTestHarness(
             toolClient,
             ModelName);
         var toolResult = await toolGenerator.GenerateAsync(Request());
@@ -261,7 +277,7 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
                     "application/json")
             });
         using var malformedClient = Client(malformedHandler);
-        var malformedGenerator = new OllamaMachineStateExplainer(
+        var malformedGenerator = new LocalMachineIntelligenceGeneratorTestHarness(
             malformedClient,
             ModelName);
         var malformed = await malformedGenerator.GenerateAsync(Request());
@@ -275,7 +291,7 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
         using var failureHandler = new CaptureHandler(() =>
             new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         using var failureClient = Client(failureHandler);
-        var generator = new OllamaMachineStateExplainer(
+        var generator = new LocalMachineIntelligenceGeneratorTestHarness(
             failureClient,
             ModelName);
         await Assert.ThrowsAsync<HttpRequestException>(() =>
@@ -284,7 +300,7 @@ public sealed class OllamaMachineUsageOutlookGeneratorTests
         using var cancellationHandler = new CaptureHandler(() =>
             throw new InvalidOperationException("Must not send."));
         using var cancellationClient = Client(cancellationHandler);
-        var cancelledGenerator = new OllamaMachineStateExplainer(
+        var cancelledGenerator = new LocalMachineIntelligenceGeneratorTestHarness(
             cancellationClient,
             ModelName);
         using var source = new CancellationTokenSource();
