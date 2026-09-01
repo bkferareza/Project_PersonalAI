@@ -6,6 +6,10 @@ and converts the official Qwen3.5-4B revision
 Large archives, extracted native files, source weights, and converted models
 are deliberately excluded from Git.
 
+Artifact provenance and license notices are recorded in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). Exact file hashes remain
+authoritative in the two checked-in manifests.
+
 Developer preparation is explicit and separate from build/runtime:
 
 ```powershell

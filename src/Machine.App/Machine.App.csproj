@@ -37,6 +37,11 @@
              TargetPath="Inference\Manifests\model-manifest.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\eng\inference\THIRD_PARTY_NOTICES.md"
+             Link="Inference\THIRD_PARTY_NOTICES.md"
+             TargetPath="Inference\THIRD_PARTY_NOTICES.md"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup Condition="('$(Platform)' == 'x64' Or '$(RuntimeIdentifier)' == 'win-x64') And Exists('..\..\artifacts\local-inference\runtime\b10724\cuda12-x64')">
