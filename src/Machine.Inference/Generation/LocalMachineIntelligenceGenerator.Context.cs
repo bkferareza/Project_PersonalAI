@@ -8,52 +8,51 @@ public sealed partial class LocalMachineIntelligenceGenerator
     private static string CreateUserMessage(
         MachineStateExplanationRequest request)
     {
-        var isBoundedLearnedInsight = request.CurrentInsight?.Kind ==
-            MachineInsightKind.LearnedEnergyDeviation;
+        var isExplicitInsight = request.CurrentInsight is not null;
         var payload = new MachineSnapshotPayload(
-            CpuUsagePercent: isBoundedLearnedInsight
+            CpuUsagePercent: isExplicitInsight
                 ? null
                 : request.Resources.CpuUsagePercent,
-            MemoryUsagePercent: isBoundedLearnedInsight
+            MemoryUsagePercent: isExplicitInsight
                 ? null
                 : CalculateMemoryUsagePercent(request.Resources),
-            UsedMemoryBytes: isBoundedLearnedInsight
+            UsedMemoryBytes: isExplicitInsight
                 ? null
                 : request.Resources.UsedMemoryBytes,
-            TotalMemoryBytes: isBoundedLearnedInsight
+            TotalMemoryBytes: isExplicitInsight
                 ? null
                 : request.Resources.TotalMemoryBytes,
-            Storage: isBoundedLearnedInsight
+            Storage: isExplicitInsight
                 ? null
                 : CreateStoragePayload(request.Storage),
-            Software: isBoundedLearnedInsight
+            Software: isExplicitInsight
                 ? null
                 : CreateSoftwarePayload(request.Software),
-            Startup: isBoundedLearnedInsight
+            Startup: isExplicitInsight
                 ? null
                 : CreateStartupPayload(request.Startup),
-            Findings: isBoundedLearnedInsight
+            Findings: isExplicitInsight
                 ? null
                 : CreateFindingsPayload(request.Findings),
-            LearnedContext: isBoundedLearnedInsight
+            LearnedContext: isExplicitInsight
                 ? null
                 : CreateLearnedContextPayload(request.LearnedContext),
-            Network: isBoundedLearnedInsight
+            Network: isExplicitInsight
                 ? null
                 : CreateNetworkPayload(request.Network),
-            Session: isBoundedLearnedInsight
+            Session: isExplicitInsight
                 ? null
                 : CreateSessionPayload(request.Session),
-            Health: isBoundedLearnedInsight
+            Health: isExplicitInsight
                 ? null
                 : CreateHealthPayload(request.Health),
-            History: isBoundedLearnedInsight
+            History: isExplicitInsight
                 ? null
                 : CreateHistoryPayload(request.History),
-            Gpu: isBoundedLearnedInsight
+            Gpu: isExplicitInsight
                 ? null
                 : CreateGpuPayload(request.Gpu),
-            EnergyCost: isBoundedLearnedInsight
+            EnergyCost: isExplicitInsight
                 ? null
                 : CreateEnergyCostPayload(request.EnergyCost),
             CurrentInsight: CreateCurrentInsightPayload(

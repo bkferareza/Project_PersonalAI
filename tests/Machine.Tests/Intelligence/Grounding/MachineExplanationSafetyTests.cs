@@ -80,6 +80,15 @@ public sealed class MachineExplanationSafetyTests
             CreateFindings(MachineOverallState.Stable)));
     }
 
+    [Fact]
+    public void ValidatorAllowsSystemAsAnOrdinaryMachineNoun()
+    {
+        Assert.True(MachineExplanationValidator.IsValid(
+            "The system remains stable.",
+            ["System", "render-worker"],
+            CreateFindings(MachineOverallState.Stable)));
+    }
+
     [Theory]
     [InlineData("Mabigat ito kasi maraming trabaho.")]
     [InlineData("Sila ang nag-o-occupy ng resources.")]

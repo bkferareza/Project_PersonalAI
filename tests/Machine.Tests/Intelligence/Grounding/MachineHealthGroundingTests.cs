@@ -151,6 +151,50 @@ public sealed class MachineHealthGroundingTests
     }
 
     [Fact]
+    public void GroundedExecutableNameDoesNotConsumeASentence()
+    {
+        var health = Health(
+            crashes: 14,
+            hangs: 1,
+            recurring: new MachineRecurringApplicationFailure(
+                "SomeApp.exe", 34, 12, Now.AddHours(-1)));
+
+        Assert.True(IsValid(
+            "The machine remains stable. Windows recorded 12 crashes or " +
+            "hangs of SomeApp.exe this week.",
+            health,
+            ["SomeApp"]));
+    }
+
+    [Fact]
+    public void ReliabilityPeriodDoesNotRequireResourceHistory()
+    {
+        var health = Health(
+            crashes: 14,
+            hangs: 1,
+            recurring: new MachineRecurringApplicationFailure(
+                "SomeApp.exe", 12, 12, Now.AddHours(-1)));
+
+        Assert.True(IsValid(
+            "Windows recorded 12 crashes or hangs of SomeApp.exe during " +
+            "the last 7 days. This application failure history warrants " +
+            "a closer look.",
+            health,
+            ["SomeApp"]));
+    }
+
+    [Fact]
+    public void ReliabilityPeriodDoesNotAuthorizeUnrelatedRecentHistory()
+    {
+        var health = Health(crashes: 1);
+
+        Assert.False(IsValid(
+            "Resource use matched its recent average. Windows recorded " +
+            "1 crash in the last 7 days.",
+            health));
+    }
+
+    [Fact]
     public void RecurringAggregateDoesNotProveASpecificHang()
     {
         var health = Health(

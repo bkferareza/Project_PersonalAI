@@ -400,7 +400,7 @@ public static class MachineExplanationValidator
             ContainsUnsupportedNetworkClaim(text, network) ||
             ContainsUnsupportedHealthClaim(text, health) ||
             ContainsIncorrectHealthCount(text, health) ||
-            ContainsUnsupportedHistoryClaim(text, history) ||
+            ContainsUnsupportedHistoryClaim(text, history, health) ||
             ContainsUnsupportedGpuClaim(text, gpu, history) ||
             ContainsUnsupportedPersonalizedComparison(
                 text,
@@ -434,15 +434,58 @@ public static class MachineExplanationValidator
 
     private static bool ContainsUnsupportedHistoryClaim(
         string text,
-        MachineHistoryInsightContext? history)
+        MachineHistoryInsightContext? history,
+        MachineHealthInsightContext? health)
     {
-        if (!RecentComparisonLanguage.IsMatch(text))
+        var matches = RecentComparisonLanguage.Matches(text);
+        if (matches.Count == 0 || history?.RecentComparable is not null)
         {
             return false;
         }
 
-        return history?.RecentComparable is null;
+        return matches.Any(match =>
+        {
+            var sentence = GetSentenceContaining(text, match.Index);
+            return health?.ReliabilityLast7Days is null ||
+                !ContainsAny(
+                    sentence,
+                    [
+                        "crash", "hang", "unexpected shutdown",
+                        "hardware error", "hardware failure",
+                        "update failure", "reliability"
+                    ]);
+        });
     }
+
+    private static string GetSentenceContaining(string text, int index)
+    {
+        var start = 0;
+        for (var position = index - 1; position >= 0; position--)
+        {
+            if (IsSentenceBoundary(text, position))
+            {
+                start = position + 1;
+                break;
+            }
+        }
+
+        var end = text.Length;
+        for (var position = index; position < text.Length; position++)
+        {
+            if (IsSentenceBoundary(text, position))
+            {
+                end = position + 1;
+                break;
+            }
+        }
+
+        return text[start..end];
+    }
+
+    private static bool IsSentenceBoundary(string text, int index) =>
+        text[index] is '!' or '?' ||
+        text[index] == '.' &&
+        (index == text.Length - 1 || char.IsWhiteSpace(text[index + 1]));
 
     private static bool ContainsUnsupportedGpuClaim(
         string text,
@@ -1400,8 +1443,12 @@ public static class MachineExplanationValidator
                 index < text.Length - 1 &&
                 char.IsDigit(text[index - 1]) &&
                 char.IsDigit(text[index + 1]);
+            var isEmbeddedTokenPoint = index > 0 &&
+                index < text.Length - 1 &&
+                char.IsLetterOrDigit(text[index - 1]) &&
+                char.IsLetterOrDigit(text[index + 1]);
 
-            if (!isDecimalPoint)
+            if (!isDecimalPoint && !isEmbeddedTokenPoint)
             {
                 count++;
             }
@@ -1439,6 +1486,10 @@ public static class MachineExplanationValidator
         currentProcessNames
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(name => name.Trim())
+            .Where(name => !string.Equals(
+                name,
+                "System",
+                StringComparison.OrdinalIgnoreCase))
             .Where(name => !allowedApplicationNames.Any(allowed =>
                 string.Equals(
                     allowed,

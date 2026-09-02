@@ -491,6 +491,18 @@ public sealed class LocalMachineIntelligenceGeneratorTests
             systemMessage,
             StringComparison.Ordinal);
         Assert.Contains(
+            "A pending restart does not prove that an update is pending",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "If pending_update_count is null",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "When current_insight is present, explain only that selected insight",
+            systemMessage,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "Never attribute a cause unless an exact deterministic finding",
             systemMessage,
             StringComparison.Ordinal);
@@ -784,6 +796,43 @@ public sealed class LocalMachineIntelligenceGeneratorTests
             payload.GetProperty("history").ValueKind);
         Assert.Equal(JsonValueKind.Null,
             payload.GetProperty("learned_context").ValueKind);
+    }
+
+    [Fact]
+    public async Task ExplicitFindingExplanationCarriesOnlySelectedInsight()
+    {
+        using var handler = new CapturingHttpMessageHandler(() =>
+            ChatResponse(StableInsight, ModelName));
+        using var httpClient = CreateHttpClient(handler);
+        var explainer = new LocalMachineIntelligenceGeneratorTestHarness(
+            httpClient,
+            ModelName);
+        var request = CreateExplanationRequest() with
+        {
+            CurrentInsight = new MachineInsightExplainContext(
+                "finding.health.reliability.application-recurrence",
+                MachineInsightKind.MachineFinding,
+                "Application failures have recurred",
+                "Worth a closer look",
+                "Windows recorded 10 crashes or hangs of SomeApp.exe " +
+                    "during the last 7 days.",
+                "Verified deterministic finding")
+        };
+
+        await explainer.ExplainAsync(request);
+
+        var payload = GetUserPayload(handler.RequestJson);
+        Assert.Equal(
+            "finding.health.reliability.application-recurrence",
+            payload.GetProperty("current_insight")
+                .GetProperty("candidate_id")
+                .GetString());
+        Assert.Equal(JsonValueKind.Null,
+            payload.GetProperty("findings").ValueKind);
+        Assert.Equal(JsonValueKind.Null,
+            payload.GetProperty("health").ValueKind);
+        Assert.Equal(JsonValueKind.Null,
+            payload.GetProperty("cpu_usage_percent").ValueKind);
     }
 
     private static MachineStateExplanationRequest
