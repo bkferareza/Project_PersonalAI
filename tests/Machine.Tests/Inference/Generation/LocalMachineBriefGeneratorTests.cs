@@ -117,6 +117,10 @@ public sealed class LocalMachineBriefGeneratorTests
         Assert.Contains("numeric claim", repair,
             StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("9.999", repair, StringComparison.Ordinal);
+        Assert.Contains("stricter extractive repair contract", repair,
+            StringComparison.Ordinal);
+        Assert.Contains("Do not combine, paraphrase", repair,
+            StringComparison.Ordinal);
     }
 
     [Fact]

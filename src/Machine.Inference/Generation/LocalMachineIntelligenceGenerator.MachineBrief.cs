@@ -11,7 +11,14 @@ public sealed partial class LocalMachineIntelligenceGenerator
     private const string BriefUserMessagePrefix =
         "Create the Matasuri Brief from this bounded deterministic situation:";
     private const string BriefRepairMessagePrefix =
-        "The previous response was rejected. Correct only the stated contract failure and return JSON only. Do not add facts:";
+        """
+        The previous response was rejected. Return JSON only using this stricter extractive repair contract:
+        Copy the now.posture summary exactly into overall and cite now.posture alone.
+        Select up to three of the most important supplied evidence items for points. Copy each selected item's complete summary exactly into its own text field and cite only that item's ID.
+        Use fewer points when fewer distinct non-posture items exist. Never repeat an evidence ID or the overall summary in points. Do not fill unused point slots with placeholders or commentary.
+        Do not combine, paraphrase, prefix, shorten, or append to copied summaries. Omit any summary containing causal language unless its allows_causal_language is true.
+        Set outlook to null and outlook_evidence_ids to []. Do not add facts.
+        """;
     private const string BriefOutputJsonSchema = """
         {
           "type": "object",

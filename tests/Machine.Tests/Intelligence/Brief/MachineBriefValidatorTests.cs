@@ -236,6 +236,20 @@ public sealed class MachineBriefValidatorTests
     }
 
     [Fact]
+    public void VerbatimSummaryCapitalizationIsNotAnInventedEntity()
+    {
+        const string summary = "Restart pending: Pending File Rename.";
+        var evidence = EvidenceWithPendingRestart().Select(item =>
+            item.Id == "now.reboot" ? item with { Summary = summary } : item)
+            .ToArray();
+
+        Assert.True(ValidatePoint(summary, ["now.reboot"], evidence).IsValid);
+        Assert.Equal(MachineBriefValidationFailure.EntityGrounding,
+            ValidatePoint("Photoshop has a pending restart.",
+                ["now.reboot"], evidence).Failure);
+    }
+
+    [Fact]
     public void CausalPermissionDoesNotAuthorizeAnUnrelatedRelationship()
     {
         const string summary = "History is unavailable because observation is paused.";

@@ -359,10 +359,15 @@ public static partial class MachineBriefValidator
                 .Cast<Match>())
             .Select(match => match.Value)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // A verbatim deterministic summary is already an identified fact.
+        // Sentence/title capitalization (for example Pending File Rename)
+        // is not a newly invented named entity in that extractive case.
+        var copiesSummary = cited.Any(item => IsSuppliedStatement(text, item));
         foreach (Match token in EntityLikeTokenRegex().Matches(text))
         {
             if (!CommonCapitalizedWords.Contains(token.Value) &&
-                !allowedEntityTokens.Contains(token.Value))
+                !allowedEntityTokens.Contains(token.Value) &&
+                !copiesSummary)
             {
                 return Reject(MachineBriefValidationFailure.EntityGrounding,
                     $"Named entity '{token.Value}' is absent from supplied " +
