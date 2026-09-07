@@ -25,7 +25,12 @@ public static partial class MachineBriefValidator
         "responsible for",
         "therefore",
         "drove",
-        "driven by"
+        "driven by",
+        "blocking",
+        "blocks",
+        "preventing",
+        "prevents",
+        "requires a restart"
     ];
 
     private static readonly string[] MutationPhrases =
@@ -69,7 +74,7 @@ public static partial class MachineBriefValidator
         "Forecast", "Forecasting", "Global", "Health", "History", "I",
         "Idle", "Important", "Learning", "Local",
         "Machine", "Matasuri", "Memory", "No", "Normal", "Not", "Nothing",
-        "Observed", "Pattern", "PC", "Power", "Provisional", "Qwen", "RAM", "Ready",
+        "Observed", "Pattern", "PC", "Pending", "Power", "Provisional", "Qwen", "RAM", "Ready",
         "Recently", "Reliability", "Routine", "Self", "Stable", "Storage",
         "System", "The", "There", "This", "Today", "Unavailable", "Unknown",
         "VRAM", "Warning", "Windows", "Within", "Your"
@@ -89,6 +94,19 @@ public static partial class MachineBriefValidator
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRegex();
+
+    [GeneratedRegex(
+        @"\b(?:within|outside|above|below|beyond|exceeds?|exceeding|matches?|matching|aligns?|aligned)\b.*\b(?:learned|normal|typical|usual|expected|baselines?|ranges?)\b|" +
+        @"\b(?:normal|typical|usual|expected)\b.*\b(?:resources?|CPU|memory|GPU|power|usage|utilization)\b|" +
+        @"\b(?:resources?|CPU|memory|GPU|power|usage|utilization)\b.*\b(?:normal|typical|usual|expected)\b",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex ResourceComparisonRegex();
+
+    [GeneratedRegex(@"\b(?:queued|scheduled|planned|automatic|automatically)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex RestartScheduleRegex();
+
+    [GeneratedRegex(@"\b(?:shutdowns?|shut-downs?|reboots?|restarts?)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SystemLifecycleRegex();
 
     public static MachineBriefValidationResult Validate(
         MachineBriefDraft? draft,
@@ -216,10 +234,56 @@ public static partial class MachineBriefValidator
         var cited = evidenceIds.Select(id => evidence[id]).ToArray();
         if (CausalPhrases.Any(phrase => text.Contains(
                 phrase, StringComparison.OrdinalIgnoreCase)) &&
-            !cited.Any(item => item.AllowsCausalLanguage))
+            !cited.Any(item => item.AllowsCausalLanguage &&
+                IsSuppliedStatement(text, item)))
         {
             return Reject(MachineBriefValidationFailure.Causality,
-                "A causal claim was not authorized by deterministic evidence.");
+                "A causal claim was not authorized by deterministic evidence. " +
+                "Remove causal connectives such as because, due to, requires, " +
+                "and blocking from overall and points. State unavailable or " +
+                "pending status without explaining a cause.");
+        }
+
+        // Numeric/entity token membership alone cannot prove a relationship.
+        // Keep these high-risk claims extractive; the model may synthesize the
+        // surrounding assessment, but must not invent a comparison or transfer
+        // a system event to an application merely by citing both records.
+        if (ResourceComparisonRegex().IsMatch(text) &&
+            !cited.Any(item => IsSuppliedStatement(text, item)))
+        {
+            return Reject(MachineBriefValidationFailure.ClaimGrounding,
+                "Resource or learned-range comparisons must copy a complete " +
+                "cited summary exactly as a separate point, or be omitted. " +
+                "Remove comparison wording from overall. Do not add prefixes, " +
+                "sample counts, or conclusions to the copied point. Do not derive a " +
+                "comparison from current values and learned statistics.");
+        }
+
+        if (SystemLifecycleRegex().IsMatch(text))
+        {
+            if (RestartScheduleRegex().IsMatch(text) &&
+                !cited.Any(item => IsSuppliedStatement(text, item)))
+            {
+                return Reject(MachineBriefValidationFailure.ClaimGrounding,
+                    "Pending restart evidence does not establish a queued, " +
+                    "scheduled, or automatic restart. Omit that claim.");
+            }
+
+            var namesApplication = cited.Any(item =>
+                item.EntityNames.Any(name =>
+                    !string.Equals(name, "Windows",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    text.Contains(name, StringComparison.OrdinalIgnoreCase)) &&
+                (item.Category == MachineSituationCategory.Recently ||
+                    item.Id.StartsWith("finding.", StringComparison.Ordinal)));
+            if (namesApplication &&
+                !cited.Any(item => IsSuppliedStatement(text, item)))
+            {
+                return Reject(MachineBriefValidationFailure.ClaimGrounding,
+                    "Keep application failures and system shutdown/restart " +
+                    "evidence in separate statements; do not merge their " +
+                    "subjects or counts.");
+            }
         }
 
         if (MentionsEndOfDay(text) &&
@@ -231,6 +295,17 @@ public static partial class MachineBriefValidator
         {
             return Reject(MachineBriefValidationFailure.ForecastBoundary,
                 "An end-of-day claim lacked deterministic forecast evidence.");
+        }
+
+        if ((text.Contains("forecast", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("projected", StringComparison.OrdinalIgnoreCase)) &&
+            NumericTokenRegex().IsMatch(text) &&
+            !cited.Any(item => item.Category == MachineSituationCategory.Forward))
+        {
+            return Reject(MachineBriefValidationFailure.ForecastBoundary,
+                "Numeric forecast or forecast-coverage claims require cited " +
+                "Forward evidence. Learning sample/day counts are not " +
+                "forecast duration or coverage. Omit that forecast claim.");
         }
 
         var allowedText = string.Join(' ', cited.SelectMany(item =>
@@ -314,6 +389,13 @@ public static partial class MachineBriefValidator
 
     private static string Normalize(string text) =>
         WhitespaceRegex().Replace(text.Trim(), " ");
+
+    private static bool IsSuppliedStatement(
+        string text,
+        MachineSituationEvidenceItem item) => string.Equals(
+            Normalize(text).TrimEnd('.', '!'),
+            Normalize(item.Summary).TrimEnd('.', '!'),
+            StringComparison.OrdinalIgnoreCase);
 
     private static string[] NormalizeIds(IEnumerable<string> ids) => ids
         .Where(id => !string.IsNullOrWhiteSpace(id))

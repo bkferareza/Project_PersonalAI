@@ -147,6 +147,33 @@ public sealed class LocalMachineBriefGeneratorTests
             StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task UnsupportedComparisonIsRepairedOrFallsBackWithoutLeaking(
+        bool repairSucceeds)
+    {
+        var invalid = ValidJson.Replace(
+            "I've learned this context from 240 samples across 4 observed days.",
+            "System resources are within learned ranges.",
+            StringComparison.Ordinal);
+        var runtime = new QueueRuntime(Result(invalid),
+            Result(repairSucceeds ? ValidJson : invalid));
+        var generator = new LocalMachineIntelligenceGenerator(
+            runtime, "qwen3.5-4b");
+
+        var brief = await generator.GenerateAsync(Request());
+
+        Assert.Equal(2, runtime.Requests.Count);
+        Assert.Equal(repairSucceeds
+                ? MachineBriefValidationState.Repaired
+                : MachineBriefValidationState.RejectedFallback,
+            brief.Diagnostics.ValidationState);
+        Assert.DoesNotContain(brief.Points,
+            point => point.Text.Contains("within learned ranges",
+                StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public async Task ToolCallsNeverReachBriefAndFallBackAfterRepair()
     {
@@ -209,6 +236,12 @@ public sealed class LocalMachineBriefGeneratorTests
             StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not mechanically recite Task Manager metrics",
             system, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("copy the complete cited summary exactly", system,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Keep application failures and system shutdowns/restarts in separate statements",
+            system, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not a scheduled, queued, or automatic restart", system,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static MachineBriefRequest Request() => new(
