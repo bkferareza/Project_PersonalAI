@@ -1,7 +1,19 @@
 namespace Machine.Core;
 
+public enum ElectricityRateProvenance
+{
+    Unavailable,
+    CurrentOnlineVerified,
+    CurrentPeriodCached,
+    LastKnownVerifiedFallback
+}
+
 public sealed record ElectricityRateCacheState(
-    IReadOnlyList<ElectricityRateSnapshot> Rates);
+    IReadOnlyList<ElectricityRateSnapshot> Rates,
+    DateTimeOffset? LastSuccessfulVerificationAt = null,
+    DateTimeOffset? LastAutomaticRefreshAttemptAt = null,
+    ElectricityRateProvenance ActiveProvenance =
+        ElectricityRateProvenance.Unavailable);
 
 public sealed class FileElectricityRateCache
 {
@@ -33,12 +45,27 @@ public sealed class FileElectricityRateCache
     public async Task SaveAsync(IEnumerable<ElectricityRateSnapshot> rates, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(rates);
-        var state = new ElectricityRateCacheState(rates
+        await SaveAsync(new ElectricityRateCacheState(rates.ToArray()),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SaveAsync(ElectricityRateCacheState state,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var normalized = state with
+        {
+            Rates = state.Rates
             .Where(IsSafe)
+            .GroupBy(item => (item.ProviderName, item.EffectiveMonth))
+            .Select(group => group
+                .OrderByDescending(item => item.RetrievedAt).First())
             .OrderByDescending(item => item.EffectiveMonth)
+            .ThenByDescending(item => item.RetrievedAt)
             .Take(MaximumRateCount)
-            .ToArray());
-        await _safeFile.SaveAsync(state, cancellationToken)
+            .ToArray()
+        };
+        await _safeFile.SaveAsync(normalized, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -56,6 +83,15 @@ public sealed class FileElectricityRateCache
             return MachinePersistenceValidationResult.Incompatible;
         }
 
+        if (!Enum.IsDefined(state.ActiveProvenance) ||
+            state.LastSuccessfulVerificationAt is { } successful &&
+                successful == default ||
+            state.LastAutomaticRefreshAttemptAt is { } attempted &&
+                attempted == default)
+        {
+            return MachinePersistenceValidationResult.Rejected;
+        }
+
         return state.Rates.All(IsSafe)
             ? MachinePersistenceValidationResult.Accepted
             : MachinePersistenceValidationResult.Rejected;
@@ -68,7 +104,7 @@ public sealed class FileElectricityRateCache
         rate.ProviderName.Length <= MaximumProviderNameLength &&
         !string.IsNullOrWhiteSpace(rate.CurrencyCode) &&
         rate.CurrencyCode.Length <= MaximumCurrencyCodeLength &&
-        rate.RatePerKWh > 0 &&
+        rate.RatePerKWh is >= 1m and <= 100m &&
         rate.EffectiveMonth.Day == 1 &&
         rate.RetrievedAt != default &&
         rate.ExpiresAt > rate.RetrievedAt &&
@@ -76,6 +112,9 @@ public sealed class FileElectricityRateCache
         rate.SourceIdentity.Length <= MaximumSourceIdentityLength &&
         Uri.TryCreate(rate.SourceIdentity, UriKind.Absolute,
             out var source) && source.Scheme == Uri.UriSchemeHttps &&
+        string.Equals(source.Host,
+            ElectricityRateEnrichmentService.MeralcoHost,
+            StringComparison.OrdinalIgnoreCase) &&
         Enum.IsDefined(rate.UtilityConfidence) &&
         rate.UtilityConfidence != MachinePowerEstimateConfidence.Unavailable &&
         Enum.IsDefined(rate.RateConfidence) &&

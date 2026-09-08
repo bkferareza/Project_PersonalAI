@@ -9,7 +9,17 @@ public sealed record ElectricityRateEnrichmentResult(
     string? ProbableUtility,
     MachinePowerEstimateConfidence UtilityConfidence,
     bool UsedCache,
-    int RequestCount);
+    int RequestCount,
+    ElectricityRateProvenance Provenance =
+        ElectricityRateProvenance.Unavailable,
+    DateTimeOffset? LastSuccessfulVerificationAt = null,
+    DateTimeOffset? LastAutomaticRefreshAttemptAt = null);
+
+public enum ElectricityRateRefreshMode
+{
+    Automatic,
+    Manual
+}
 
 /// <summary>
 /// Retrieves only the minimum coarse evidence needed to select a published
@@ -31,6 +41,7 @@ public sealed class ElectricityRateEnrichmentService
     private readonly HttpClient _httpClient;
     private readonly FileElectricityRateCache _cache;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private DateTimeOffset? _lastAutomaticRefreshAttemptAt;
     private static readonly HashSet<string> MeralcoCalabarzonCities = new(
     [
         "Alfonso", "Amadeo", "Bacoor", "Carmona", "Cavite City",
@@ -49,6 +60,13 @@ public sealed class ElectricityRateEnrichmentService
 
     public async Task<ElectricityRateEnrichmentResult> GetCurrentAsync(
         DateTimeOffset now, CancellationToken cancellationToken = default)
+        => await RefreshAsync(now, ElectricityRateRefreshMode.Automatic,
+            cancellationToken).ConfigureAwait(false);
+
+    public async Task<ElectricityRateEnrichmentResult> RefreshAsync(
+        DateTimeOffset now,
+        ElectricityRateRefreshMode mode,
+        CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -56,85 +74,180 @@ public sealed class ElectricityRateEnrichmentService
             var month = new DateOnly(now.LocalDateTime.Year,
                 now.LocalDateTime.Month, 1);
             var cache = await _cache.LoadAsync(cancellationToken).ConfigureAwait(false);
-            var cached = cache.Rates.FirstOrDefault(rate =>
-                rate.EffectiveMonth == month && rate.ExpiresAt > now);
-            if (cached is not null)
+            cache = cache with
             {
-                return new(cached, cached.ProviderName,
-                    cached.UtilityConfidence, true, 0);
+                LastSuccessfulVerificationAt =
+                    cache.LastSuccessfulVerificationAt ?? cache.Rates
+                        .OrderByDescending(rate => rate.RetrievedAt)
+                        .Select(rate => (DateTimeOffset?)rate.RetrievedAt)
+                        .FirstOrDefault()
+            };
+            var lastAttempt = Latest(cache.LastAutomaticRefreshAttemptAt,
+                _lastAutomaticRefreshAttemptAt);
+            if (mode == ElectricityRateRefreshMode.Automatic &&
+                IsSameLocalDay(lastAttempt, now))
+            {
+                var sameDayResult = CreateFallbackResult(cache, month, 0,
+                    lastAttempt);
+                await TrySaveStateAsync(cache with
+                {
+                    ActiveProvenance = sameDayResult.Provenance,
+                    LastAutomaticRefreshAttemptAt = lastAttempt
+                }, cancellationToken).ConfigureAwait(false);
+                return sameDayResult;
             }
 
-            var locationText = await GetAllowedTextAsync(LocationUri,
-                LocationHost, cancellationToken).ConfigureAwait(false);
-            var utility = ResolveUtility(locationText);
-            if (utility is null)
+            if (mode == ElectricityRateRefreshMode.Automatic)
             {
-                return new(null, null, MachinePowerEstimateConfidence.Unavailable,
-                    false, 1);
+                lastAttempt = now;
+                _lastAutomaticRefreshAttemptAt = now;
+                cache = cache with
+                {
+                    LastAutomaticRefreshAttemptAt = now,
+                    ActiveProvenance = SelectFallback(cache.Rates, month).Provenance
+                };
+                await TrySaveStateAsync(cache, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
+            (string Name, MachinePowerEstimateConfidence Confidence)? utility = null;
             ElectricityRateSnapshot? rate = null;
-            var requestCount = 1;
-            foreach (var candidate in GetMeralcoAdvisoryCandidates(month))
-            {
-                requestCount++;
-                try
-                {
-                    var rateText = await GetAllowedTextAsync(candidate,
-                        MeralcoHost, cancellationToken).ConfigureAwait(false);
-                    rate = ParseMeralcoResidentialRate(rateText, candidate,
-                        month, now, utility.Value.Confidence);
-                }
-                catch (HttpRequestException)
-                {
-                    continue;
-                }
-                if (rate is not null)
-                {
-                    break;
-                }
-            }
-            if (rate is null)
-            {
-                return new(null, utility.Value.Name, utility.Value.Confidence,
-                    false, requestCount);
-            }
-
+            var requestCount = 0;
             try
             {
-                await _cache.SaveAsync(cache.Rates.Append(rate),
-                    cancellationToken).ConfigureAwait(false);
+                requestCount++;
+                var locationText = await GetAllowedTextAsync(LocationUri,
+                    LocationHost, cancellationToken).ConfigureAwait(false);
+                utility = ResolveUtility(locationText);
+                if (utility is not null)
+                {
+                    foreach (var candidate in GetMeralcoAdvisoryCandidates(month))
+                    {
+                        requestCount++;
+                        try
+                        {
+                            var rateText = await GetAllowedTextAsync(candidate,
+                                MeralcoHost, cancellationToken).ConfigureAwait(false);
+                            rate = ParseMeralcoResidentialRate(rateText, candidate,
+                                month, now, utility.Value.Confidence);
+                        }
+                        catch (HttpRequestException)
+                        {
+                            continue;
+                        }
+                        if (rate is not null)
+                        {
+                            break;
+                        }
+                    }
+                }
             }
-            catch (Exception exception) when (
-                exception is InvalidOperationException or IOException or
-                    UnauthorizedAccessException)
+            catch (HttpRequestException)
             {
-                // A rejected or unavailable cache must remain untouched, but
-                // the verified live rate can still be returned for this run.
             }
+            catch (JsonException)
+            {
+            }
+
+            if (rate is null)
+            {
+                var fallback = CreateFallbackResult(cache, month, requestCount,
+                    lastAttempt, utility);
+                await TrySaveStateAsync(cache with
+                {
+                    ActiveProvenance = fallback.Provenance,
+                    LastAutomaticRefreshAttemptAt = lastAttempt
+                }, cancellationToken).ConfigureAwait(false);
+                return fallback;
+            }
+
+            var successfulState = cache with
+            {
+                Rates = cache.Rates.Append(rate).ToArray(),
+                LastSuccessfulVerificationAt = now,
+                LastAutomaticRefreshAttemptAt = lastAttempt,
+                ActiveProvenance =
+                    ElectricityRateProvenance.CurrentOnlineVerified
+            };
+            await TrySaveStateAsync(successfulState, cancellationToken)
+                .ConfigureAwait(false);
             return new(rate, rate.ProviderName, rate.UtilityConfidence, false,
-                requestCount);
+                requestCount,
+                ElectricityRateProvenance.CurrentOnlineVerified, now,
+                lastAttempt);
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (HttpRequestException)
-        {
-            return new(null, null, MachinePowerEstimateConfidence.Unavailable,
-                false, 0);
-        }
-        catch (JsonException)
-        {
-            return new(null, null, MachinePowerEstimateConfidence.Unavailable,
-                false, 0);
-        }
         finally
         {
             _gate.Release();
         }
     }
+
+    private async Task TrySaveStateAsync(ElectricityRateCacheState state,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _cache.SaveAsync(state, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or IOException or
+                UnauthorizedAccessException)
+        {
+            // Persistence rejection must preserve the original file. The
+            // verified live result and in-process daily gate remain usable.
+        }
+    }
+
+    private static ElectricityRateEnrichmentResult CreateFallbackResult(
+        ElectricityRateCacheState cache,
+        DateOnly month,
+        int requestCount,
+        DateTimeOffset? lastAttempt,
+        (string Name, MachinePowerEstimateConfidence Confidence)? utility = null)
+    {
+        var selected = SelectFallback(cache.Rates, month);
+        var rate = selected.Rate;
+        return new(rate, utility?.Name ?? rate?.ProviderName,
+            utility?.Confidence ?? rate?.UtilityConfidence ??
+                MachinePowerEstimateConfidence.Unavailable,
+            rate is not null, requestCount, selected.Provenance,
+            cache.LastSuccessfulVerificationAt ?? rate?.RetrievedAt,
+            lastAttempt);
+    }
+
+    private static (ElectricityRateSnapshot? Rate,
+        ElectricityRateProvenance Provenance) SelectFallback(
+        IReadOnlyList<ElectricityRateSnapshot> rates,
+        DateOnly month)
+    {
+        var current = rates.Where(rate => rate.EffectiveMonth == month)
+            .OrderByDescending(rate => rate.RetrievedAt).FirstOrDefault();
+        if (current is not null)
+        {
+            return (current,
+                ElectricityRateProvenance.CurrentPeriodCached);
+        }
+        var latest = rates.Where(rate => rate.EffectiveMonth <= month)
+            .OrderByDescending(rate => rate.EffectiveMonth)
+            .ThenByDescending(rate => rate.RetrievedAt).FirstOrDefault();
+        return latest is null
+            ? (null, ElectricityRateProvenance.Unavailable)
+            : (latest, ElectricityRateProvenance.LastKnownVerifiedFallback);
+    }
+
+    private static bool IsSameLocalDay(DateTimeOffset? timestamp,
+        DateTimeOffset now) => timestamp is { } value &&
+        value.ToOffset(now.Offset).Date == now.Date;
+
+    private static DateTimeOffset? Latest(DateTimeOffset? left,
+        DateTimeOffset? right) => left is null ? right : right is null ? left :
+        left > right ? left : right;
 
     public Task<ElectricityRateCacheState> LoadCachedAsync(
         CancellationToken cancellationToken = default) =>
@@ -208,7 +321,7 @@ public sealed class ElectricityRateEnrichmentService
                 System.Globalization.NumberStyles.Number,
                 System.Globalization.CultureInfo.InvariantCulture, out var value)
                     ? value : 0m)
-            .Where(value => value > 0m)
+            .Where(value => value is >= 1m and <= 100m)
             .Distinct()
             .ToArray();
         if (values.Length != 1) return null;

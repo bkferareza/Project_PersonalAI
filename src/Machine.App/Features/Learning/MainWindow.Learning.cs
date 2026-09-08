@@ -5,7 +5,7 @@ namespace Machine.App;
 
 public sealed partial class MainWindow
 {
-    private void UpdateLearningDashboard()
+    private void UpdateLearningDashboard(bool allowBriefRefresh = true)
     {
         var now = DateTimeOffset.UtcNow;
         var learning = _learningService.GetDashboardSnapshot(now);
@@ -18,7 +18,8 @@ public sealed partial class MainWindow
         var acceptedToday = MachineTodayEnergyCostProjector.Project(
             history.Rollups,
             _cachedElectricityRates,
-            now);
+            now,
+            activeFallbackRate: _latestElectricityRate?.Rate);
         var currentPower = MachineLearnedPowerCostProjector.Project(
             learning.CurrentBaseline,
             acceptedToday.Rate);
@@ -84,7 +85,7 @@ public sealed partial class MainWindow
             OverviewPage,
             _latestMachineBrief);
 
-        if (_detailsExpanded &&
+        if (allowBriefRefresh && _detailsExpanded &&
             OverviewPage.Visibility == Microsoft.UI.Xaml.Visibility.Visible)
         {
             _ = EnsureMachineBriefAsync(forceRefresh: false);
@@ -101,7 +102,8 @@ public sealed partial class MainWindow
         var acceptedToday = MachineTodayEnergyCostProjector.Project(
             history.Rollups,
             _cachedElectricityRates,
-            now);
+            now,
+            activeFallbackRate: _latestElectricityRate?.Rate);
         return CreateTodayLearnedEnergyComparison(
             now,
             history,

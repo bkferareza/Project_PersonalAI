@@ -66,6 +66,7 @@
                                             AutomationProperties.AutomationId="TodayEnergyText"
                                             FontSize="25"
                                             FontWeight="SemiBold"
+                                            TextWrapping="Wrap"
                                             Text="Beginning now" />
                                         <TextBlock
                                             Style="{StaticResource SecondaryTextStyle}"
@@ -77,6 +78,7 @@
                                             AutomationProperties.AutomationId="TodayCostText"
                                             FontSize="27"
                                             FontWeight="SemiBold"
+                                            TextWrapping="Wrap"
                                             Text="Cost unavailable" />
                                         <TextBlock
                                             Style="{StaticResource SecondaryTextStyle}"
@@ -213,10 +215,10 @@
                                 <ListView.ItemTemplate>
                                     <DataTemplate>
                                         <Grid Margin="0,4" ColumnSpacing="12">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                             <TextBlock Text="{Binding Date}" Style="{StaticResource SecondaryTextStyle}" />
-                                            <TextBlock Grid.Column="1" Text="{Binding Energy}" />
-                                            <TextBlock Grid.Column="2" Text="{Binding Cost}" Style="{StaticResource SecondaryTextStyle}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Energy}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Column="2" HorizontalAlignment="Right" Text="{Binding Cost}" Style="{StaticResource SecondaryTextStyle}" TextAlignment="Right" TextWrapping="Wrap" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>

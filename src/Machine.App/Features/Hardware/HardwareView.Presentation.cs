@@ -13,7 +13,7 @@ public sealed partial class HardwareView
         new(0, 0, false), new(0, null, 0, 0), null,
         new(DateOnly.FromDateTime(DateTime.Today), 0d, null,
             MachineCostCoverage.Unavailable, TimeSpan.Zero, null, null,
-            0, null));
+            0, null), null);
 
     internal void Update(MachineGpuTelemetrySnapshot? gpu,
         MachineCpuHardwareSnapshot? cpu,
@@ -22,7 +22,8 @@ public sealed partial class HardwareView
         MachineEnergySnapshot energy,
         MachineHistoryEnergyCostSummary historyEnergy,
         ElectricityRateSnapshot? rate,
-        MachineTodayEnergyCostProjection todayHistoryEnergy)
+        MachineTodayEnergyCostProjection todayHistoryEnergy,
+        ElectricityRateEnrichmentResult? rateResult)
     {
         var adapter = gpu?.Adapters.FirstOrDefault();
         CpuProcessorNameText.Text = cpu?.ProcessorName ?? "Processor telemetry unavailable";
@@ -60,6 +61,7 @@ public sealed partial class HardwareView
         PowerEvidenceText.Text = BuildEvidence(power) + (rate is null
             ? "\nPublished residential reference rate unavailable; electricity cost is unavailable."
             : $"\nPublished residential reference · {rate.ProviderName} · {rate.CurrencyCode} {rate.RatePerKWh:F4}/kWh · {rate.EffectiveMonth:MMMM yyyy}" +
+              BuildRateProvenance(rateResult) +
               $"\n30 observed days\n{historyEnergy.ObservedWattHours / 1000d:F3} kWh\n" +
               FormatEstimatedCost(historyEnergy.EstimatedCost, rate));
 
@@ -74,5 +76,27 @@ public sealed partial class HardwareView
         ? $"~{(string.Equals(rate.CurrencyCode, "PHP", StringComparison.OrdinalIgnoreCase) ? "₱" : $"{rate.CurrencyCode} ")}{value:F2} estimated"
         : "Estimated cost unavailable";
     private static string FormatConfidence(MachinePowerEstimateConfidence value) => value switch { MachinePowerEstimateConfidence.Measured => "Measured component evidence", MachinePowerEstimateConfidence.HighEstimate => "High estimate confidence", MachinePowerEstimateConfidence.ModerateEstimate => "Moderate estimate confidence", MachinePowerEstimateConfidence.LowEstimate => "Low estimate confidence", _ => "Estimate quality unavailable" };
+    private static string BuildRateProvenance(
+        ElectricityRateEnrichmentResult? result)
+    {
+        if (result is null) return string.Empty;
+        var status = result.Provenance switch
+        {
+            ElectricityRateProvenance.CurrentOnlineVerified =>
+                "Verified online today.",
+            ElectricityRateProvenance.CurrentPeriodCached =>
+                "Using the verified rate for the current period.",
+            ElectricityRateProvenance.LastKnownVerifiedFallback =>
+                "Estimated using the latest verified rate available to Matasuri.",
+            _ => "Rate verification unavailable."
+        };
+        var verified = result.LastSuccessfulVerificationAt is { } success
+            ? $"\nLast verified {success.ToLocalTime():g}"
+            : string.Empty;
+        var attempted = result.LastAutomaticRefreshAttemptAt is { } attempt
+            ? $"\nLast automatic attempt {attempt.ToLocalTime():g}"
+            : string.Empty;
+        return $"\n{status}{verified}{attempted}";
+    }
     private static string BuildEvidence(MachinePowerEstimate power) => string.Join("\n", new[] { power.MeasuredGpuBoardWatts is { } gpu ? $"Measured GPU board power / {gpu:F0} W" : null, power.EstimatedCpuWatts is { } cpu ? $"Estimated CPU package / ~{cpu:F0} W" : null, power.EstimatedPlatformWatts is { } platform ? $"Estimated platform/base / ~{platform:F0} W" : null }.Where(value => value is not null)) switch { "" => "Component evidence is unavailable.", var text => text };
 }

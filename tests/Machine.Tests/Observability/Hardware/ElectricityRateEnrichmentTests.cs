@@ -81,12 +81,14 @@ public sealed class ElectricityRateEnrichmentTests : IDisposable
     }
 
     [Fact]
-    public async Task CurrentMonthCacheIsReusedWithoutNetworkRequest()
+    public async Task CompletedAutomaticAttemptIsReusedWithoutNetworkRequest()
     {
         var now = new DateTimeOffset(2026, 8, 21, 12, 0, 0,
             TimeSpan.Zero);
         var cache = new FileElectricityRateCache(_directory);
-        await cache.SaveAsync([Rate(now)]);
+        await cache.SaveAsync(new ElectricityRateCacheState([Rate(now)],
+            now.AddHours(-1), now.AddHours(-1),
+            ElectricityRateProvenance.CurrentOnlineVerified));
         var handler = new FixtureHandler(_ => throw new InvalidOperationException());
         using var client = new HttpClient(handler);
         var service = new ElectricityRateEnrichmentService(client, cache);
@@ -97,6 +99,158 @@ public sealed class ElectricityRateEnrichmentTests : IDisposable
         Assert.Equal(0, result.RequestCount);
         Assert.Equal(0, handler.RequestCount);
         Assert.Equal(14.1234m, result.Rate?.RatePerKWh);
+        Assert.Equal(ElectricityRateProvenance.CurrentPeriodCached,
+            result.Provenance);
+    }
+
+    [Fact]
+    public async Task FirstEligibleAccessRefreshesEvenWithCurrentCachedRate()
+    {
+        var now = new DateTimeOffset(2026, 8, 21, 12, 0, 0,
+            TimeSpan.Zero);
+        var cache = new FileElectricityRateCache(_directory);
+        await cache.SaveAsync([Rate(now.AddDays(-1))]);
+        var handler = new FixtureHandler(request =>
+            request.RequestUri!.Host == "ipinfo.io"
+                ? """{"country":"PH","region":"Cavite"}"""
+                : "The overall rate for August 2026 is PHP 14.7833 per kWh.");
+        using var client = new HttpClient(handler);
+        var service = new ElectricityRateEnrichmentService(client, cache);
+
+        var result = await service.GetCurrentAsync(now);
+
+        Assert.Equal(2, handler.RequestCount);
+        Assert.False(result.UsedCache);
+        Assert.Equal(14.7833m, result.Rate?.RatePerKWh);
+        Assert.Equal(ElectricityRateProvenance.CurrentOnlineVerified,
+            result.Provenance);
+        var persisted = await cache.LoadAsync();
+        Assert.Equal(now, persisted.LastAutomaticRefreshAttemptAt);
+        Assert.Equal(now, persisted.LastSuccessfulVerificationAt);
+        Assert.Equal(ElectricityRateProvenance.CurrentOnlineVerified,
+            persisted.ActiveProvenance);
+    }
+
+    [Fact]
+    public async Task FailedRefreshUsesVerifiedFallbackAndDoesNotRetrySameDay()
+    {
+        var now = new DateTimeOffset(2026, 9, 8, 9, 0, 0,
+            TimeSpan.FromHours(8));
+        var cache = new FileElectricityRateCache(_directory);
+        await cache.SaveAsync([Rate(now.AddDays(-14))]);
+        var handler = new FixtureHandler(_ =>
+            throw new HttpRequestException("Offline"));
+        using var client = new HttpClient(handler);
+        var service = new ElectricityRateEnrichmentService(client, cache);
+
+        var first = await service.GetCurrentAsync(now);
+        var second = await service.GetCurrentAsync(now.AddHours(8));
+
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(14.1234m, first.Rate?.RatePerKWh);
+        Assert.Equal(ElectricityRateProvenance.LastKnownVerifiedFallback,
+            first.Provenance);
+        Assert.Equal(1.41m, MachineElectricityCostCalculator.Calculate(
+            100d, first.Rate));
+        Assert.Equal(first.Rate, second.Rate);
+        Assert.Equal(0, second.RequestCount);
+        var persisted = await cache.LoadAsync();
+        Assert.Equal(now, persisted.LastAutomaticRefreshAttemptAt);
+        Assert.Equal(now.AddDays(-14),
+            persisted.LastSuccessfulVerificationAt);
+        Assert.Equal(ElectricityRateProvenance.LastKnownVerifiedFallback,
+            persisted.ActiveProvenance);
+    }
+
+    [Fact]
+    public async Task NewlyVerifiedCurrentRateSupersedesOlderFallback()
+    {
+        var now = new DateTimeOffset(2026, 9, 8, 9, 0, 0,
+            TimeSpan.FromHours(8));
+        var cache = new FileElectricityRateCache(_directory);
+        await cache.SaveAsync([Rate(now.AddDays(-14))]);
+        var handler = new FixtureHandler(request =>
+            request.RequestUri!.Host == "ipinfo.io"
+                ? """{"country":"PH","region":"Cavite"}"""
+                : "The overall rate for September 2026 is PHP 15.2500 per kWh.");
+        using var client = new HttpClient(handler);
+        var service = new ElectricityRateEnrichmentService(client, cache);
+
+        var result = await service.GetCurrentAsync(now);
+
+        Assert.Equal(15.2500m, result.Rate?.RatePerKWh);
+        Assert.Equal(new DateOnly(2026, 9, 1),
+            result.Rate?.EffectiveMonth);
+        Assert.Equal(ElectricityRateProvenance.CurrentOnlineVerified,
+            result.Provenance);
+        Assert.Equal(2, (await cache.LoadAsync()).Rates.Count);
+    }
+
+    [Fact]
+    public async Task NextLocalDayAllowsAnotherAutomaticRefresh()
+    {
+        var firstDay = new DateTimeOffset(2026, 8, 21, 23, 30, 0,
+            TimeSpan.FromHours(8));
+        var handler = new FixtureHandler(request =>
+            request.RequestUri!.Host == "ipinfo.io"
+                ? """{"country":"PH","region":"Cavite"}"""
+                : "The overall rate for August 2026 is PHP 14.7833 per kWh.");
+        using var client = new HttpClient(handler);
+        var service = new ElectricityRateEnrichmentService(client,
+            new FileElectricityRateCache(_directory));
+
+        await service.GetCurrentAsync(firstDay);
+        await service.GetCurrentAsync(firstDay.AddMinutes(20));
+        await service.GetCurrentAsync(firstDay.AddHours(1));
+
+        Assert.Equal(4, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task ManualRefreshMayRetryAfterAutomaticFailure()
+    {
+        var now = new DateTimeOffset(2026, 8, 21, 12, 0, 0,
+            TimeSpan.Zero);
+        var handler = new SequencedFixtureHandler((request, count) =>
+            count == 1
+                ? throw new HttpRequestException("First request failed")
+                : request.RequestUri!.Host == "ipinfo.io"
+                    ? """{"country":"PH","region":"Cavite"}"""
+                    : "The overall rate for August 2026 is PHP 14.7833 per kWh.");
+        using var client = new HttpClient(handler);
+        var service = new ElectricityRateEnrichmentService(client,
+            new FileElectricityRateCache(_directory));
+
+        var failed = await service.GetCurrentAsync(now);
+        var retried = await service.RefreshAsync(now.AddMinutes(1),
+            ElectricityRateRefreshMode.Manual);
+
+        Assert.Null(failed.Rate);
+        Assert.Equal(3, handler.RequestCount);
+        Assert.Equal(14.7833m, retried.Rate?.RatePerKWh);
+        Assert.Equal(ElectricityRateProvenance.CurrentOnlineVerified,
+            retried.Provenance);
+    }
+
+    [Fact]
+    public async Task ImplausibleFetchedRateIsRejectedInFavorOfFallback()
+    {
+        var now = new DateTimeOffset(2026, 8, 21, 12, 0, 0,
+            TimeSpan.Zero);
+        var cache = new FileElectricityRateCache(_directory);
+        await cache.SaveAsync([Rate(now.AddDays(-1))]);
+        var handler = new FixtureHandler(request =>
+            request.RequestUri!.Host == "ipinfo.io"
+                ? """{"country":"PH","region":"Cavite"}"""
+                : "The overall rate for August 2026 is PHP 0.9999 per kWh.");
+        using var client = new HttpClient(handler);
+        var service = new ElectricityRateEnrichmentService(client, cache);
+
+        var result = await service.GetCurrentAsync(now);
+
+        Assert.Equal(14.1234m, result.Rate?.RatePerKWh);
+        Assert.Equal(ElectricityRateProvenance.CurrentPeriodCached,
+            result.Provenance);
     }
 
     [Fact]
@@ -272,6 +426,25 @@ public sealed class ElectricityRateEnrichmentTests : IDisposable
                 RequestMessage = request,
                 Content = new StringContent(_content(request), Encoding.UTF8,
                     "application/json")
+            });
+        }
+    }
+
+    private sealed class SequencedFixtureHandler(
+        Func<HttpRequestMessage, int, string> content) : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, int, string> _content = content;
+        internal int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                RequestMessage = request,
+                Content = new StringContent(_content(request, RequestCount),
+                    Encoding.UTF8, "application/json")
             });
         }
     }

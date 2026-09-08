@@ -22,7 +22,8 @@ public static class MachineTodayEnergyCostProjector
         IEnumerable<ElectricityRateSnapshot> rates,
         DateTimeOffset now,
         double pendingObservedEnergyWattHours = 0d,
-        TimeZoneInfo? timeZone = null)
+        TimeZoneInfo? timeZone = null,
+        ElectricityRateSnapshot? activeFallbackRate = null)
     {
         ArgumentNullException.ThrowIfNull(rollups);
         ArgumentNullException.ThrowIfNull(rates);
@@ -54,7 +55,7 @@ public static class MachineTodayEnergyCostProjector
                 candidate.EffectiveMonth == month &&
                 candidate.RatePerKWh > 0m)
             .OrderByDescending(candidate => candidate.RetrievedAt)
-            .FirstOrDefault();
+            .FirstOrDefault() ?? activeFallbackRate;
         var power = today.Select(rollup =>
                 rollup.EstimatedSystemPowerWatts)
             .Where(summary => summary is not null)

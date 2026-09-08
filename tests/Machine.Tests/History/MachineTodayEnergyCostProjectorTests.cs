@@ -94,6 +94,22 @@ public sealed class MachineTodayEnergyCostProjectorTests
     }
 
     [Fact]
+    public void VerifiedActiveFallbackKeepsTodayCostAvailable()
+    {
+        var fallback = Rate(new DateOnly(2026, 7, 1));
+
+        var today = MachineTodayEnergyCostProjector.Project(
+            [Rollup(Today.AddHours(1), 100d)], [fallback],
+            Today.AddHours(2), timeZone: TimeZoneInfo.Utc,
+            activeFallbackRate: fallback);
+
+        Assert.True(today.HasObservedEnergy);
+        Assert.Equal(1.48m, today.EstimatedCost);
+        Assert.Same(fallback, today.Rate);
+        Assert.Equal(MachineCostCoverage.Complete, today.CostCoverage);
+    }
+
+    [Fact]
     public void LocalMidnightStartsFreshWithoutRemovingYesterday()
     {
         var rollups = new[]

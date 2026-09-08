@@ -104,7 +104,7 @@ public sealed partial class MainWindow
             {
                 _latestElectricityRate = result;
                 _cachedElectricityRates = cache.Rates;
-                UpdateLearningDashboard();
+                UpdateLearningDashboard(allowBriefRefresh: false);
                 UpdateLocalInsight();
             }
         }
@@ -265,12 +265,14 @@ public sealed partial class MainWindow
                         snapshot.CapturedAt).Rollups,
                     _cachedElectricityRates,
                     snapshot.CapturedAt,
-                    _pendingHistoryEnergyWattHours);
+                    _pendingHistoryEnergyWattHours,
+                    activeFallbackRate: _latestElectricityRate?.Rate);
             _latestTodayEnergyCost = todayHistoryEnergy;
             _latestThirtyDayEnergyCost = historyEnergy;
             HardwarePage.Update(gpuSnapshot, cpuHardware, storageHealth,
                 powerEstimate, _latestEnergySnapshot, historyEnergy,
-                todayHistoryEnergy.Rate, todayHistoryEnergy);
+                todayHistoryEnergy.Rate, todayHistoryEnergy,
+                _latestElectricityRate);
             HistoryPage.UpdateTodaySummary();
             UpdateLocalInsight();
             var learningChanged = await CaptureLearningObservationAsync(
