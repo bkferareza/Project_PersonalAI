@@ -161,11 +161,11 @@ public sealed class CompactPresencePresentationTests
                 sequence.Frames[^1]),
             0d,
             2d);
-        Assert.Equal(20, AmbientOrbFrameSequence.FramesPerSecond);
-        Assert.InRange(sequence.FrameInterval.TotalSeconds, 0.04d, 0.06d);
+        Assert.Equal(45, AmbientOrbFrameSequence.FramesPerSecond);
+        Assert.InRange(sequence.FrameInterval.TotalSeconds, 0.02d, 0.023d);
         Assert.Equal(
             TimeSpan.FromSeconds(5),
-            sequence.FrameInterval * sequence.Frames.Count);
+            sequence.CycleDuration);
     }
 
     [Fact]
@@ -184,8 +184,28 @@ public sealed class CompactPresencePresentationTests
     public void OrganicDeformationMovesBoundaryInBothDirections()
     {
         var sequence = AmbientOrbFrameSequence.Create();
-        var first = sequence.Frames[28];
-        var second = sequence.Frames[40];
+        var firstPixels = new byte[
+            AmbientOrbFrameSequence.CanvasSize *
+            AmbientOrbFrameSequence.CanvasSize * 4];
+        var secondPixels = new byte[firstPixels.Length];
+        sequence.RenderInto(
+            firstPixels,
+            cycleProgress: 0.31d,
+            animationsEnabled: true,
+            contourDriftProgress: 0.10d);
+        sequence.RenderInto(
+            secondPixels,
+            cycleProgress: 0.31d,
+            animationsEnabled: true,
+            contourDriftProgress: 0.35d);
+        var first = new AmbientOrbFrame(
+            AmbientOrbFrameSequence.CanvasSize,
+            AmbientOrbFrameSequence.CanvasSize,
+            firstPixels);
+        var second = new AmbientOrbFrame(
+            AmbientOrbFrameSequence.CanvasSize,
+            AmbientOrbFrameSequence.CanvasSize,
+            secondPixels);
         var firstOnly = 0;
         var secondOnly = 0;
         for (var y = 0; y < first.Height; y++)
@@ -261,6 +281,47 @@ public sealed class CompactPresencePresentationTests
                     Math.Tau * index / 24d,
                     motion));
             return radii.Max() - radii.Min() > 1d;
+        }
+    }
+
+    [Fact]
+    public void IndependentOrganicPhasesAdvanceFromOneElapsedTimeline()
+    {
+        var first = AmbientOrbMotionModel.Create(
+            TimeSpan.FromSeconds(1.25d),
+            CompactPresenceVisualMode.Stable);
+        var oneBreathLater = AmbientOrbMotionModel.Create(
+            TimeSpan.FromSeconds(6.25d),
+            CompactPresenceVisualMode.Stable);
+
+        Assert.Equal(first.CycleProgress,
+            oneBreathLater.CycleProgress, precision: 12);
+        Assert.Equal(first.BreathAmount,
+            oneBreathLater.BreathAmount, precision: 12);
+        Assert.NotEqual(first.SlowDriftProgress,
+            oneBreathLater.SlowDriftProgress);
+        Assert.NotEqual(first.ContourDriftProgress,
+            oneBreathLater.ContourDriftProgress);
+        Assert.NotEqual(first.HighlightDriftProgress,
+            oneBreathLater.HighlightDriftProgress);
+        Assert.NotEqual(first.InternalEnergyProgress,
+            oneBreathLater.InternalEnergyProgress);
+        Assert.NotEqual(first.HighlightX, oneBreathLater.HighlightX);
+    }
+
+    [Fact]
+    public void HighlightDriftRemainsAttachedToTheMovingBody()
+    {
+        for (var seconds = 0; seconds <= 95; seconds++)
+        {
+            var motion = AmbientOrbMotionModel.Create(
+                TimeSpan.FromSeconds(seconds),
+                CompactPresenceVisualMode.Stable);
+            var distance = Math.Sqrt(
+                Math.Pow(motion.HighlightX - motion.CenterX, 2d) +
+                Math.Pow(motion.HighlightY - motion.CenterY, 2d));
+
+            Assert.InRange(distance, 6.5d, 9.5d);
         }
     }
 
@@ -385,6 +446,38 @@ public sealed class CompactPresencePresentationTests
     }
 
     [Fact]
+    public void HoverExitRelaxesWithoutChangingTheUnderlyingPhase()
+    {
+        var stable = new CompactPresenceVisualState(
+            CompactPresenceVisualMode.Stable,
+            IsGenerating: false,
+            HasNewUnseenInsight: false);
+        var hovered = AmbientOrbTransitionModel.CreateTarget(
+            stable,
+            isHovered: true);
+        var target = AmbientOrbTransitionModel.CreateTarget(
+            stable,
+            isHovered: false);
+        var relaxing = AmbientOrbTransitionModel.Advance(
+            hovered,
+            target,
+            TimeSpan.FromMilliseconds(80));
+        var before = AmbientOrbMotionModel.CreateForProgress(
+            0.47d,
+            stable.PostureMode,
+            hovered);
+        var after = AmbientOrbMotionModel.CreateForProgress(
+            0.47d,
+            stable.PostureMode,
+            relaxing);
+
+        Assert.InRange(relaxing.HoverAmount, 0.01d, 0.99d);
+        Assert.True(relaxing.HoverAmount < hovered.HoverAmount);
+        Assert.Equal(before.CycleProgress, after.CycleProgress);
+        Assert.Equal(before.BreathAmount, after.BreathAmount);
+    }
+
+    [Fact]
     public void HoverGeneratingAndInsightAreAdditiveWithoutPhaseReset()
     {
         var ordinary = new CompactPresenceVisualState(
@@ -458,6 +551,38 @@ public sealed class CompactPresencePresentationTests
         var afterPixels = new byte[beforePixels.Length];
         sequence.RenderInto(beforePixels, 0.9999d, animationsEnabled: true);
         sequence.RenderInto(afterPixels, 0.0001d, animationsEnabled: true);
+        var before = new AmbientOrbFrame(
+            AmbientOrbFrameSequence.CanvasSize,
+            AmbientOrbFrameSequence.CanvasSize,
+            beforePixels);
+        var after = new AmbientOrbFrame(
+            AmbientOrbFrameSequence.CanvasSize,
+            AmbientOrbFrameSequence.CanvasSize,
+            afterPixels);
+
+        Assert.InRange(AmbientOrbFrameSequence.MeanAlphaDifference(
+            before,
+            after), 0d, 0.15d);
+    }
+
+    [Fact]
+    public void IndependentContourPhaseWrapIsVisuallyContinuous()
+    {
+        var sequence = AmbientOrbFrameSequence.Create();
+        var beforePixels = new byte[
+            AmbientOrbFrameSequence.CanvasSize *
+            AmbientOrbFrameSequence.CanvasSize * 4];
+        var afterPixels = new byte[beforePixels.Length];
+        sequence.RenderInto(
+            beforePixels,
+            0.43d,
+            animationsEnabled: true,
+            contourDriftProgress: 0.9999d);
+        sequence.RenderInto(
+            afterPixels,
+            0.43d,
+            animationsEnabled: true,
+            contourDriftProgress: 0.0001d);
         var before = new AmbientOrbFrame(
             AmbientOrbFrameSequence.CanvasSize,
             AmbientOrbFrameSequence.CanvasSize,

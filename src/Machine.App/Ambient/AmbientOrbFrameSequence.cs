@@ -11,10 +11,14 @@ public readonly record struct AmbientOrbMotionParameters(
     CompactPresenceVisualMode PostureMode,
     double CycleProgress,
     double SlowDriftProgress,
+    double ContourDriftProgress,
+    double HighlightDriftProgress,
+    double InternalEnergyProgress,
     double BreathAmount,
     double BaseRadius,
     double Expansion,
     double DeformationPhase,
+    double ContourTension,
     double CenterX,
     double CenterY,
     double HighlightX,
@@ -31,9 +35,20 @@ public static class AmbientOrbMotionModel
     public static readonly TimeSpan StableCycleDuration =
         TimeSpan.FromSeconds(5);
     public static readonly TimeSpan SlowDriftDuration =
-        TimeSpan.FromSeconds(47);
+        TimeSpan.FromSeconds(71);
+    public static readonly TimeSpan ContourDriftDuration =
+        TimeSpan.FromSeconds(19);
+    public static readonly TimeSpan HighlightDriftDuration =
+        TimeSpan.FromSeconds(31);
+    public static readonly TimeSpan InternalEnergyDuration =
+        TimeSpan.FromSeconds(11);
+    public static readonly TimeSpan InsightWakeDuration =
+        TimeSpan.FromSeconds(2);
     public const double StaticCycleProgress = 0.16d;
     public const double StaticSlowDriftProgress = 0.23d;
+    public const double StaticContourDriftProgress = 0.37d;
+    public const double StaticHighlightDriftProgress = 0.19d;
+    public const double StaticInternalEnergyProgress = 0.41d;
 
     public static AmbientOrbMotionParameters Create(
         TimeSpan elapsed,
@@ -51,6 +66,15 @@ public static class AmbientOrbMotionModel
         var slowDriftProgress = reducedMotion
             ? StaticSlowDriftProgress
             : seconds / SlowDriftDuration.TotalSeconds % 1d;
+        var contourDriftProgress = reducedMotion
+            ? StaticContourDriftProgress
+            : seconds / ContourDriftDuration.TotalSeconds % 1d;
+        var highlightDriftProgress = reducedMotion
+            ? StaticHighlightDriftProgress
+            : seconds / HighlightDriftDuration.TotalSeconds % 1d;
+        var internalEnergyProgress = reducedMotion
+            ? StaticInternalEnergyProgress
+            : seconds / InternalEnergyDuration.TotalSeconds % 1d;
         return CreateForProgress(
             progress,
             postureMode,
@@ -58,7 +82,10 @@ public static class AmbientOrbMotionModel
             insightModifier,
             insightProgress,
             reducedMotion,
-            slowDriftProgress);
+            slowDriftProgress,
+            contourDriftProgress,
+            highlightDriftProgress,
+            internalEnergyProgress);
     }
 
     public static AmbientOrbMotionParameters CreateForProgress(
@@ -69,7 +96,10 @@ public static class AmbientOrbMotionModel
             AmbientOrbInsightModifier.None,
         double insightProgress = 0d,
         bool reducedMotion = false,
-        double slowDriftProgress = StaticSlowDriftProgress)
+        double slowDriftProgress = StaticSlowDriftProgress,
+        double contourDriftProgress = StaticContourDriftProgress,
+        double highlightDriftProgress = StaticHighlightDriftProgress,
+        double internalEnergyProgress = StaticInternalEnergyProgress)
     {
         var mode = postureMode == CompactPresenceVisualMode.NewInsight
             ? CompactPresenceVisualMode.Stable
@@ -95,7 +125,10 @@ public static class AmbientOrbMotionModel
             insightModifier,
             insightProgress,
             reducedMotion,
-            slowDriftProgress);
+            slowDriftProgress,
+            contourDriftProgress,
+            highlightDriftProgress,
+            internalEnergyProgress);
     }
 
     public static AmbientOrbMotionParameters CreateForProgress(
@@ -106,7 +139,10 @@ public static class AmbientOrbMotionModel
             AmbientOrbInsightModifier.None,
         double insightProgress = 0d,
         bool reducedMotion = false,
-        double slowDriftProgress = StaticSlowDriftProgress)
+        double slowDriftProgress = StaticSlowDriftProgress,
+        double contourDriftProgress = StaticContourDriftProgress,
+        double highlightDriftProgress = StaticHighlightDriftProgress,
+        double internalEnergyProgress = StaticInternalEnergyProgress)
     {
         var progress = reducedMotion
             ? StaticCycleProgress
@@ -116,6 +152,17 @@ public static class AmbientOrbMotionModel
             ? StaticSlowDriftProgress
             : WrapUnit(slowDriftProgress);
         var slowPhase = Math.Tau * slowProgress;
+        var contourProgress = reducedMotion
+            ? StaticContourDriftProgress
+            : WrapUnit(contourDriftProgress);
+        var contourPhase = Math.Tau * contourProgress;
+        var highlightProgress = reducedMotion
+            ? StaticHighlightDriftProgress
+            : WrapUnit(highlightDriftProgress);
+        var highlightPhase = Math.Tau * highlightProgress;
+        var internalProgress = reducedMotion
+            ? StaticInternalEnergyProgress
+            : WrapUnit(internalEnergyProgress);
         var breath = CreateOrganicBreathEnvelope(progress);
         var hover = Math.Clamp(blendState.HoverAmount, 0d, 1d);
         var generating = Math.Clamp(
@@ -142,27 +189,40 @@ public static class AmbientOrbMotionModel
             unknown: 0.85d);
         var expansion = breathExpansion * breath +
             0.18d * hover + 0.10d * generating + 0.82d * wake;
-        var drift = 0.52d * Math.Sin(slowPhase + 0.35d) +
-            0.17d * Math.Sin(2d * slowPhase - 0.8d);
+        var drift = 0.46d * Math.Sin(slowPhase + 0.35d) +
+            0.15d * Math.Sin(2d * slowPhase - 0.8d);
         var centerX = 47.5d + drift + 0.10d * hover;
         var centerY = 47.5d - 0.46d * breath +
             0.20d * Math.Sin(slowPhase - 0.4d) -
             0.18d * wake;
-        var highlightX = centerX - 5.3d - 0.62d * breath -
-            0.55d * wake;
+        var highlightX = centerX - 5.3d - 0.54d * breath -
+            0.48d * Math.Sin(highlightPhase + 0.25d) -
+            0.28d * hover - 0.55d * wake;
         var highlightY = centerY - 5.8d -
-            0.35d * Math.Sin(slowPhase + 0.2d) -
+            0.38d * Math.Sin(highlightPhase - 0.7d) -
+            0.16d * Math.Sin(contourPhase + 0.4d) -
             0.45d * wake;
+        var deformationPhase =
+            0.48d * Math.Sin(contourPhase + 0.3d) +
+            0.22d * Math.Sin(slowPhase - 0.6d) +
+            0.10d * Math.Sin(cyclePhase);
+        var contourTension = 1d +
+            0.10d * Math.Sin(contourPhase - 0.8d) +
+            0.035d * Math.Sin(slowPhase + 0.5d) +
+            0.05d * hover + 0.045d * generating;
 
         return new(
             postureMode,
             progress,
             slowProgress,
+            contourProgress,
+            highlightProgress,
+            internalProgress,
             breath,
             baseRadius,
             expansion,
-            slowPhase + 0.24d * Math.Sin(2d * slowPhase) +
-                0.48d * Math.Sin(cyclePhase),
+            deformationPhase,
+            contourTension,
             centerX,
             centerY,
             highlightX,
@@ -181,8 +241,10 @@ public static class AmbientOrbMotionModel
     {
         var phase = motion.DeformationPhase;
         return motion.BaseRadius + motion.Expansion +
-            0.72d * Math.Sin(2d * angle + 0.35d + phase) +
-            0.46d * Math.Sin(3d * angle - 0.75d - phase) +
+            motion.ContourTension *
+                0.72d * Math.Sin(2d * angle + 0.35d + phase) +
+            motion.ContourTension *
+                0.46d * Math.Sin(3d * angle - 0.75d - phase) +
             0.22d * Math.Sin(5d * angle + 1.10d + 2d * phase) +
             (0.28d + 0.34d * motion.BreathAmount) *
                 Math.Sin(angle - 0.80d + phase) +
@@ -268,7 +330,7 @@ public static class AmbientOrbMotionModel
 
 public sealed class AmbientOrbFrameSequence
 {
-    public const int FramesPerSecond = 20;
+    public const int FramesPerSecond = 45;
     public const int FrameCount = 100;
     public const int WakeFrameCount = 40;
     public const int CanvasSize = 96;
@@ -307,7 +369,7 @@ public sealed class AmbientOrbFrameSequence
     public TimeSpan FrameInterval => TimeSpan.FromSeconds(
         1d / FramesPerSecond);
 
-    public TimeSpan CycleDuration => FrameInterval * FrameCount;
+    public TimeSpan CycleDuration => AmbientOrbMotionModel.StableCycleDuration;
 
     public int StaticFrameIndex => Math.Min(
         (int)Math.Round(
@@ -340,7 +402,13 @@ public sealed class AmbientOrbFrameSequence
         double insightProgress = 0d,
         AmbientOrbBlendState? blendState = null,
         double slowDriftProgress =
-            AmbientOrbMotionModel.StaticSlowDriftProgress)
+            AmbientOrbMotionModel.StaticSlowDriftProgress,
+        double contourDriftProgress =
+            AmbientOrbMotionModel.StaticContourDriftProgress,
+        double highlightDriftProgress =
+            AmbientOrbMotionModel.StaticHighlightDriftProgress,
+        double internalEnergyProgress =
+            AmbientOrbMotionModel.StaticInternalEnergyProgress)
     {
         ArgumentNullException.ThrowIfNull(destination);
         if (destination.Length != CanvasSize * CanvasSize * 4)
@@ -364,7 +432,10 @@ public sealed class AmbientOrbFrameSequence
             insightProgress,
             reducedMotion: !animationsEnabled,
             blendState: blendState,
-            slowDriftProgress: slowDriftProgress);
+            slowDriftProgress: slowDriftProgress,
+            contourDriftProgress: contourDriftProgress,
+            highlightDriftProgress: highlightDriftProgress,
+            internalEnergyProgress: internalEnergyProgress);
     }
 
     public bool IsHitTestVisible(int x, int y, int frameIndex = 0)
@@ -525,7 +596,13 @@ internal static class AmbientOrbProceduralRenderer
         bool reducedMotion,
         AmbientOrbBlendState? blendState = null,
         double slowDriftProgress =
-            AmbientOrbMotionModel.StaticSlowDriftProgress)
+            AmbientOrbMotionModel.StaticSlowDriftProgress,
+        double contourDriftProgress =
+            AmbientOrbMotionModel.StaticContourDriftProgress,
+        double highlightDriftProgress =
+            AmbientOrbMotionModel.StaticHighlightDriftProgress,
+        double internalEnergyProgress =
+            AmbientOrbMotionModel.StaticInternalEnergyProgress)
     {
         Array.Clear(pixels);
         var motion = blendState is { } blend
@@ -536,7 +613,10 @@ internal static class AmbientOrbProceduralRenderer
                 insightModifier,
                 insightProgress,
                 reducedMotion,
-                slowDriftProgress)
+                slowDriftProgress,
+                contourDriftProgress,
+                highlightDriftProgress,
+                internalEnergyProgress)
             : AmbientOrbMotionModel.CreateForProgress(
                 cycleProgress,
                 mode,
@@ -544,7 +624,10 @@ internal static class AmbientOrbProceduralRenderer
                 insightModifier,
                 insightProgress,
                 reducedMotion,
-                slowDriftProgress);
+                slowDriftProgress,
+                contourDriftProgress,
+                highlightDriftProgress,
+                internalEnergyProgress);
         var profile = GetProfile(motion.BlendState);
         var phase2 = 0.35d + motion.DeformationPhase;
         var phase3 = -0.75d - motion.DeformationPhase;
@@ -561,9 +644,14 @@ internal static class AmbientOrbProceduralRenderer
         var phase1Cos = Math.Cos(phase1);
         var wake3Sin = Math.Sin(wakePhase3);
         var wake3Cos = Math.Cos(wakePhase3);
-        var generatingPhase = Math.Tau * motion.CycleProgress;
-        var generatingX = motion.CenterX + 8d * Math.Cos(generatingPhase);
-        var generatingY = motion.CenterY + 6d * Math.Sin(generatingPhase);
+        var generatingPhase = Math.Tau * motion.InternalEnergyProgress +
+            0.42d * Math.Sin(Math.Tau * motion.CycleProgress);
+        var generatingX = motion.CenterX +
+            5.2d * Math.Sin(generatingPhase + 0.35d);
+        var generatingY = motion.CenterY +
+            3.8d * Math.Sin(1.7d * generatingPhase - 0.6d);
+        var generatingPulse = 0.82d + 0.18d *
+            Math.Sin(2.3d * generatingPhase + 0.8d);
 
         for (var index = 0; index < Geometry.Length; index++)
         {
@@ -577,12 +665,12 @@ internal static class AmbientOrbProceduralRenderer
             }
 
             var boundary = motion.BaseRadius + motion.Expansion +
-                0.72d * Combine(
+                motion.ContourTension * 0.72d * Combine(
                     geometry.Sin2,
                     geometry.Cos2,
                     phase2Sin,
                     phase2Cos) +
-                0.46d * Combine(
+                motion.ContourTension * 0.46d * Combine(
                     geometry.Sin3,
                     geometry.Cos3,
                     phase3Sin,
@@ -673,7 +761,7 @@ internal static class AmbientOrbProceduralRenderer
                         4.8d,
                         3.5d);
                     AddLayer(ref red, ref green, ref blue, ref alpha,
-                        bodyMask * activity * 0.30d *
+                        bodyMask * activity * 0.26d * generatingPulse *
                             motion.GeneratingAmount,
                         profile.Membrane);
                 }

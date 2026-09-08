@@ -450,7 +450,10 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             insightProgress,
             !_lifecycle.AnimationsEnabled,
             _blendState,
-            GetSlowDriftProgress(now));
+            GetMotionProgress(now, AmbientOrbMotionModel.SlowDriftDuration),
+            GetMotionProgress(now, AmbientOrbMotionModel.ContourDriftDuration),
+            GetMotionProgress(now, AmbientOrbMotionModel.HighlightDriftDuration),
+            GetMotionProgress(now, AmbientOrbMotionModel.InternalEnergyDuration));
         Marshal.Copy(
             _renderPixels,
             0,
@@ -497,13 +500,12 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             AmbientOrbMotionModel.StableCycleDuration.TotalSeconds % 1d;
     }
 
-    private double GetSlowDriftProgress(long timestamp)
+    private double GetMotionProgress(long timestamp, TimeSpan duration)
     {
         var elapsed = Stopwatch.GetElapsedTime(
             _phaseOriginTimestamp,
             timestamp);
-        return elapsed.TotalSeconds /
-            AmbientOrbMotionModel.SlowDriftDuration.TotalSeconds % 1d;
+        return elapsed.TotalSeconds / duration.TotalSeconds % 1d;
     }
 
     private double GetInsightProgress(
@@ -516,9 +518,7 @@ internal sealed class NativeAmbientOrbWindow : IDisposable
             return 0d;
         }
 
-        var wakeDuration = TimeSpan.FromSeconds(
-            AmbientOrbFrameSequence.WakeFrameCount /
-            (double)AmbientOrbFrameSequence.FramesPerSecond);
+        var wakeDuration = AmbientOrbMotionModel.InsightWakeDuration;
         var progress = Stopwatch.GetElapsedTime(started, timestamp) /
             wakeDuration;
         if (progress < 1d)
