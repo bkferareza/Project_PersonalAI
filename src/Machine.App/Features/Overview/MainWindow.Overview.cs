@@ -30,7 +30,7 @@ public sealed partial class MainWindow
         OverviewPage.OverviewStatePostureText.Text = presentationState switch
         {
             MachineOverallState.Stable =>
-                "Quiet right now. Verified signals remain within a calm posture.",
+                "Everything important looks normal right now.",
             MachineOverallState.Attention =>
                 "A small change deserves attention, without immediate urgency.",
             MachineOverallState.Warning =>
@@ -70,6 +70,7 @@ public sealed partial class MainWindow
             OverviewPage.FindingsSummaryText.Text.Length == 0
                 ? Visibility.Collapsed
                 : Visibility.Visible;
+        UpdateOverviewAttentionVisibility();
     }
 
     private async Task RunProcessLoopAsync(
@@ -724,6 +725,8 @@ public sealed partial class MainWindow
         {
             OverviewPage.LocalInsightCandidatePanel.Visibility =
                 Visibility.Collapsed;
+            OverviewPage.LocalInsightCard.Visibility = Visibility.Collapsed;
+            UpdateOverviewAttentionVisibility();
             if (previousId is not null)
             {
                 _hasSuccessfulExplanation = false;
@@ -751,6 +754,8 @@ public sealed partial class MainWindow
             _currentInsight.EvidenceSummary;
         OverviewPage.LocalInsightCandidatePanel.Visibility =
             Visibility.Visible;
+        OverviewPage.LocalInsightCard.Visibility = Visibility.Visible;
+        UpdateOverviewAttentionVisibility();
 
         if (!string.Equals(previousId, _currentInsight.Id,
             StringComparison.Ordinal))
@@ -781,6 +786,15 @@ public sealed partial class MainWindow
             presentation.EnergyText;
         OverviewPage.TodayRunningBillEvidenceText.Text =
             presentation.EvidenceText;
+    }
+
+    private void UpdateOverviewAttentionVisibility()
+    {
+        OverviewPage.CurrentFindingsCard.Visibility =
+            _latestFindingsSnapshot.Findings.Count > 0 ||
+            _currentInsight is not null
+                ? Visibility.Visible
+                : Visibility.Collapsed;
     }
 
     private void MarkCurrentInsightViewed()

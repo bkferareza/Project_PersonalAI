@@ -16,12 +16,10 @@ public sealed class OverviewTodayStatusPresentationTests
         Assert.Equal("Running bill today", presentation.Title);
         Assert.Equal("~₱0.72 estimated", presentation.PrimaryText);
         Assert.Equal(
-            "0.049 kWh observed PC energy",
+            "0.049 kWh",
             presentation.EnergyText);
-        Assert.Contains("Meralco residential reference",
-            presentation.EvidenceText);
-        Assert.Contains("₱14.7833/kWh", presentation.EvidenceText);
-        Assert.Contains("August 2026", presentation.EvidenceText);
+        Assert.Contains("not a household bill", presentation.EvidenceText);
+        Assert.DoesNotContain("Meralco", presentation.EvidenceText);
     }
 
     [Fact]
@@ -31,12 +29,10 @@ public sealed class OverviewTodayStatusPresentationTests
 
         Assert.Equal("Cost unavailable", presentation.PrimaryText);
         Assert.Equal(
-            "0.049 kWh observed PC energy",
+            "0.049 kWh",
             presentation.EnergyText);
         Assert.DoesNotContain("₱0.00", presentation.PrimaryText);
-        Assert.Contains("reference unavailable",
-            presentation.EvidenceText,
-            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not a household bill", presentation.EvidenceText);
     }
 
     [Fact]
@@ -47,6 +43,29 @@ public sealed class OverviewTodayStatusPresentationTests
         Assert.Equal("Still observing", presentation.PrimaryText);
         Assert.DoesNotContain("0.000 kWh", presentation.EnergyText);
         Assert.DoesNotContain("₱0.00", presentation.PrimaryText);
+    }
+
+    [Theory]
+    [InlineData(MachineTodayLearnedEnergyComparisonState.WithinLearnedRange,
+        "Within the range")]
+    [InlineData(MachineTodayLearnedEnergyComparisonState.AboveLearnedRange,
+        "Above the range")]
+    [InlineData(MachineTodayLearnedEnergyComparisonState.BelowLearnedRange,
+        "Below the range")]
+    [InlineData(MachineTodayLearnedEnergyComparisonState.StillLearning,
+        "still learning")]
+    public void TodayComparisonAddsPlainLanguageContext(
+        MachineTodayLearnedEnergyComparisonState state,
+        string expected)
+    {
+        var comparison = CreateLearnedDeviation() with
+        {
+            ComparisonState = state
+        };
+
+        var text = OverviewTodayComparisonPresenter.Present(comparison);
+
+        Assert.Contains(expected, text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -69,13 +88,15 @@ public sealed class OverviewTodayStatusPresentationTests
     }
 
     [Fact]
-    public void OverviewKeepsTodayFindingsAndLocalInsightAsSiblingCards()
+    public void OverviewPrioritizesBriefThenTodayStatusAndAttention()
     {
         var path = Directory.GetFiles(
             Path.Combine(AppContext.BaseDirectory, "FeatureViews"),
             "OverviewView.xaml",
             SearchOption.AllDirectories).Single();
         var xaml = File.ReadAllText(path);
+        var brief = xaml.IndexOf("x:Name=\"MachineBriefCard\"",
+            StringComparison.Ordinal);
         var today = xaml.IndexOf("x:Name=\"TodayStatusCard\"",
             StringComparison.Ordinal);
         var findings = xaml.IndexOf("x:Name=\"CurrentFindingsCard\"",
@@ -83,9 +104,18 @@ public sealed class OverviewTodayStatusPresentationTests
         var insight = xaml.IndexOf("x:Name=\"LocalInsightCard\"",
             StringComparison.Ordinal);
 
-        Assert.True(today >= 0);
+        Assert.True(brief >= 0);
+        Assert.True(today > brief);
         Assert.True(findings > today);
         Assert.True(insight > findings);
+        var hiddenDetails = xaml.IndexOf(
+            "x:Name=\"OverviewDetailBindingSinks\"",
+            StringComparison.Ordinal);
+        var cpuBinding = xaml.IndexOf("x:Name=\"CpuUsageText\"",
+            StringComparison.Ordinal);
+        Assert.True(hiddenDetails > insight);
+        Assert.True(cpuBinding > hiddenDetails);
+        Assert.DoesNotContain("DashboardCardStyle", xaml);
         Assert.DoesNotContain(
             "RunningBillInsightPanel",
             xaml,

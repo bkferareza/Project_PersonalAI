@@ -28,6 +28,8 @@ public sealed partial class MainWindow
             history,
             learning,
             acceptedToday);
+        OverviewPage.TodayLearnedComparisonText.Text =
+            OverviewTodayComparisonPresenter.Present(todayComparison);
         var learnedUsage = MachineLearnedUsageProjector.Project(
             history.Rollups,
             now);
