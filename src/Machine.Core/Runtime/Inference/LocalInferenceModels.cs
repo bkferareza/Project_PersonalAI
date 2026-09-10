@@ -52,7 +52,9 @@ public sealed record LocalInferenceResult(
     int? PromptTokenCount = null,
     int? OutputTokenCount = null,
     TimeSpan? LoadDuration = null,
-    TimeSpan? GenerationDuration = null)
+    TimeSpan? GenerationDuration = null,
+    TimeSpan? PromptEvaluationDuration = null,
+    double? GenerationTokensPerSecond = null)
 {
     public bool IsSuccess =>
         Failure is null &&

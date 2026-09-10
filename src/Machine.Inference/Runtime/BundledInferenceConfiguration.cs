@@ -44,28 +44,44 @@ public sealed record BundledInferenceConfiguration(
         var modelManifestPath = Path.Combine(
             manifestDirectory,
             "model-manifest.json");
+        var runtimeDirectory = Path.Combine(
+            baseDirectory,
+            "Inference",
+            "Runtime");
+        var modelDirectory = Path.Combine(
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData),
+            "Matasuri",
+            "Inference",
+            "Models");
+        return LoadFromManifests(
+            runtimeManifestPath,
+            modelManifestPath,
+            runtimeDirectory,
+            modelDirectory);
+    }
+
+    public static BundledInferenceConfiguration LoadFromManifests(
+        string runtimeManifestPath,
+        string modelManifestPath,
+        string runtimeDirectory,
+        string modelDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(runtimeManifestPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelManifestPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(runtimeDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelDirectory);
         using var runtimeDocument = JsonDocument.Parse(
             File.ReadAllText(runtimeManifestPath));
         using var modelDocument = JsonDocument.Parse(
             File.ReadAllText(modelManifestPath));
         var runtime = runtimeDocument.RootElement;
         var model = modelDocument.RootElement;
-        var runtimeDirectory = Path.Combine(
-            baseDirectory,
-            "Inference",
-            "Runtime");
         var executableName = RequiredString(
             runtime,
             "expectedExecutable");
         var modelFileName = RequiredString(model, "fileName");
-        var localApplicationData = Environment.GetFolderPath(
-            Environment.SpecialFolder.LocalApplicationData);
-        var modelPath = Path.Combine(
-            localApplicationData,
-            "Matasuri",
-            "Inference",
-            "Models",
-            modelFileName);
+        var modelPath = Path.Combine(modelDirectory, modelFileName);
         var runtimeFiles = runtime.GetProperty("files")
             .EnumerateArray()
             .Select(file => new InferenceArtifactFile(

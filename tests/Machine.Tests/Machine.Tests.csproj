@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\eng\Machine.AiEvaluation\Machine.AiEvaluation.csproj" />
     <ProjectReference Include="..\..\src\Machine.Core\Machine.Core.csproj" />
     <ProjectReference Include="..\..\src\Machine.Inference\Machine.Inference.csproj" />
     <ProjectReference Include="..\..\src\Machine.Windows\Machine.Windows.csproj" />

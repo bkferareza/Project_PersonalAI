@@ -306,7 +306,11 @@ public sealed partial class BundledLlamaInferenceRuntime
                         ? _lastLoadDuration
                         : null,
                     GenerationDuration:
-                        Milliseconds(payload?.Timings?.PredictedMs));
+                        Milliseconds(payload?.Timings?.PredictedMs),
+                    PromptEvaluationDuration:
+                        Milliseconds(payload?.Timings?.PromptMs),
+                    GenerationTokensPerSecond:
+                        PositiveFinite(payload?.Timings?.PredictedPerSecond));
             }
             catch (OperationCanceledException)
                 when (cancellationToken.IsCancellationRequested)
@@ -936,6 +940,11 @@ public sealed partial class BundledLlamaInferenceRuntime
             ? TimeSpan.FromMilliseconds(milliseconds)
             : null;
 
+    private static double? PositiveFinite(double? value) =>
+        value is { } number && double.IsFinite(number) && number > 0d
+            ? number
+            : null;
+
     private static int? TryGetProcessId(Process? process)
     {
         try
@@ -988,7 +997,9 @@ public sealed partial class BundledLlamaInferenceRuntime
 
     private sealed record ChatTimings(
         [property: JsonPropertyName("prompt_ms")] double? PromptMs,
-        [property: JsonPropertyName("predicted_ms")] double? PredictedMs);
+        [property: JsonPropertyName("predicted_ms")] double? PredictedMs,
+        [property: JsonPropertyName("predicted_per_second")]
+        double? PredictedPerSecond);
 
     [JsonSerializable(typeof(ChatRequest))]
     [JsonSerializable(typeof(ChatResponse))]
