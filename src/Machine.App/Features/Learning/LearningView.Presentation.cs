@@ -1421,6 +1421,58 @@ public sealed partial class LearningView
             generation);
     }
 
+    internal void UpdateAiQualityMetrics(MachineAiQualitySummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        if (!summary.HasMeaningfulSample)
+        {
+            LearningAiKnowledgeQualityText.Text =
+                $"Collecting AI quality samples · " +
+                $"{summary.RecentGenerationCount:N0} generations";
+        }
+        else
+        {
+            var rejections = summary.RejectionCategories.Count == 0
+                ? "no validator rejections"
+                : string.Join(", ", summary.RejectionCategories
+                    .OrderBy(pair => pair.Key)
+                    .Select(pair => $"{pair.Key} {pair.Value:N0}"));
+            LearningAiKnowledgeQualityText.Text =
+                $"{summary.RecentGenerationCount:N0} generations · " +
+                $"first-pass grounded " +
+                $"{summary.FirstPassGroundedPercent!.Value:F0}% · " +
+                $"repairs {summary.RepairPercent!.Value:F0}% · " +
+                $"fallback {summary.FallbackPercent!.Value:F0}% · " +
+                rejections;
+        }
+
+        LearningAiKnowledgePerformanceText.Text =
+            summary.MedianResponseTime is null
+                ? "No measured generations yet"
+                : $"median {summary.MedianResponseTime.Value.TotalSeconds:F1}s · " +
+                  $"p95 {summary.P95ResponseTime!.Value.TotalSeconds:F1}s · " +
+                  (summary.MedianColdLoadTime is { } cold
+                      ? $"cold load {cold.TotalSeconds:F1}s · "
+                      : string.Empty) +
+                  (summary.MedianPromptEvaluationTime is { } prompt
+                      ? $"prompt eval {prompt.TotalSeconds:F2}s · "
+                      : string.Empty) +
+                  (summary.MedianGenerationTokensPerSecond is { } rate
+                      ? $"generation {rate:F1} tokens/s"
+                      : "generation rate unavailable");
+        LearningAiKnowledgeMetricsContextText.Text =
+            $"Recent window · last {summary.RecentWindowSize:N0} generations · " +
+            $"median evidence {FormatOptional(summary.MedianEvidenceItemCount)} · " +
+            $"input {FormatOptional(summary.MedianInputTokens)} tokens · " +
+            $"output {FormatOptional(summary.MedianOutputTokens)} tokens · " +
+            $"situation schema {MachineSituationSnapshot.CurrentSchemaVersion} · " +
+            $"prompt {MachineBriefPromptPolicy.CurrentVersion}";
+    }
+
+    private static string FormatOptional(double? value) =>
+        value is null ? "unavailable" : value.Value.ToString("F0",
+            CultureInfo.InvariantCulture);
+
     private static string AbbreviateHash(string value) =>
         value.Length <= 12 ? value : value[..12];
 

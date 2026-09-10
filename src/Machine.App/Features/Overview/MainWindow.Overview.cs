@@ -179,6 +179,7 @@ public sealed partial class MainWindow
     {
         _latestInferenceStatus = snapshot;
         LearningPage.UpdateRuntimeStatus(_latestInferenceStatus);
+        UpdateIntelligenceMetrics();
         if (!snapshot.IsRuntimeAvailable)
         {
             ShowInferenceUnavailable();
@@ -461,6 +462,35 @@ public sealed partial class MainWindow
                 : $"Generated locally · {brief.Model}{latency}";
         OverviewPage.MachineBriefStatusText.Text = string.Empty;
         LearningPage.UpdateBriefInspection(brief);
+        UpdateIntelligenceMetrics();
+    }
+
+    private void UpdateIntelligenceMetrics()
+    {
+        var summary = _aiPerformanceService.GetSummary();
+        LearningPage.UpdateAiQualityMetrics(summary);
+        var model = _latestInferenceStatus?.ConfiguredModelName ??
+            "Local AI";
+        var quantization = _latestInferenceStatus?.ConfiguredQuantization;
+        var modelLabel = string.IsNullOrWhiteSpace(quantization)
+            ? model
+            : $"{model} {quantization}";
+        if (!summary.HasMeaningfulSample)
+        {
+            OverviewPage.IntelligenceSummaryText.Text =
+                $"Collecting AI quality samples · " +
+                $"{summary.RecentGenerationCount:N0} generations";
+            OverviewPage.IntelligenceDetailText.Text = modelLabel;
+            return;
+        }
+
+        OverviewPage.IntelligenceSummaryText.Text =
+            $"{modelLabel} · Grounded first-pass " +
+            $"{summary.FirstPassGroundedPercent!.Value:F0}% · Median " +
+            $"{summary.MedianResponseTime!.Value.TotalSeconds:F1}s";
+        OverviewPage.IntelligenceDetailText.Text =
+            $"Repairs {summary.RepairPercent!.Value:F0}% · " +
+            $"Fallback {summary.FallbackPercent!.Value:F0}%";
     }
 
     private void UpdateMachineBriefButtonState()

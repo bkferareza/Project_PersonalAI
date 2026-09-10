@@ -172,6 +172,10 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <TextBlock FontWeight="SemiBold" Text="Runtime" />
                                     <TextBlock x:Name="LearningAiKnowledgeRuntimeText" x:FieldModifier="internal" Grid.Column="1" Text="Checking" TextWrapping="Wrap" />
@@ -196,6 +200,38 @@
                                         Grid.Column="1"
                                         Grid.Row="5"
                                         Text="No generation yet"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="6" FontWeight="SemiBold" Text="Quality · recent" />
+                                    <TextBlock
+                                        x:Name="LearningAiKnowledgeQualityText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LearningAiKnowledgeQualityText"
+                                        Grid.Column="1"
+                                        Grid.Row="6"
+                                        Text="Collecting AI quality samples"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="7" FontWeight="SemiBold" Text="Performance" />
+                                    <TextBlock
+                                        x:Name="LearningAiKnowledgePerformanceText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LearningAiKnowledgePerformanceText"
+                                        Grid.Column="1"
+                                        Grid.Row="7"
+                                        Text="No measured generations yet"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="8" FontWeight="SemiBold" Text="Metrics context" />
+                                    <TextBlock
+                                        x:Name="LearningAiKnowledgeMetricsContextText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LearningAiKnowledgeMetricsContextText"
+                                        Grid.Column="1"
+                                        Grid.Row="8"
+                                        Text="Recent window · last 20 generations"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock Grid.Row="9" FontWeight="SemiBold" Text="Model comparison" />
+                                    <TextBlock
+                                        x:Name="LearningAiKnowledgeModelComparisonText" x:FieldModifier="internal"
+                                        AutomationProperties.AutomationId="LearningAiKnowledgeModelComparisonText"
+                                        Grid.Column="1"
+                                        Grid.Row="9"
+                                        Text="Default / 4B reference · first-pass 43% · repair 57% · fallback 21% · median 2.4s · GPU model 2.51 GiB&#x0a;Vanilla 2B · first-pass 36% · repair 64% · fallback 0% · median 1.1s · GPU model 1.30 GiB&#x0a;Specialized 2B · first-pass 36% · repair 64% · fallback 29% · median 1.3s · GPU model 1.30 GiB"
                                         TextWrapping="Wrap" />
                                 </Grid>
                                 <Expander Header="Current normalized evidence payload">

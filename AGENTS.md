@@ -13,6 +13,8 @@
 - Build a Windows-first, local-first intelligence layer.
 - Normal operation must not require cloud inference, paid APIs, internet access, an external model server, or automatic model downloads.
 - Production inference is owned by the application through pinned, verified llama.cpp and Qwen artifacts; no separately installed inference runtime is required.
+- Model promotion requires Matasuri-specific held-out evaluation; a smaller model is never preferred merely for size or speed, and the 4B model remains the development reference/teacher if a smaller model later wins.
+- Intelligence metrics are bounded operational measurements, never a synthetic IQ or confidence score. Training data contains only bounded normalized evidence, validated teacher output may enter only after deterministic acceptance, held-out scenarios remain excluded from training, and normal runtime never depends on Python or training tooling.
 - Deterministic Windows capabilities provide verified facts and actions.
 - Application code owns policy, validation, and safety.
 - A language model may interpret or explain verified data, but must never invent machine state or directly execute arbitrary commands.

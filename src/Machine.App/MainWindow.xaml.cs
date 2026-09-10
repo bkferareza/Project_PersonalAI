@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window
     private readonly ILocalInferenceRuntime _inferenceRuntime;
     private readonly IMachineStateExplainer _machineStateExplainer;
     private readonly IMachineBriefGenerator _machineBriefGenerator;
+    private readonly MachineAiPerformanceService _aiPerformanceService;
     private readonly IMachineUserActivityProvider _userActivityProvider;
     private readonly IMachineNetworkProvider _networkProvider;
     private readonly IMachineSessionProvider _sessionProvider;
@@ -148,6 +149,7 @@ public sealed partial class MainWindow : Window
         ILocalInferenceRuntime inferenceRuntime,
         IMachineStateExplainer machineStateExplainer,
         IMachineBriefGenerator machineBriefGenerator,
+        MachineAiPerformanceService aiPerformanceService,
         IMachineStorageProvider storageProvider,
         IMachineFolderInspectionProvider folderInspectionProvider,
         IMachineSoftwareInventoryProvider softwareInventoryProvider,
@@ -183,6 +185,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(inferenceRuntime);
         ArgumentNullException.ThrowIfNull(machineStateExplainer);
         ArgumentNullException.ThrowIfNull(machineBriefGenerator);
+        ArgumentNullException.ThrowIfNull(aiPerformanceService);
         ArgumentNullException.ThrowIfNull(storageProvider);
         ArgumentNullException.ThrowIfNull(folderInspectionProvider);
         ArgumentNullException.ThrowIfNull(softwareInventoryProvider);
@@ -217,6 +220,7 @@ public sealed partial class MainWindow : Window
         _inferenceRuntime = inferenceRuntime;
         _machineStateExplainer = machineStateExplainer;
         _machineBriefGenerator = machineBriefGenerator;
+        _aiPerformanceService = aiPerformanceService;
         _userActivityProvider = userActivityProvider;
         _networkProvider = networkProvider;
         _sessionProvider = sessionProvider;

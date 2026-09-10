@@ -100,6 +100,31 @@
             </Border>
 
             <Border
+                x:Name="IntelligenceStatusCard" x:FieldModifier="internal"
+                AutomationProperties.AutomationId="IntelligenceStatusCard"
+                BorderBrush="{ThemeResource TextFillColorSecondaryBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="0,16,0,18">
+                <StackPanel Spacing="3">
+                    <TextBlock
+                        Style="{StaticResource MetricLabelStyle}"
+                        Text="INTELLIGENCE" />
+                    <TextBlock
+                        x:Name="IntelligenceSummaryText" x:FieldModifier="internal"
+                        AutomationProperties.AutomationId="IntelligenceSummaryText"
+                        FontWeight="SemiBold"
+                        Text="Collecting AI quality samples"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        x:Name="IntelligenceDetailText" x:FieldModifier="internal"
+                        AutomationProperties.AutomationId="IntelligenceDetailText"
+                        Style="{StaticResource SecondaryTextStyle}"
+                        Text="Local, bounded, and grounded"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border
                 x:Name="TodayStatusCard" x:FieldModifier="internal"
                 AutomationProperties.AutomationId="TodayStatusCard"
                 BorderBrush="{ThemeResource TextFillColorSecondaryBrush}"

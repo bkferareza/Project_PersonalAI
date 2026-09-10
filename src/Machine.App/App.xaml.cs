@@ -81,6 +81,10 @@ public partial class App : Application
         IMachineHistoryStore historyStore = new FileMachineHistoryStore();
         var inferenceConfiguration =
             BundledInferenceConfiguration.LoadDefault();
+        var aiPerformanceService = new MachineAiPerformanceService(
+            new FileMachineAiMetricStore());
+        _ = aiPerformanceService.RestoreAsync(
+            _appCancellationTokenSource.Token);
         var localInferenceRuntime = new BundledLlamaInferenceRuntime(
             inferenceConfiguration);
         var electricityRateHttpClient = new HttpClient(
@@ -93,7 +97,9 @@ public partial class App : Application
             electricityRateHttpClient, new FileElectricityRateCache());
         var localInterpreter = new LocalMachineIntelligenceGenerator(
             localInferenceRuntime,
-            inferenceConfiguration.ModelAlias);
+            inferenceConfiguration.ModelAlias,
+            inferenceConfiguration.Quantization,
+            aiPerformanceService);
         IMachineStateExplainer machineStateExplainer = localInterpreter;
         IMachineBriefGenerator machineBriefGenerator =
             localInterpreter;
@@ -118,6 +124,7 @@ public partial class App : Application
             localInferenceRuntime,
             machineStateExplainer,
             machineBriefGenerator,
+            aiPerformanceService,
             storageProvider,
             folderInspectionProvider,
             softwareInventoryProvider,

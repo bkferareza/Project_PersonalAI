@@ -108,6 +108,15 @@ public sealed class OverviewTodayStatusPresentationTests
         Assert.True(today > brief);
         Assert.True(findings > today);
         Assert.True(insight > findings);
+        Assert.Contains(
+            "AutomationProperties.AutomationId=\"IntelligenceStatusCard\"",
+            xaml);
+        Assert.Contains(
+            "AutomationProperties.AutomationId=\"IntelligenceSummaryText\"",
+            xaml);
+        Assert.Contains(
+            "AutomationProperties.AutomationId=\"IntelligenceDetailText\"",
+            xaml);
         var hiddenDetails = xaml.IndexOf(
             "x:Name=\"OverviewDetailBindingSinks\"",
             StringComparison.Ordinal);

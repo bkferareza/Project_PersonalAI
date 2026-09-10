@@ -60,6 +60,27 @@ The Brief uses a strict structured response with evidence identity on its overal
 
 The deterministic Machine Situation projection now selects at most 24 normalized evidence items across Now, Recently, Learned Normal, Today, Forward, controlled-action outcomes, Learning confidence, and separate Matasuri self-health. Significant current problems rank ahead of routine context, while a stable machine still supplies enough current resource, health, and learned-normal evidence to support a grounded normal assessment. The projection never exposes raw History, raw Learning persistence, process inventories, startup commands, recovery payloads, network addresses, location, or inference secrets. Learning → AI Knowledge exposes the exact selected item IDs, summaries, and display-ready values locally.
 
+Qwen3.5-4B Q4_K_M remains the production default after a 14-case
+Matasuri-specific held-out evaluation. Vanilla Qwen3.5-2B and a bounded
+Q5_K_M QLoRA specialization were materially faster and used about half the GPU
+model memory, but neither reached the 90% required-evidence gate. The latest
+comparison was: 4B 43% first-pass / 57% repair / 21% fallback / 86% required
+evidence / 2.4s median; vanilla 2B 36% / 64% / 0% / 64% / 1.1s; specialized
+2B 36% / 64% / 29% / 64% / 1.3s. Smaller models are promoted only by this
+product-specific quality evidence, never by size alone. The official 2B source,
+candidate manifests, deterministic 560-record dataset exporter, and isolated
+QLoRA/merge tooling remain development-only; normal Matasuri operation has no
+Python or training dependency and continues to load only the 4B default.
+
+Operational intelligence quality is measured without a synthetic score. A
+separate local file retains at most 200 normalized generation records—model and
+quantization, request type, a non-reversible Situation fingerprint, counts,
+timings, validation path, and rejection category—never prompts, snapshots, or
+generated prose. Overview shows one compact status over the most recent 20
+generations and says it is collecting samples until five exist. Learning → AI
+Knowledge adds detailed first-pass, repair, fallback, latency, prompt,
+generation-rate, context, runtime-memory, and held-out model-comparison facts.
+
 ## Observability coverage
 
 All capabilities below remain read-only except the explicitly reviewed and reversible current-user Startup providers described in the controlled-action section.

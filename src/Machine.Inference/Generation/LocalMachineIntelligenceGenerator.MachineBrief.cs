@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Diagnostics;
 using Machine.Core;
 
 namespace Machine.Inference;
@@ -123,6 +124,7 @@ public sealed partial class LocalMachineIntelligenceGenerator
         var estimatedInputTokens = Math.Max(1,
             (BriefSystemMessage.Length + BriefUserMessagePrefix.Length +
                 payloadJson.Length + 3) / 4);
+        var totalStopwatch = Stopwatch.StartNew();
         var first = await TryGenerateBriefAsync(
             CreateBriefInferenceRequest(
                 $"{BriefUserMessagePrefix}\n{payloadJson}"),
@@ -133,7 +135,7 @@ public sealed partial class LocalMachineIntelligenceGenerator
         if (firstValidation.Result.IsValid &&
             firstValidation.Result.Content is { } firstContent)
         {
-            return CreateBrief(
+            var brief = CreateBrief(
                 firstContent,
                 first.Model ?? _modelName,
                 MachineExplanationSource.LocalModel,
@@ -147,6 +149,12 @@ public sealed partial class LocalMachineIntelligenceGenerator
                     first.OutputTokenCount,
                     first.LoadDuration,
                     first.GenerationDuration));
+            totalStopwatch.Stop();
+            await RecordBriefMetricAsync(request.Situation, payloadJson,
+                first, firstValidation.Result, null, null,
+                totalStopwatch.Elapsed, cancellationToken)
+                .ConfigureAwait(false);
+            return brief;
         }
 
         var repairReason = firstValidation.Result.SafeReason;
@@ -163,7 +171,7 @@ public sealed partial class LocalMachineIntelligenceGenerator
         if (repairedValidation.Result.IsValid &&
             repairedValidation.Result.Content is { } repairedContent)
         {
-            return CreateBrief(
+            var brief = CreateBrief(
                 repairedContent,
                 repaired.Model ?? first.Model ?? _modelName,
                 MachineExplanationSource.LocalModel,
@@ -178,11 +186,17 @@ public sealed partial class LocalMachineIntelligenceGenerator
                     repaired.LoadDuration ?? first.LoadDuration,
                     AddDurations(first.GenerationDuration,
                         repaired.GenerationDuration)));
+            totalStopwatch.Stop();
+            await RecordBriefMetricAsync(request.Situation, payloadJson,
+                first, firstValidation.Result, repaired,
+                repairedValidation.Result, totalStopwatch.Elapsed,
+                cancellationToken).ConfigureAwait(false);
+            return brief;
         }
 
         var fallback = MachineBriefFallbackComposer.Compose(
             request.Situation);
-        return CreateBrief(
+        var fallbackBrief = CreateBrief(
             fallback,
             repaired.Model ?? first.Model ?? _modelName,
             MachineExplanationSource.DeterministicFallback,
@@ -198,6 +212,12 @@ public sealed partial class LocalMachineIntelligenceGenerator
                 repaired.LoadDuration ?? first.LoadDuration,
                 AddDurations(first.GenerationDuration,
                     repaired.GenerationDuration)));
+        totalStopwatch.Stop();
+        await RecordBriefMetricAsync(request.Situation, payloadJson,
+            first, firstValidation.Result, repaired,
+            repairedValidation.Result, totalStopwatch.Elapsed,
+            cancellationToken).ConfigureAwait(false);
+        return fallbackBrief;
     }
 
     private LocalInferenceRequest CreateBriefInferenceRequest(

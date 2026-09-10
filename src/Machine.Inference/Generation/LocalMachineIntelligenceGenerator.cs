@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Machine.Core;
 
 namespace Machine.Inference;
@@ -75,16 +76,22 @@ public sealed partial class LocalMachineIntelligenceGenerator
 
     private readonly ILocalInferenceRuntime _runtime;
     private readonly string _modelName;
+    private readonly string _quantization;
+    private readonly IMachineAiMetricRecorder? _metricRecorder;
 
     public LocalMachineIntelligenceGenerator(
         ILocalInferenceRuntime runtime,
-        string modelName)
+        string modelName,
+        string quantization = "unknown",
+        IMachineAiMetricRecorder? metricRecorder = null)
     {
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
 
         _runtime = runtime;
         _modelName = modelName;
+        _quantization = quantization;
+        _metricRecorder = metricRecorder;
     }
 
     public async Task<MachineStateExplanation> ExplainAsync(
@@ -115,6 +122,7 @@ public sealed partial class LocalMachineIntelligenceGenerator
             DisableReasoning: true,
             Timeout: TimeSpan.FromMinutes(2));
 
+        var stopwatch = Stopwatch.StartNew();
         var result = await _runtime.GenerateAsync(
             inferenceRequest,
             cancellationToken).ConfigureAwait(false);
@@ -126,9 +134,9 @@ public sealed partial class LocalMachineIntelligenceGenerator
             .Select(process => process.Name)
             .ToArray();
 
-        if (!result.IsSuccess ||
-            result.ContainsToolCalls ||
-            !MachineExplanationValidator.IsValid(
+        var isValid = result.IsSuccess &&
+            !result.ContainsToolCalls &&
+            MachineExplanationValidator.IsValid(
                 text,
                 processNames,
                 request.Findings,
@@ -138,18 +146,18 @@ public sealed partial class LocalMachineIntelligenceGenerator
                 request.Network,
                 request.Health,
                 request.History,
-                request.Gpu))
-        {
-            return CreateFallbackExplanation(request.Findings);
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        return new MachineStateExplanation(
-            Text: text!,
-            Model: result.Model!,
-            GeneratedAt: DateTimeOffset.UtcNow,
-            Source: MachineExplanationSource.LocalModel);
+                request.Gpu);
+        var explanation = !isValid
+            ? CreateFallbackExplanation(request.Findings)
+            : new MachineStateExplanation(
+                Text: text!,
+                Model: result.Model!,
+                GeneratedAt: DateTimeOffset.UtcNow,
+                Source: MachineExplanationSource.LocalModel);
+        stopwatch.Stop();
+        await RecordExplainMetricAsync(request, result, isValid,
+            stopwatch.Elapsed, cancellationToken).ConfigureAwait(false);
+        return explanation;
     }
 
     private MachineStateExplanation CreateFallbackExplanation(
