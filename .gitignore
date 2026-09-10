@@ -21,3 +21,7 @@ Generated Files/
 !.vscode/tasks.json
 *.user
 *.suo
+
+# Development-only Python tooling
+**/__pycache__/
+*.pyc

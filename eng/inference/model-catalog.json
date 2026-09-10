@@ -11,6 +11,11 @@
       "id": "qwen3.5-2b-vanilla",
       "role": "candidate",
       "manifestFile": "model-manifest-qwen3.5-2b.json"
+    },
+    {
+      "id": "qwen3.5-2b-specialized",
+      "role": "specialized-candidate",
+      "manifestFile": "model-manifest-qwen3.5-2b-specialized.json"
     }
   ]
 }

@@ -9,7 +9,7 @@ namespace Machine.Tests;
 public sealed class BundledInferenceRuntimeTests
 {
     [Fact]
-    public void ModelCatalogPinsReferenceAndCandidateWithoutChangingDefault()
+    public void ModelCatalogPinsReferenceAndCandidatesWithoutChangingDefault()
     {
         var root = FindRepositoryRoot();
         using var catalog = JsonDocument.Parse(File.ReadAllText(Path.Combine(
@@ -25,7 +25,11 @@ public sealed class BundledInferenceRuntimeTests
         Assert.Contains(models, model =>
             model.GetProperty("id").GetString() == "qwen3.5-2b-vanilla" &&
             model.GetProperty("role").GetString() == "candidate");
-
+        Assert.Contains(models, model =>
+            model.GetProperty("id").GetString() ==
+                "qwen3.5-2b-specialized" &&
+            model.GetProperty("role").GetString() ==
+                "specialized-candidate");
         using var candidate = JsonDocument.Parse(File.ReadAllText(Path.Combine(
             root, "eng", "inference", "model-manifest-qwen3.5-2b.json")));
         Assert.Equal("Qwen3.5-2B",
@@ -36,6 +40,19 @@ public sealed class BundledInferenceRuntimeTests
             candidate.RootElement.GetProperty("sizeBytes").GetInt64());
         Assert.Equal(64,
             candidate.RootElement.GetProperty("sha256").GetString()!.Length);
+
+        using var specialized = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            root, "eng", "inference",
+            "model-manifest-qwen3.5-2b-specialized.json")));
+        Assert.Equal("Qwen3.5-2B-Matasuri",
+            specialized.RootElement.GetProperty("modelName").GetString());
+        Assert.Equal(1454786848,
+            specialized.RootElement.GetProperty("sizeBytes").GetInt64());
+        Assert.Equal("81a348218866ef7994a62a8d1732ad7902a6e1be64eba522e74b43078d21fa26",
+            specialized.RootElement.GetProperty("specialization")
+                .GetProperty("datasetSha256").GetString());
+        Assert.Equal(64,
+            specialized.RootElement.GetProperty("sha256").GetString()!.Length);
     }
 
     [Fact]

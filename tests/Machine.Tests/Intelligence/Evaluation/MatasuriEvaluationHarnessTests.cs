@@ -81,6 +81,30 @@ public sealed class MatasuriEvaluationHarnessTests
                 .ToHashSet(StringComparer.Ordinal);
             Assert.Empty(heldOutIds.Intersect(trainingIds,
                 StringComparer.Ordinal));
+
+            var exportedSummaries = Directory.GetFiles(directory)
+                .SelectMany(File.ReadLines)
+                .Select(line => JsonDocument.Parse(line))
+                .SelectMany(document => document.RootElement
+                    .GetProperty("NormalizedEvidence").EnumerateArray())
+                .Select(evidence => evidence.GetProperty("summary").GetString())
+                .ToHashSet(StringComparer.Ordinal);
+            Assert.All(MatasuriScenarioCorpus.Create()
+                    .SelectMany(scenario => scenario.Situation.Evidence),
+                evidence => Assert.DoesNotContain(evidence.Summary,
+                    exportedSummaries));
+
+            using var firstTrainingRecord = JsonDocument.Parse(
+                File.ReadLines(Path.Combine(directory, "train.jsonl")).First());
+            var target = firstTrainingRecord.RootElement
+                .GetProperty("AcceptedTargetOutput");
+            Assert.Equal(
+                ["overall", "overall_evidence_ids", "points", "outlook",
+                    "outlook_evidence_ids"],
+                target.EnumerateObject().Select(property => property.Name));
+            Assert.All(target.GetProperty("points").EnumerateArray(), point =>
+                Assert.Equal(["text", "evidence_ids"],
+                    point.EnumerateObject().Select(property => property.Name)));
         }
         finally
         {

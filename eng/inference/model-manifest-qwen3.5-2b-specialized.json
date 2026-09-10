@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "modelFamily": "Qwen3.5",
+  "modelName": "Qwen3.5-2B-Matasuri",
+  "architecture": "qwen35",
+  "quantization": "Q5_K_M",
+  "runtimeAlias": "qwen3.5-2b-matasuri-q5_k_m",
+  "fileName": "qwen3.5-2b-matasuri-q5_k_m.gguf",
+  "sizeBytes": 1454786848,
+  "sha256": "1b4a90c2909e09cd33950308e7b54d07f43711a46503f786d04ff69ca11e37ee",
+  "ggufVersion": 3,
+  "upstreamSource": "https://huggingface.co/Qwen/Qwen3.5-2B",
+  "upstreamRevision": "15852e8c16360a2fea060d615a32b45270f8a8fc",
+  "sourceArtifacts": [
+    {
+      "fileName": "model.safetensors-00001-of-00001.safetensors",
+      "sizeBytes": 4548221488,
+      "sha256": "aa33250c4fc64891ddfaba3a314fd9542ea371843c387178b425fbcc5ed680b1"
+    }
+  ],
+  "specialization": {
+    "method": "QLoRA supervised fine-tuning",
+    "datasetSha256": "81a348218866ef7994a62a8d1732ad7902a6e1be64eba522e74b43078d21fa26",
+    "adapterSha256": "a2beae9ff4f2061c941eae6fb651a3547348a64be0043b6cdaae58a3c593775d",
+    "seed": 3512,
+    "epochs": 0.5,
+    "trainExamples": 448,
+    "validationExamples": 56,
+    "internalHeldOutExamples": 56,
+    "trainLoss": 2.4391922610146657,
+    "validationLoss": 1.862750768661499,
+    "loraRank": 8,
+    "loraAlpha": 16,
+    "loraDropout": 0.05,
+    "trainingSeconds": 336.125
+  },
+  "conversion": {
+    "llamaCppCommit": "2d8d612e4c68d3801e556a1b4a028f55ec33ecbb",
+    "converter": "convert_hf_to_gguf.py --outtype bf16",
+    "intermediateFileName": "qwen3.5-2b-matasuri-v3-bf16.gguf",
+    "intermediateSizeBytes": 3897387296,
+    "intermediateSha256": "a5403828cd7ca28a745b56520a68ab04beba3d8101afa46925925b449a888962",
+    "quantizer": "llama-quantize Q5_K_M"
+  },
+  "license": "Apache-2.0",
+  "licenseSource": "https://huggingface.co/Qwen/Qwen3.5-2B/blob/15852e8c16360a2fea060d615a32b45270f8a8fc/LICENSE",
+  "compatibleLlamaCppRelease": "b10724",
+  "compatibleLlamaCppCommit": "2d8d612e4c68d3801e556a1b4a028f55ec33ecbb",
+  "chatTemplate": "Embedded Qwen3.5 Jinja chat template; requests set enable_thinking=false and provide system/user messages only.",
+  "appOwnedRelativePath": "Matasuri/Inference/Models/qwen3.5-2b-matasuri-q5_k_m.gguf"
+}

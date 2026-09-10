@@ -100,6 +100,22 @@ foreach (var scenario in MatasuriScenarioCorpus.Create())
 }
 
 var status = await runtime.GetStatusAsync();
+long? processWorkingSetBytes = null;
+if (status.ProcessId is { } processId)
+{
+    try
+    {
+        processWorkingSetBytes = Process.GetProcessById(processId)
+            .WorkingSet64;
+    }
+    catch (ArgumentException)
+    {
+        // The dev runtime may exit between status and measurement.
+    }
+}
+var unloadStopwatch = Stopwatch.StartNew();
+await runtime.RequestUnloadAsync();
+unloadStopwatch.Stop();
 var latencies = scenarioResults.Select(result =>
     (double)result.TotalLatencyMilliseconds).Order().ToArray();
 var report = new MatasuriModelEvaluationReport(
@@ -129,6 +145,8 @@ var report = new MatasuriModelEvaluationReport(
     scenarioResults.Select(result => result.ColdLoadMilliseconds)
         .FirstOrDefault(value => value is not null),
     status.LoadedModels.FirstOrDefault()?.ResidentBytes,
+    processWorkingSetBytes,
+    unloadStopwatch.ElapsedMilliseconds,
     scenarioResults);
 
 var stem = Slug(configuration.ModelName) + "-" +
@@ -139,7 +157,6 @@ await File.WriteAllTextAsync(jsonPath, JsonSerializer.Serialize(report,
     new JsonSerializerOptions { WriteIndented = true }));
 await File.WriteAllTextAsync(markdownPath, Markdown(report));
 Console.WriteLine($"Report: {jsonPath}");
-await runtime.RequestUnloadAsync();
 
 int Attempts(MachineBriefValidationFailure failure) =>
     scenarioResults.Count(result => result.FirstPassFailure == failure);
@@ -177,6 +194,12 @@ static string Markdown(MatasuriModelEvaluationReport report)
         $"{report.MedianLatencyMilliseconds / 1000d:F2}s");
     builder.AppendLine($"- P95 latency: " +
         $"{report.P95LatencyMilliseconds / 1000d:F2}s");
+    builder.AppendLine($"- GPU model resident: " +
+        $"{report.ModelResidentBytes?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"} bytes");
+    builder.AppendLine($"- Process working set: " +
+        $"{report.ProcessWorkingSetBytes?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"} bytes");
+    builder.AppendLine($"- Unload latency: " +
+        $"{report.UnloadLatencyMilliseconds / 1000d:F2}s");
     builder.AppendLine();
     builder.AppendLine("| Scenario | First pass | Repair | Fallback | Evidence | Latency |");
     builder.AppendLine("| --- | --- | --- | --- | --- | ---: |");

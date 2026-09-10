@@ -66,4 +66,6 @@ public sealed record MatasuriModelEvaluationReport(
     double P95LatencyMilliseconds,
     long? ColdLoadMilliseconds,
     long? ModelResidentBytes,
+    long? ProcessWorkingSetBytes,
+    long UnloadLatencyMilliseconds,
     IReadOnlyList<MatasuriScenarioResult> Scenarios);
