@@ -37,6 +37,16 @@
              TargetPath="Inference\Manifests\model-manifest.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\eng\inference\model-catalog.json"
+             Link="Inference\Manifests\model-catalog.json"
+             TargetPath="Inference\Manifests\model-catalog.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\eng\inference\model-manifest-qwen3.5-2b.json"
+             Link="Inference\Manifests\model-candidate.json"
+             TargetPath="Inference\Manifests\model-candidate.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\eng\inference\THIRD_PARTY_NOTICES.md"
              Link="Inference\THIRD_PARTY_NOTICES.md"
              TargetPath="Inference\THIRD_PARTY_NOTICES.md"

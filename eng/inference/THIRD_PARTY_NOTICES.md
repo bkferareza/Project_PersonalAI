@@ -49,6 +49,20 @@ the pinned llama.cpp converter, then quantized with the pinned llama.cpp
 quantizer. The conversion recipe and every source/model hash are recorded in
 `model-manifest.json`.
 
+## Qwen3.5-2B candidate
+
+- Project: Qwen3.5-2B
+- Source: https://huggingface.co/Qwen/Qwen3.5-2B
+- Source revision: `15852e8c16360a2fea060d615a32b45270f8a8fc`
+- Developer candidate: GGUF version 3, Q5_K_M quantization
+- License: Apache License 2.0
+
+The 2B artifact is an explicitly prepared development candidate and is not
+downloaded by normal Matasuri operation. Its source, conversion, quantization,
+size, and SHA-256 provenance are recorded in
+`model-manifest-qwen3.5-2b.json`. Qwen3.5-4B remains the default and reference
+model until a held-out Matasuri evaluation supports promotion.
+
 ## NVIDIA CUDA runtime components
 
 The Windows x64 CUDA bundle includes `cudart64_12.dll`, `cublas64_12.dll`, and

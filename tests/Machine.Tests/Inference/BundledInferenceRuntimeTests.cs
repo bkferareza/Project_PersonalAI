@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Machine.Core;
 using Machine.Inference;
 
@@ -7,6 +8,36 @@ namespace Machine.Tests;
 
 public sealed class BundledInferenceRuntimeTests
 {
+    [Fact]
+    public void ModelCatalogPinsReferenceAndCandidateWithoutChangingDefault()
+    {
+        var root = FindRepositoryRoot();
+        using var catalog = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            root, "eng", "inference", "model-catalog.json")));
+        var document = catalog.RootElement;
+        var models = document.GetProperty("models").EnumerateArray().ToArray();
+
+        Assert.Equal("qwen3.5-4b-reference",
+            document.GetProperty("defaultModelId").GetString());
+        Assert.Contains(models, model =>
+            model.GetProperty("id").GetString() == "qwen3.5-4b-reference" &&
+            model.GetProperty("role").GetString() == "reference-teacher");
+        Assert.Contains(models, model =>
+            model.GetProperty("id").GetString() == "qwen3.5-2b-vanilla" &&
+            model.GetProperty("role").GetString() == "candidate");
+
+        using var candidate = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            root, "eng", "inference", "model-manifest-qwen3.5-2b.json")));
+        Assert.Equal("Qwen3.5-2B",
+            candidate.RootElement.GetProperty("modelName").GetString());
+        Assert.Equal("Q5_K_M",
+            candidate.RootElement.GetProperty("quantization").GetString());
+        Assert.Equal(1454787392,
+            candidate.RootElement.GetProperty("sizeBytes").GetInt64());
+        Assert.Equal(64,
+            candidate.RootElement.GetProperty("sha256").GetString()!.Length);
+    }
+
     [Fact]
     public void ArgumentsAreFixedPrivateAndAuthenticated()
     {
@@ -278,6 +309,18 @@ public sealed class BundledInferenceRuntimeTests
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(1),
             TimeSpan.FromMinutes(10));
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null &&
+            !File.Exists(Path.Combine(directory.FullName, "Machine.sln")))
+        {
+            directory = directory.Parent;
+        }
+        return directory?.FullName ?? throw new InvalidOperationException(
+            "Could not locate the repository root.");
+    }
 
     private static void AssertArgument(
         string[] arguments,

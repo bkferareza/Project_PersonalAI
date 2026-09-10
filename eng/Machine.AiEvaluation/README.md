@@ -15,7 +15,7 @@ Select another pinned model manifest explicitly:
 
 ```powershell
 dotnet run --project eng/Machine.AiEvaluation --configuration Debug -- `
-  --model-manifest eng/inference/model-manifest-qwen3.5-2b.json
+  --model qwen3.5-2b-vanilla
 ```
 
 Reports are written under the ignored `artifacts/ai-evaluation` directory as

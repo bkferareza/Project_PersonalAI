@@ -173,7 +173,7 @@ public sealed partial class BundledLlamaInferenceRuntime
                 [
                     new LocalInferenceLoadedModel(
                         _configuration.ModelName,
-                        "4B",
+                        ParameterSize(_configuration.ModelName),
                         _configuration.Quantization,
                         _configuration.ModelSizeBytes,
                         ResidentBytes: _modelGpuResidentBytes,
@@ -944,6 +944,14 @@ public sealed partial class BundledLlamaInferenceRuntime
         value is { } number && double.IsFinite(number) && number > 0d
             ? number
             : null;
+
+    private static string? ParameterSize(string modelName)
+    {
+        var separator = modelName.LastIndexOf('-');
+        return separator >= 0 && separator + 1 < modelName.Length
+            ? modelName[(separator + 1)..]
+            : null;
+    }
 
     private static int? TryGetProcessId(Process? process)
     {

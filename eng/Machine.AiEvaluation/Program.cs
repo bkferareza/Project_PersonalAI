@@ -217,8 +217,7 @@ internal sealed record EvaluationOptions(
         return new(
             Value("--runtime-manifest", Path.Combine(root, "eng", "inference",
                 "runtime-manifest.json")),
-            Value("--model-manifest", Path.Combine(root, "eng", "inference",
-                "model-manifest.json")),
+            ResolveModelManifest(args, root, Value),
             Value("--runtime-directory", Path.Combine(root, "artifacts",
                 "local-inference", "runtime", "b10724", "cuda12-x64")),
             Value("--model-directory", Path.Combine(
@@ -227,6 +226,40 @@ internal sealed record EvaluationOptions(
             Value("--output", Path.Combine(root, "artifacts", "ai-evaluation")),
             args.Contains("--export-dataset", StringComparer.Ordinal),
             args.Contains("--dataset-only", StringComparer.Ordinal));
+    }
+
+    private static string ResolveModelManifest(
+        string[] args,
+        string root,
+        Func<string, string, string> value)
+    {
+        var explicitManifest = Array.IndexOf(args, "--model-manifest");
+        if (explicitManifest >= 0)
+        {
+            return value("--model-manifest", string.Empty);
+        }
+
+        var modelIndex = Array.IndexOf(args, "--model");
+        if (modelIndex < 0 || modelIndex + 1 >= args.Length)
+        {
+            return Path.Combine(root, "eng", "inference",
+                "model-manifest.json");
+        }
+
+        var catalogPath = Path.Combine(root, "eng", "inference",
+            "model-catalog.json");
+        using var document = JsonDocument.Parse(File.ReadAllText(catalogPath));
+        var selected = args[modelIndex + 1];
+        var entry = document.RootElement.GetProperty("models")
+            .EnumerateArray().FirstOrDefault(model => string.Equals(
+                model.GetProperty("id").GetString(), selected,
+                StringComparison.Ordinal));
+        if (entry.ValueKind == JsonValueKind.Undefined)
+        {
+            throw new ArgumentException($"Unknown model catalog ID '{selected}'.");
+        }
+        return Path.Combine(Path.GetDirectoryName(catalogPath)!,
+            entry.GetProperty("manifestFile").GetString()!);
     }
 
     private static string FindRepositoryRoot()

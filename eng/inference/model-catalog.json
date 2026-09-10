@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "defaultModelId": "qwen3.5-4b-reference",
+  "models": [
+    {
+      "id": "qwen3.5-4b-reference",
+      "role": "reference-teacher",
+      "manifestFile": "model-manifest.json"
+    },
+    {
+      "id": "qwen3.5-2b-vanilla",
+      "role": "candidate",
+      "manifestFile": "model-manifest-qwen3.5-2b.json"
+    }
+  ]
+}
